@@ -33,6 +33,9 @@
 #if defined(NMEA2000_ENABLE)
 #include "driver_nmea2000.h"
 #endif /* defined(NMEA2000_ENABLE) */
+#if defined(VYSPI_ENABLE)
+#include "driver_vyspi.h"
+#endif /* defined(VYSPI_ENABLE) */
 
 #if defined(PPS_ENABLE)
 static pthread_mutex_t report_mutex;
@@ -460,6 +463,11 @@ int gpsd_open(struct gps_device_t *session)
         return nmea2000_open(session);
     }
 #endif /* defined(NMEA2000_ENABLE) && !defined(S_SPLINT_S) */
+#if defined(VYSPI_ENABLE) && !defined(S_SPLINT_S)
+    if (strncmp(session->gpsdata.dev.path, "vyspi://", 8) == 0) {
+        return vyspi_open(session);
+    }
+#endif /* defined(VYSPI_ENABLE) && !defined(S_SPLINT_S) */
     /* fall through to plain serial open */
     return gpsd_serial_open(session);
 }
@@ -1567,7 +1575,6 @@ int gpsd_multipoll(const bool data_ready,
 	    if (device->packet.type != BAD_PACKET)
 		/*@i1@*/handler(device, changed);
 
-#ifdef __future__
 	    /*
 	     * Bernd Ocklin suggests:
 	     * Exit when a full packet was received and parsed.
@@ -1579,7 +1586,6 @@ int gpsd_multipoll(const bool data_ready,
 	     */
 	    if ((changed & PACKET_SET) != 0)
                break;
-#endif /* __future__ */
 	}
     }
     else if (device->reawake>0 && timestamp()>device->reawake) {

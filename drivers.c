@@ -1496,6 +1496,7 @@ extern const struct gps_type_t driver_geostar;
 extern const struct gps_type_t driver_italk;
 extern const struct gps_type_t driver_navcom;
 extern const struct gps_type_t driver_nmea2000;
+extern const struct gps_type_t driver_vyspi;
 extern const struct gps_type_t driver_oncore;
 extern const struct gps_type_t driver_sirf;
 extern const struct gps_type_t driver_superstar2;
@@ -1583,6 +1584,9 @@ static const struct gps_type_t *gpsd_driver_array[] = {
 #ifdef NMEA2000_ENABLE
     &driver_nmea2000,
 #endif /* NMEA2000_ENABLE */
+#ifdef VYSPI_ENABLE
+    &driver_vyspi,
+#endif /* VYSPI_ENABLE */
 
 #ifdef RTCM104V2_ENABLE
     &driver_rtcm104v2,

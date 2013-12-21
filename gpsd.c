@@ -539,6 +539,10 @@ static /*@null@*//*@observer@ */ struct subscriber_t *allocate_client(void)
     for (si = 0; si < NITEMS(subscribers); si++) {
 	if (subscribers[si].fd == UNALLOCATED_FD) {
 	    subscribers[si].fd = 0;	/* mark subscriber as allocated */
+	    subscribers[si].policy.raw     = false;
+	    subscribers[si].policy.nmea    = false;
+	    subscribers[si].policy.watcher = true;
+	    subscribers[si].policy.json    = true;
 	    return &subscribers[si];
 	}
     }
@@ -1379,10 +1383,25 @@ static void raw_report(struct subscriber_t *sub, struct gps_device_t *device)
 			      device->packet.outbuflen);
 	return;
     }
+#ifdef VYSPI_ENABLE
+    if ((device->packet.type == VYSPI_PACKET) && (sub->policy.raw == 1)) {
+      printf("VYSPI gpsd_vyspidump() start\n");
+	const char *hd =
+	    gpsd_vyspidump(device->msgbuf, sizeof(device->msgbuf),
+			 (char *)device->packet.outbuffer,
+			 device->packet.outbuflen);
+      printf("VYSPI gpsd_vyspidump() end 0\n");
+	(void)strlcat((char *)hd, "\r\n", sizeof(device->msgbuf));
+      printf("VYSPI gpsd_vyspidump() end 1\n");
+	(void)throttled_write(sub, (char *)hd, strlen(hd));
+      printf("VYSPI gpsd_vyspidump() end 2\n");
+    } 
+#endif
 #ifdef BINARY_ENABLE
     /*
      * Maybe the user wants a binary packet hexdumped.
      */
+    printf("VYSPI gpsd_hexdump() start\n");
     if (sub->policy.raw == 1) {
 	const char *hd =
 	    gpsd_hexdump(device->msgbuf, sizeof(device->msgbuf),
@@ -2207,9 +2226,11 @@ int main(int argc, char *argv[])
 			gpsd_report(context.debug, LOG_SPIN,
 				    "client %s (%d) connect on fd %d\n", c_ip,
 				    sub_index(client), ssock);
+			/* remove annyoing version dump for users
 			json_version_dump(announce, sizeof(announce));
 			(void)throttled_write(client, announce,
 					      strlen(announce));
+			*/
 		    }
 		}
 		FD_CLR(msocks[i], &rfds);

@@ -118,6 +118,7 @@ boolopts = (
     ("fury",          True,  "Jackson Labs Fury and Firefly support"),
     ("nmea2000",      True,  "NMEA2000/CAN support"),
     # Non-GPS protocols
+    ("vyspi",         True,  "VYSPI support"),
     ("aivdm",         True,  "AIVDM support"),
     ("gpsclock",      True,  "GPSClock support"),
     ("ntrip",         True,  "NTRIP support"),
@@ -157,7 +158,7 @@ boolopts = (
     ("shared",        True,  "build shared libraries, not static"),
     ("implicit_link", imloads,"implicit linkage is supported in shared libs"),
     ("python",        True,  "build Python support and modules."),
-    ("debug",         False, "include debug information in build"),
+    ("debug",         False,  "include debug information in build"),
     ("profiling",     False, "build with profiling enabled"),
     ("coveraging",    False, "build with code coveraging enabled"),
     ("strip",         True,  "build with stripping of binaries enabled"),
@@ -822,6 +823,7 @@ libgpsd_sources = [
     "driver_superstar2.c",
     "driver_tsip.c",
     "driver_ubx.c",
+    "driver_vyspi.c",
     "driver_zodiac.c",
 ]
 
