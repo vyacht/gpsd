@@ -1108,6 +1108,7 @@ gps_mask_t gpsd_poll(struct gps_device_t *session)
 {
     ssize_t newlen;
     bool driver_change = false;
+    struct gps_type_t *prev_driver = NULL;
 
     gps_clear_fix(&session->newdata);
 
@@ -1218,6 +1219,7 @@ gps_mask_t gpsd_poll(struct gps_device_t *session)
 	}
 	return NODATA_IS;
     } else /* (newlen > 0) */ {
+
 	gpsd_report(session->context->debug, LOG_RAW,
 		    "packet sniff on %s finds type %d\n",
 		    session->gpsdata.dev.path, session->packet.type);
@@ -1266,6 +1268,7 @@ gps_mask_t gpsd_poll(struct gps_device_t *session)
 	    /*@-nullderef@*/
 	    if (driver_change) {
 		const struct gps_type_t **dp;
+		prev_driver = session->device_type;
 
 		for (dp = gpsd_drivers; *dp; dp++)
 		    if (session->packet.type == (*dp)->packet_type) {
@@ -1362,8 +1365,8 @@ gps_mask_t gpsd_poll(struct gps_device_t *session)
 	 * keep the information about those capabilities.
 	 */
 	/*@-mustfreeonly@*/
-	if (!STICKY(session->device_type)
-	    && session->last_controller != NULL)
+        if (!STICKY(session->device_type) 
+	      && (session->last_controller != NULL)) 
 	{
 	    session->device_type = session->last_controller;
 	    gpsd_report(session->context->debug, LOG_PROG,

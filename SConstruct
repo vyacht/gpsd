@@ -97,45 +97,45 @@ imloads = True
 
 boolopts = (
     # GPS protocols
-    ("nmea",          True,  "NMEA support"),
-    ("ashtech",       True,  "Ashtech support"),
-    ("earthmate",     True,  "DeLorme EarthMate Zodiac support"),
-    ("evermore",      True,  "EverMore binary support"),
-    ("fv18",          True,  "San Jose Navigation FV-18 support"),
-    ("garmin",        True,  "Garmin kernel driver support"),
-    ("garmintxt",     True,  "Garmin Simple Text support"),
-    ("geostar",       True,  "Geostar Protocol support"),
-    ("itrax",         True,  "iTrax hardware support"),
-    ("mtk3301",       True,  "MTK-3301 support"),
-    ("navcom",        True,  "Navcom support"),
-    ("oncore",        True,  "Motorola OnCore chipset support"),
-    ("sirf",          True,  "SiRF chipset support"),
-    ("superstar2",    True,  "Novatel SuperStarII chipset support"),
-    ("tnt",           True,  "True North Technologies support"),
-    ("tripmate",      True,  "DeLorme TripMate support"),
-    ("tsip",          True,  "Trimble TSIP support"),
-    ("ublox",         True,  "u-blox Protocol support"),
-    ("fury",          True,  "Jackson Labs Fury and Firefly support"),
-    ("nmea2000",      True,  "NMEA2000/CAN support"),
+    ("nmea",          True,   "NMEA support"),
+    ("ashtech",       False,  "Ashtech support"),
+    ("earthmate",     False,  "DeLorme EarthMate Zodiac support"),
+    ("evermore",      False,  "EverMore binary support"),
+    ("fv18",          False,  "San Jose Navigation FV-18 support"),
+    ("garmin",        False,  "Garmin kernel driver support"),
+    ("garmintxt",     False,  "Garmin Simple Text support"),
+    ("geostar",       False,  "Geostar Protocol support"),
+    ("itrax",         False,  "iTrax hardware support"),
+    ("mtk3301",       False,  "MTK-3301 support"),
+    ("navcom",        False,  "Navcom support"),
+    ("oncore",        False,  "Motorola OnCore chipset support"),
+    ("sirf",          False,  "SiRF chipset support"),
+    ("superstar2",    False,  "Novatel SuperStarII chipset support"),
+    ("tnt",           False,  "True North Technologies support"),
+    ("tripmate",      False,  "DeLorme TripMate support"),
+    ("tsip",          False,  "Trimble TSIP support"),
+    ("ublox",         False,  "u-blox Protocol support"),
+    ("fury",          False,  "Jackson Labs Fury and Firefly support"),
+    ("nmea2000",      True,   "NMEA2000/CAN support"),
     # Non-GPS protocols
     ("vyspi",         True,  "VYSPI support"),
     ("aivdm",         True,  "AIVDM support"),
     ("gpsclock",      True,  "GPSClock support"),
-    ("ntrip",         True,  "NTRIP support"),
-    ("oceanserver",   True,  "OceanServer support"),
-    ("rtcm104v2",     True,  "rtcm104v2 support"),
-    ("rtcm104v3",     True,  "rtcm104v3 support"),
+    ("ntrip",         False,  "NTRIP support"),
+    ("oceanserver",   False,  "OceanServer support"),
+    ("rtcm104v2",     False,  "rtcm104v2 support"),
+    ("rtcm104v3",     False,  "rtcm104v3 support"),
     # Time service
     ("ntpshm",        True,  "NTP time hinting support"),
     ("pps",           True,  "PPS time syncing support"),
     # Export methods
     ("socket_export", True,  "data export over sockets"),
     ("dbus_export",   False, "enable DBUS export support"),
-    ("shm_export",    True,  "export via shared memory"),
+    ("shm_export",    False,  "export via shared memory"),
     # Communication
-    ('usb',           True,  "libusb support for USB devices"),
+    ('usb',           False, "libusb support for USB devices"),
     ("bluez",         True,  "BlueZ support for Bluetooth devices"),
-    ("ipv6",          True,  "build IPv6 support"),
+    ("ipv6",          False,  "build IPv6 support"),
     ("netfeed",       True,  "build support for handling TCP/IP data sources"),
     ("passthrough",   True,  "build support for passing through JSON"),
     # Other daemon options
@@ -158,7 +158,7 @@ boolopts = (
     ("shared",        True,  "build shared libraries, not static"),
     ("implicit_link", imloads,"implicit linkage is supported in shared libs"),
     ("python",        True,  "build Python support and modules."),
-    ("debug",         False,  "include debug information in build"),
+    ("debug",         True, "include debug information in build"),
     ("profiling",     False, "build with profiling enabled"),
     ("coveraging",    False, "build with code coveraging enabled"),
     ("strip",         True,  "build with stripping of binaries enabled"),
@@ -654,6 +654,7 @@ else:
         if type(value) == type(True):
             if value:
                 confdefs.append("#define %s_ENABLE 1\n" % key.upper())
+                print "defining %s_ENABLE" % key.upper()
             else:
                 confdefs.append("/* #undef %s_ENABLE */\n" % key.upper())
         elif value in (0, "", "(undefined)"):

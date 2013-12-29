@@ -1430,10 +1430,10 @@ static void find_pgn(struct can_frame *frame, struct gps_device_t *session)
 		        gpsd_report(session->context->debug, LOG_ERROR,
 				    "Fast done  %2x %2x %2x %2x %6d\n",
 				    session->driver.nmea2000.idx,
-				                                                   /*@i1@*/frame->data[0],
-				                                                   session->driver.nmea2000.unit,
-				                                                   (unsigned int) session->driver.nmea2000.fast_packet_len,
-				                                                   source_pgn);
+				    /*@i1@*/frame->data[0],
+				    session->driver.nmea2000.unit,
+				    (unsigned int) session->driver.nmea2000.fast_packet_len,
+				    source_pgn);
 #endif /* of #if  NMEA2000_FAST_DEBUG */
 			session->driver.nmea2000.workpgn = (void *) work;
 		        session->packet.outbuflen = session->driver.nmea2000.fast_packet_len;
@@ -1515,7 +1515,7 @@ static gps_mask_t nmea2000_parse_input(struct gps_device_t *session)
         mask = (work->func)(&session->packet.outbuffer[0], (int)session->packet.outbuflen, work, session);
         session->driver.nmea2000.workpgn = NULL;
     }
-    session->packet.outbuflen = 0;
+    //    session->packet.outbuflen = 0;
 
     return mask;
 }
@@ -1683,7 +1683,7 @@ void nmea2000_close(struct gps_device_t *session)
 const struct gps_type_t driver_nmea2000 = {
     .type_name      = "NMEA2000",       /* full name of type */
     .packet_type    = NMEA2000_PACKET,	/* associated lexer packet type */
-    .flags	    = DRIVER_STICKY,	/* remember this */
+    .flags	    = DRIVER_NOFLAGS,	/* remember this */
     .trigger	    = NULL,		/* detect their main sentence */
     .channels       = 12,		/* not an actual GPS at all */
     .probe_detect   = NULL,

@@ -77,7 +77,7 @@ typedef unsigned int speed_t;
 #ifdef EARTHMATE_ENABLE
 #define ZODIAC_ENABLE
 #endif
-#if defined(ZODIAC_ENABLE) || defined(SIRF_ENABLE) || defined(GARMIN_ENABLE) || defined(TSIP_ENABLE) || defined(EVERMORE_ENABLE) || defined(ITRAX_ENABLE) || defined(UBLOX_ENABLE) || defined(SUPERSTAR2_ENABLE) || defined(ONCORE_ENABLE) || defined(GEOSTAR_ENABLE) || defined(NAVCOM_ENABLE)
+#if defined(ZODIAC_ENABLE) || defined(SIRF_ENABLE) || defined(GARMIN_ENABLE) || defined(TSIP_ENABLE) || defined(EVERMORE_ENABLE) || defined(ITRAX_ENABLE) || defined(UBLOX_ENABLE) || defined(SUPERSTAR2_ENABLE) || defined(ONCORE_ENABLE) || defined(GEOSTAR_ENABLE) || defined(NAVCOM_ENABLE) || defined(NMEA2000_ENABLE)
 #define BINARY_ENABLE
 #endif
 #if defined(TRIPMATE_ENABLE) || defined(BINARY_ENABLE)
@@ -663,6 +663,11 @@ struct gps_device_t {
 	    unsigned char sid[8];
 	} nmea2000;
 #endif /* NMEA2000_ENABLE */
+#ifdef VYSPI_ENABLE
+      struct {
+	uint32_t last_pgn;
+      } vyspi;
+#endif /* VYSPI_ENABLE */
 	/*
 	 * This is not conditionalized on RTCM104_ENABLE because we need to
 	 * be able to build gpsdecode even when RTCM support is not
@@ -812,8 +817,7 @@ extern gps_mask_t gpsd_interpret_subframe(struct gps_device_t *, unsigned int,
 extern gps_mask_t gpsd_interpret_subframe_raw(struct gps_device_t *,
 				unsigned int, uint32_t[]);
 #ifdef VYSPI_ENABLE
-extern /*@ observer @*/ const char *gpsd_vyspidump(/*@out@*/char *, size_t,
-						 /*@null@*/char *, size_t);
+extern /*@ observer @*/ const char *gpsd_vyspidump(struct gps_device_t *);
 #endif 
 extern /*@ observer @*/ const char *gpsd_hexdump(/*@out@*/char *, size_t,
 						 /*@null@*/char *, size_t);

@@ -1383,25 +1383,20 @@ static void raw_report(struct subscriber_t *sub, struct gps_device_t *device)
 			      device->packet.outbuflen);
 	return;
     }
-#ifdef VYSPI_ENABLE
-    if ((device->packet.type == VYSPI_PACKET) && (sub->policy.raw == 1)) {
-      printf("VYSPI gpsd_vyspidump() start\n");
-	const char *hd =
-	    gpsd_vyspidump(device->msgbuf, sizeof(device->msgbuf),
-			 (char *)device->packet.outbuffer,
-			 device->packet.outbuflen);
-      printf("VYSPI gpsd_vyspidump() end 0\n");
-	(void)strlcat((char *)hd, "\r\n", sizeof(device->msgbuf));
-      printf("VYSPI gpsd_vyspidump() end 1\n");
-	(void)throttled_write(sub, (char *)hd, strlen(hd));
-      printf("VYSPI gpsd_vyspidump() end 2\n");
-    } 
-#endif
+
 #ifdef BINARY_ENABLE
+#ifdef VYSPI_ENABLE
+    if ((device->packet.type == NMEA2000_PACKET) && (sub->policy.raw == 1)) {
+	const char *hd = gpsd_vyspidump(device);
+	if(strlen(hd) > 0) {
+	  (void)strlcat((char *)hd, "\r\n", sizeof(device->msgbuf));
+	  (void)throttled_write(sub, (char *)hd, strlen(hd));
+	}
+    } else 
+#endif
     /*
      * Maybe the user wants a binary packet hexdumped.
      */
-    printf("VYSPI gpsd_hexdump() start\n");
     if (sub->policy.raw == 1) {
 	const char *hd =
 	    gpsd_hexdump(device->msgbuf, sizeof(device->msgbuf),

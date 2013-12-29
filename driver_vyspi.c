@@ -30,6 +30,10 @@
 #define LOG_FILE 1
 #define VYSPI_RESET 0x04
 
+// package types
+#define PKG_TYPE_NMEA0183 0x01
+#define PKG_TYPE_NMEA2000 0x02
+
 
 typedef struct PGN
     {
@@ -269,6 +273,67 @@ static gps_mask_t hnd_126996(unsigned char *bu, int len, PGN *pgn, struct gps_de
 }
 
 /*
+ *   PGN 127488: Engine Parameter Rapid Update
+ */
+static gps_mask_t hnd_127488(unsigned char *bu, int len, PGN *pgn, struct gps_device_t *session)
+{
+  /* [17] 
+    1   0   uint8  Engine instance 
+    2 1-2   uint16 RPM (x .25 RPM)
+    3 3-4   uint16 Boost Pressure (100Pa)
+    4   6   sint8  Engine Tilt/Trim (+/- 1%)
+    5 6-7   uint16 Reserved Bits 
+   */
+    print_data(session->context, bu, len, pgn);
+    gpsd_report(session->context->debug, LOG_DATA, "pgn %6d(%3d):\n", pgn->pgn, session->driver.nmea2000.unit);
+    return(0);
+}
+
+/*
+ *   PGN 127489: Engine Parameter Dynamic
+ */
+static gps_mask_t hnd_127489(unsigned char *bu, int len, PGN *pgn, struct gps_device_t *session)
+{
+  /* [17]
+    1      0           uint8    Engine Instance  (port, starboard, forward, etc.)
+    2   1- 2           uint16   Engine Oil Pressure (100Pa)
+    3   3- 4           uint16   Engine Oil Temperature (0.1K)
+    4   5- 6           uint16   Engine Temperature (0.1K)
+    5   7- 8           sint16   Alternator potential (0.01V)
+    6   9-10           sint16   Fuel rate (cm³ / hour)
+    7  11-14           uint32   Total engine hours (1sec)
+    8  15-16           uint16   Engine coolant pressure (100Pa)
+    9  17-18           uint16   Fuel Pressure (1000Pa)
+    10    19           uint8    Not Available
+    11    20 bits 0-7  bits     Engine Discrete Status 1
+    12    21 bits 0-7  bits     Engine Discrete Status 2
+    13    22           sint8    Percent Engine Load (1%)
+    14    23           sint8    Percent Engine Torque (1%)
+   */
+    print_data(session->context, bu, len, pgn);
+    gpsd_report(session->context->debug, LOG_DATA, "pgn %6d(%3d):\n", pgn->pgn, session->driver.nmea2000.unit);
+    return(0);
+}
+
+/*
+ *   PGN 127505: Fluid Level
+ */
+static gps_mask_t hnd_127505(unsigned char *bu, int len, PGN *pgn, struct gps_device_t *session)
+{
+  /* [17]
+    1   0           Fluid Instance
+    2   1  bits 3-7 Fluid Type
+    3 1-2           Fluid Level
+    4               Tank Capacity
+    5 Reserved Bit
+    */
+
+    print_data(session->context, bu, len, pgn);
+    gpsd_report(session->context->debug, LOG_DATA, "pgn %6d(%3d):\n", pgn->pgn, session->driver.nmea2000.unit);
+    return(0);
+}
+
+/*
  *   PGN 127257: Attitude
  */
 static gps_mask_t hnd_127257(unsigned char *bu, int len, PGN *pgn, struct gps_device_t *session)
@@ -456,6 +521,17 @@ static const int mode_tab[] = {MODE_NO_FIX, MODE_2D,  MODE_3D, MODE_NO_FIX,
  */
 static gps_mask_t hnd_129539(unsigned char *bu, int len, PGN *pgn, struct gps_device_t *session)
 {
+  /* 
+     GPS100 will transmit identical SIDs for 126992 (System Time), 128259
+     (Speed), 129026 (COG and SOG, Rapid Update), 129029 (GNSS Position Data),
+     129539 (GNSS DOPs), and 129540 (GNSS Satellites in View) to indicate that the
+     readings are linked together 
+
+    2: Set Mode – This field is used to indicate the desired mode of operation: 0 = 1D. 1 =
+      2D, 2 = 3D, 3 = Auto (factory default), 4-5 = Reserved, 6 = Error, 7 = Null.
+    3: Op Mode – This field is used to indicate the actual current mode of operation: 0 =
+      1D. 1 = 2D, 2 = 3D, 3 = Auto (factory default), 4-5 = Reserved, 6 = Error, 7 = Null
+    */
     gps_mask_t mask;
     unsigned int req_mode;
     unsigned int act_mode;
@@ -505,7 +581,45 @@ static gps_mask_t hnd_129539(unsigned char *bu, int len, PGN *pgn, struct gps_de
  *   PGN 129540: GNSS Satellites in View
  */
 static gps_mask_t hnd_129540(unsigned char *bu, int len, PGN *pgn, struct gps_device_t *session)
-{
+{   
+  /*
+    The GPS100 uses this PGN to provide the GNSS information on current satellites in view
+    tagged by sequence ID. Information includes PRN, elevation, azimuth, and SNR. Field 4
+    defines the number of satellites. Fields 5 through 11 defines the satellite number and the
+    information. Fields 5 through 11 are sequentially repeated for each satellite to be transmitted.
+    The factory default for periodic transmission rate is once per second. The transmission of this
+    PGN can be disabled (see PGN 126208 – NMEA Request Group Function – Transmission
+    Periodic Rate).
+    Field 1: SID – The sequence identifier field is used to tie related PGNs together. For
+    example, the GPS100 will transmit identical SIDs for 126992 (System Time), 128259
+    (Speed), 129026 (COG and SOG, Rapid Update), 129029 (GNSS Position Data),
+    129539 (GNSS DOPs), and 129540 (GNSS Satellites in View) to indicate that the
+    readings are linked together (i.e., the data from each PGN was taken at the same
+    time although they are reported at slightly different times).
+    2: Mode – This field always reads as 3 (Null), indicating that range residuals are used
+    to calculate position, and not calculated after the position.
+    3: Reserved (6 bits) – This field is reserved by NMEA; therefore, this field always
+    contains a value of 0x3F (the GPS100 sets all bits to a logic 1)
+    4: Number of SVs – This field is used to indicate the number of current satellites in
+    view. Fields 5-11 are repeated the number of times specified by this field’s value.
+    5: PRN "1" – This field is used to indicate the Satellite ID Number of the satellite (1-
+    32=GPS, 33-64=SBAS, 65-96=GLONASS).
+    6: Elevation "1" – This field is used to indicate the Elevation of the satellite.
+    7: Azimuth "1" – This field is used to indicate the Azimuth of the satellite.
+    8: SNR "1" – This field is used to indicate the Signal to Noise Ratio (SNR) of the
+    satellite. 
+    9: Range Residuals “1” – The GPS100 always sets this field to a value of 0x7FFFFFFF
+     (data not available)
+    10: PRN Status "1" – This field is used to indicate the status of the first satellite in the
+     list. (0=Not Tracked, 1=Tracked but not used in solution, 2=Used in solution without
+     Differential corrections, 3=Differential Corrections available, 4=Tracked with
+     Differential Corrections, 5=used with Differential Corrections)
+    11: Reserved (4 bits) – This field is reserved by NMEA; therefore, this field always
+     contains a value of 0xF (the GPS100 sets all bits to a logic 1)
+     If Field 4 contains a value greater than one, then the group of fields 5 through 11 is repeated
+     until this group appears the number of times indicated by the value of Field 4. 
+    */
+
     int         l1, l2;
 
     print_data(session->context, bu, len, pgn);
@@ -546,6 +660,42 @@ static gps_mask_t hnd_129540(unsigned char *bu, int len, PGN *pgn, struct gps_de
 
 
 /*
+ *   PGN 129541: GNSS Almanac Data
+ */
+static gps_mask_t hnd_129541(unsigned char *bu, int len, PGN *pgn, struct gps_device_t *session)
+{
+  /* http://www.maretron.com/support/manuals/GPS100UM_1.2.pdf
+
+     The GPS100 uses this PGN to provide a single transmission that contains relevant almanac
+     data for the GPS. The almanac contains satellite vehicle course orbital parameters. This
+     information is not considered precise and is only valid for several months at a time. GPS100
+     receive almanac data directly from the satellites. GPS100 sends this PGN only when
+     requested by PGN 059904 (ISO Request).
+     Field 1: PRN – PRN of the satellite for which almanac data is being provided.
+     2: GPS Week Number – The number of weeks since Jan 6, 1980.
+     3: SV Health Bits – Bits 17-24 of each almanac page. Refer to ICD-GPS-200
+     paragraph 20.3.3.5.1.3, Table 20-VII and Table 20-VIII.
+     4: Eccentricity – Reference ICD-GPS-200 Table 20-VI.
+     5: Almanac Reference Time – Reference ICD-GPS-200 Table 20-VI.
+     6: Inclination Angle – Reference ICD-GPS-200 Table 20-VI.
+     7: Rate of Right Ascension – The OMEGADOT parameter. Reference ICD-GPS-200
+     Table 20-VI.
+     8: Root of Semi-major Axis – Reference ICD-GPS-200 Table 20-VI.
+     9: Argument of Perigee – Reference ICD-GPS-200 Table 20-VI.
+     10: Longitude of Ascension Mode – Reference ICD-GPS-200 Table 20-VI.
+     11: Mean Anomaly – Reference ICD-GPS-200 Table 20-VI.
+     12: Clock Parameter 1 – Reference ICD-GPS-200 Table 20-VI.
+     13: Clock Parameter 2 – Reference ICD-GPS-200 Table 20-VI.
+     14: Reserved (2 bits) – This field is reserved by NMEA; therefore, this field always
+     contains a value of 0x3 (the GPS100 sets all bits to a logic 1) 
+    */
+
+    print_data(session->context, bu, len, pgn);
+    gpsd_report(session->context->debug, LOG_DATA,
+		"pgn %6d(%3d):\n", pgn->pgn, session->driver.nmea2000.unit);
+}
+
+/*
  *   PGN 129029: GNSS Positition Data
  */
 static gps_mask_t hnd_129029(unsigned char *bu, int len, PGN *pgn, struct gps_device_t *session)
@@ -576,6 +726,7 @@ static gps_mask_t hnd_129029(unsigned char *bu, int len, PGN *pgn, struct gps_de
     mask                            |= ALTITUDE_SET;
 
 //  printf("mode %x %x\n", (bu[31] >> 4) & 0x0f, bu[31]);
+    // TODO GPS100 says =no GPS, 1=GNSS fix, 2=DGNSS fix, 6=Estimated (dead reckoning). 
     switch ((bu[31] >> 4) & 0x0f) {
     case 0:
         session->gpsdata.status      = STATUS_NO_FIX;
@@ -1107,16 +1258,22 @@ static gps_mask_t hnd_127506(unsigned char *bu, int len, PGN *pgn, struct gps_de
 
 
 /*
- *   PGN 127508: PWR Battery Status
+ *   PGN 127508: Battery Status
  */
 static gps_mask_t hnd_127508(unsigned char *bu, int len, PGN *pgn, struct gps_device_t *session)
 {
+  /* [17]
+    1        Battery Instance
+    2 1-2    Battery Voltage
+    3        Battery Current
+    4        Battery Case Temperature
+    5        SID
+    */
+
     print_data(session->context, bu, len, pgn);
-    gpsd_report(session->context->debug, LOG_DATA,
-		"pgn %6d(%3d):\n", pgn->pgn, session->driver.nmea2000.unit);
+    gpsd_report(session->context->debug, LOG_DATA, "pgn %6d(%3d):\n", pgn->pgn, session->driver.nmea2000.unit);
     return(0);
 }
-
 
 /*
  *   PGN 127513: PWR Battery Configuration Status
@@ -1994,6 +2151,7 @@ static const char msg_129026[] = {"GNSS COG and SOG Rapid Update"};
 static const char msg_129029[] = {"GNSS Positition Data"};
 static const char msg_129539[] = {"GNSS DOPs"};
 static const char msg_129540[] = {"GNSS Satellites in View"};
+static const char msg_129541[] = {"GNSS Almanac Data"};
 
 static const char msg_129038[] = {"AIS  Class A Position Report"};
 static const char msg_129039[] = {"AIS  Class B Position Report"};
@@ -2045,6 +2203,7 @@ static PGN gpspgn[] = {{ 59392, 0, 0, hnd_059392, &msg_059392[0]},
 		       {129285, 1, 0, hnd_129285, &msg_129285[0]},
 		       {129539, 0, 1, hnd_129539, &msg_129539[0]},
 		       {129540, 1, 1, hnd_129540, &msg_129540[0]},
+		       {129541, 1, 1, hnd_129541, &msg_129541[0]},
 		       {0     , 0, 0, NULL,       &msg_error [0]}};
 
 static PGN aispgn[] = {{ 59392, 0, 0, hnd_059392, &msg_059392[0]},
@@ -2112,13 +2271,12 @@ static PGN navpgn[] = {{ 59392, 0, 0, hnd_059392, &msg_059392[0]},
 /*@+usereleased@*/
 
 /*@-immediatetrans@*/
-static /*@null@*/ PGN *search_pgnlist(unsigned int pgn, PGN *pgnlist)
+static /*@null@*/ PGN *vyspi_search_pgnlist(unsigned int pgn, PGN *pgnlist)
 {
     int l1;
-    PGN *work;
+    PGN *work = NULL;
 
     l1 = 0;
-    work = NULL;
     while (pgnlist[l1].pgn != 0) {
         if (pgnlist[l1].pgn == pgn) {
 	    work = &pgnlist[l1];
@@ -2157,64 +2315,272 @@ static void vyspi_report_packet(struct gps_packet_t *pkg) {
   }
 }
 
+static PGN *vyspi_find_pgn(uint32_t pgn) {
+
+      PGN *pgnlist;
+      PGN *work = NULL;
+
+      pgnlist = &gpspgn[0];
+      work = vyspi_search_pgnlist(pgn, pgnlist);
+      if (work == NULL) {
+	pgnlist = &aispgn[0];
+	work = vyspi_search_pgnlist(pgn, pgnlist);
+      }
+      if (work == NULL) {
+	pgnlist = &pwrpgn[0];
+	work = vyspi_search_pgnlist(pgn, pgnlist);
+      }
+      if (work == NULL) {
+	pgnlist = &navpgn[0];
+	work = vyspi_search_pgnlist(pgn, pgnlist);
+      }
+
+      return work;
+}
+
+static void vyspi_packet_discard(struct gps_packet_t *lexer)
+/* shift the input buffer to discard all data up to current input pointer */
+{
+    size_t discard = lexer->inbufptr - lexer->inbuffer;
+    size_t remaining = lexer->inbuflen - discard;
+    lexer->inbufptr = memmove(lexer->inbuffer, lexer->inbufptr, remaining);
+    lexer->inbuflen = remaining;
+    if (lexer->debug >= LOG_RAW+1) {
+	char scratchbuf[MAX_PACKET_LENGTH*2+1];
+	gpsd_report(lexer->debug, LOG_RAW + 1,
+		    "Packet discard of %zu, chars remaining is %zu\n",
+		    discard, remaining);
+    }
+}
+
+static void vyspi_packet_accept(struct gps_packet_t *lexer, int packet_type)
+/* packet grab succeeded, move to output buffer */
+{
+    size_t packetlen = lexer->inbufptr - lexer->inbuffer;
+
+    if (packetlen < sizeof(lexer->outbuffer)) {
+	memcpy(lexer->outbuffer, lexer->inbuffer, packetlen);
+	lexer->outbuflen = packetlen;
+	lexer->outbuffer[packetlen] = '\0';
+	lexer->type = packet_type;
+	if (lexer->debug >= LOG_RAW+1) {
+	    char scratchbuf[MAX_PACKET_LENGTH*2+1];
+	    gpsd_report(lexer->debug, LOG_RAW+1,
+			"Packet type %d accepted %zu = %s\n",
+			packet_type, packetlen,
+			gpsd_packetdump(scratchbuf,  sizeof(scratchbuf),
+					(char *)lexer->outbuffer,
+					lexer->outbuflen));
+	}
+    } else {
+	gpsd_report(lexer->debug, LOG_ERROR,
+		    "Rejected too long packet type %d len %zu\n",
+		    packet_type, packetlen);
+    }
+}
+
+static size_t vyspi_packetlen( struct gps_packet_t *lexer ) {
+  return lexer->inbufptr - lexer->inbuffer + lexer->inbuflen;
+}
+
+static void vyspi_preparse(struct gps_device_t *session) {
+
+  static char * typeNames [] = {
+    "UNKOWN", "NMEA0183", "NMEA2000"
+  };
+
+  struct gps_packet_t *lexer = &session->packet;
+
+  size_t packetlen = vyspi_packetlen(lexer);
+
+  gpsd_report(session->context->debug, LOG_DATA, 
+	      "VYSPI: preparse called with packet len = %u\n", packetlen);
+
+  // one extra for reading both, len and type/origin
+  while(packet_buffered_input(lexer)) {
+
+    uint8_t b = *lexer->inbufptr++;
+    uint8_t pkgType =  b & 0x0F;
+    uint8_t pkgOrg  =  (b >> 5) & 0x0F;
+
+    b = *lexer->inbufptr++;
+    uint8_t pkgLen  =  b & 0xFF;
+
+    gpsd_report(session->context->debug, LOG_DATA, "VYSPI: ptype= %s, org= %d, len= %d\n", 
+		((pkgType > PKG_TYPE_NMEA2000) && (pkgType < PKG_TYPE_NMEA0183)) 
+		? typeNames[0] : typeNames[pkgType], 
+		pkgOrg, pkgLen);
+
+    if((lexer->inbuffer + lexer->inbuflen < lexer->inbufptr) || (pkgLen <= 0)) {
+      // discard 
+      gpsd_report(session->context->debug, LOG_WARN, "VYSPI: input too short\n");
+      lexer->inbufptr = lexer->inbuffer + lexer->inbuflen;
+      vyspi_packet_discard(lexer);
+      break;
+    }
+
+    if(pkgType == PKG_TYPE_NMEA2000) {
+
+      if(lexer->inbuflen < lexer->inbufptr - lexer->inbuffer + pkgLen + 8) {
+	gpsd_report(session->context->debug, LOG_WARN, "VYSPI: exit prematurely: %d + 8 + %d > %d\n",
+		    (lexer->inbufptr - lexer->inbuffer), pkgLen, packetlen);
+	// discard 
+	lexer->inbufptr = lexer->inbuffer + lexer->inbuflen;
+	vyspi_packet_discard(lexer);
+	break;
+      }
+
+      session->driver.vyspi.last_pgn = getleu32(lexer->inbufptr, 0);
+      lexer->inbufptr += 4;
+
+      uint32_t pkgid = getleu32(lexer->inbufptr, 0);
+      lexer->inbufptr += 4;
+
+      gpsd_report(session->context->debug, LOG_DATA, 
+		  "VYSPI: PGN = %u, pid= %u, org= %u, len= %u\n", 
+		  session->driver.vyspi.last_pgn, pkgid, pkgOrg, pkgLen);
+
+      memcpy(lexer->outbuffer, lexer->inbufptr, pkgLen);
+      lexer->outbuflen = pkgLen;
+      lexer->outbuffer[pkgLen] = '\0';
+      lexer->type = NMEA2000_PACKET;
+
+      lexer->inbufptr += pkgLen;
+
+      PGN *work;
+      work = vyspi_find_pgn(session->driver.vyspi.last_pgn);
+
+      session->driver.nmea2000.workpgn = (void *) work;
+
+      vyspi_packet_discard(lexer);
+
+      break;
+
+    } else if (pkgType == PKG_TYPE_NMEA0183) {
+      
+      if(lexer->inbuflen < lexer->inbufptr - lexer->inbuffer + pkgLen) {
+	gpsd_report(session->context->debug, LOG_WARN, "VYSPI: exit prematurely: %d + %d > %d\n",
+		    (lexer->inbufptr - lexer->inbuffer), pkgLen, packetlen);
+	// discard 
+	lexer->inbufptr = lexer->inbuffer + lexer->inbuflen;
+	break;
+      }
+
+      gpsd_report(session->context->debug, LOG_DATA, "VYSPI: org= %d, len= %d\n", 
+		  pkgOrg, pkgLen);
+
+
+      memcpy(lexer->outbuffer, lexer->inbuffer, pkgLen);
+      lexer->outbuflen = pkgLen;
+      lexer->outbuffer[pkgLen] = '\0';
+      lexer->type = NMEA_PACKET;
+
+      // length is packet length
+      lexer->inbufptr += pkgLen;
+
+      vyspi_packet_discard(lexer);
+
+      break;
+
+    } else {
+
+      gpsd_report(session->context->debug, LOG_ERROR, "UNKOWN: len= %d\n", 
+		  pkgLen);	  
+
+      // discard 
+      lexer->inbufptr = lexer->inbuffer + lexer->inbuflen;
+
+      vyspi_packet_discard(lexer);
+
+      break;
+    }
+  }
+
+}
+
 static ssize_t vyspi_get(struct gps_device_t *session)
 {   
   int fd = session->gpsdata.gps_fd;
   struct gps_packet_t * pkg = &session->packet;
 
   ssize_t          status;
-  uint8_t len;
 
   errno = 0;
-  status = read(fd, pkg->inbuffer + pkg->inbuflen,
+  // we still need to process old package before getching a new)
+  if(!packet_buffered_input(pkg)) {
+
+    gpsd_report(session->context->debug, LOG_IO, "VYSPI reading from device\n");
+
+    status = read(fd, pkg->inbuffer + pkg->inbuflen,
 		sizeof(pkg->inbuffer) - (pkg->inbuflen));
-  pkg->outbuflen = 0;
 
-  if(status == -1) {
-    if ((errno == EAGAIN) || (errno == EINTR)) {
-      gpsd_report(session->context->debug, LOG_RAW + 2, "no bytes ready\n");
-      len = 0;
-      /* fall through, input buffer may be nonempty */
-    } else {
-      gpsd_report(session->context->debug, LOG_ERROR, 
-		  "errno: %s\n", strerror(errno));
-      return -1;
+    pkg->outbuflen = 0;
+
+    if(status == -1) {
+      if ((errno == EAGAIN) || (errno == EINTR)) {
+	gpsd_report(session->context->debug, LOG_IO, "no bytes ready\n");
+	status = 0;
+	/* fall through, input buffer may be nonempty */
+      } else {
+	gpsd_report(session->context->debug, LOG_ERROR, 
+		    "errno: %s\n", strerror(errno));
+	return -1;
+      }
     }
+
+    if(status <= 0) {
+      gpsd_report(session->context->debug, LOG_DATA, 
+		  "VYSPI: exit with len in bytes= %d, errno= %d\n", 
+		  status, errno);
+      return 0;
+    }
+
+    pkg->inbuflen = status;
+    pkg->inbufptr = pkg->inbuffer;
+
+  }
+
+  vyspi_preparse(session);
+
+
+  if (pkg->outbuflen > 0) {
+    if ((session->driver.nmea2000.workpgn == NULL) 
+	&& (session->packet.type == NMEA2000_PACKET)) {
+      return 0;
+    }
+
+    return (ssize_t)pkg->outbuflen;
   } else {
-    len = status;
-    pkg->inbuflen += len;
+    /*
+     * Otherwise recvd is the size of whatever packet fragment we got.
+     * It can still be 0 or -1 at this point even if buffer data
+     * was consumed.
+     */
+    return status;
   }
 
-  if(len <= 0) {
+    //  vyspi_report_packet(pkg);
+
+    /* Consume packet from the input buffer 
+       - no lex parsing here to detect packet borders. 
+       The SPI driver only sends one whole 
+       packet at a time anyways. */
+
+  /*
+    memcpy(session->packet.outbuffer, pkg->inbuffer, len);
+    packet_reset(pkg);
+
+    session->packet.outbuflen = len;
+    session->packet.type = VYSPI_PACKET;
+
     gpsd_report(session->context->debug, LOG_DATA, 
-		"VYSPI: exit with len = %d, bytes= %d, errno= %d\n", 
+		"VYSPI: len = %d, bytes= %d, errno= %d\n", 
 		len, status, errno);
-    return 0;
   }
-
-  //  vyspi_report_packet(pkg);
-
-  /* Consume packet from the input buffer 
-     - no lex parsing here to detect packet borders. 
-     The SPI driver only sends one whole 
-     packet at a time anyways. */
-
-  memcpy(session->packet.outbuffer, pkg->inbuffer, len);
-  packet_reset(pkg);
-
-  session->packet.outbuflen = len;
-  session->packet.type = VYSPI_PACKET;
-
-  gpsd_report(session->context->debug, LOG_DATA, 
-	      "VYSPI: len = %d, bytes= %d, errno= %d\n", 
-	      len, status, errno);
 
   return len;
+  */
 }
-
-// package types
-#define PKG_TYPE_NMEA0183 0x01
-#define PKG_TYPE_NMEA2000 0x02
 
 /*@-mustfreeonly@*/
 static gps_mask_t vyspi_parse_input(struct gps_device_t *session)
@@ -2233,7 +2599,7 @@ static gps_mask_t vyspi_parse_input(struct gps_device_t *session)
 
   uint8_t len = 0;
 
-  gpsd_report(session->context->debug, LOG_DATA, 
+  gpsd_report(session->context->debug, LOG_ERROR, 
 	      "VYSPI: parse_input called with packet len = %d\n", packet_len);
 
   // one extra for reading both, len and type/origin
@@ -2261,37 +2627,24 @@ static gps_mask_t vyspi_parse_input(struct gps_device_t *session)
 	break;
       }
 
-      uint32_t pgn = getleu32(buf, len);
+      session->driver.vyspi.last_pgn = getleu32(buf, len);
       uint32_t pkgid = getleu32(buf, len + 4);
 
       gpsd_report(session->context->debug, LOG_DATA, 
 		  "VYSPI: PGN = %u, pid= %u, org= %u, len= %u\n", 
-		  pgn, pkgid, pkgOrg, pkgLen);
+		   session->driver.vyspi.last_pgn, pkgid, pkgOrg, pkgLen);
 
-      PGN *pgnlist;
-
-      pgnlist = &gpspgn[0];
-      work = search_pgnlist(pgn, pgnlist);
-      if (work == NULL) {
-	pgnlist = &aispgn[0];
-	work = search_pgnlist(pgn, pgnlist);
-      }
-      if (work == NULL) {
-	pgnlist = &pwrpgn[0];
-	work = search_pgnlist(pgn, pgnlist);
-      }
-      if (work == NULL) {
-	pgnlist = &navpgn[0];
-	work = search_pgnlist(pgn, pgnlist);
-      }
+      work = vyspi_find_pgn( session->driver.vyspi.last_pgn );
 
       len += 8;
 
       if (work != NULL) {
-	mask |= (work->func)(&session->packet.outbuffer[len], (int)pkgLen, work, session);
+	mask |= (work->func)(&session->packet.outbuffer[len], 
+			     (int)pkgLen, work, session);
       } else {
 	gpsd_report(session->context->debug, LOG_ERROR, 
-		    "VYSPI: no work PGN found for pgn = %u\n", pgn);
+		    "VYSPI: no work PGN found for pgn = %u\n", 
+		    session->driver.vyspi.last_pgn);
       }
 
       // length is packet length + 8 bytes pgn/pid
@@ -2394,92 +2747,79 @@ int vyspi_open(struct gps_device_t *session) {
 #endif /* of ifndef S_SPLINT_S */
 
 /*@-mustdefine@*/
-const char /*@ observer @*/ *gpsd_vyspidump(char *scbuf, size_t scbuflen,
-					  char *binbuf, size_t binbuflen)
-{
-  printf("VYSPI: gpsd_vyspidump entered with len = %d\n", binbuflen);
+const char /*@ observer @*/ *gpsd_vyspidump(struct gps_device_t *device) {
+
+  char *scbuf = device->msgbuf;
+  size_t scbuflen = sizeof(device->msgbuf);
+
+  char *binbuf = (char *)device->packet.outbuffer;
+  size_t binbuflen = device->packet.outbuflen;
+
+  printf("VYSPI: gpsd_vyspidump %u entered with len = %d\n", 
+	 device->driver.vyspi.last_pgn, binbuflen);
 
   size_t j = 0;
   size_t i = 0;
-
-  uint8_t len = 0;
 
   size_t maxlen =
     (size_t) ((binbuflen >
 	       MAX_PACKET_LENGTH) ? MAX_PACKET_LENGTH : binbuflen);
 
+  printf("VYSPI: gpsd_vyspidump called with packet len = %d\n", 
+	 binbuflen);
+
+
   if (NULL == binbuf || 0 == binbuflen) {
-    scbuf[0] = "\0";
+    scbuf[0] = '\0';
     return scbuf;
   }
 
-  printf("VYSPI: gpsd_vyspidump called with packet len = %d\n", binbuflen);
+  if(PKG_TYPE_NMEA2000 == PKG_TYPE_NMEA2000) {
 
-  // one extra for reading both, len and type/origin
-  while(len + 1 < binbuflen) {
+    char tmp[255];
+    sprintf(tmp, "%s,%u,%u,%u,%u,%u,", 
+	    "now", 0, 
+	    device->driver.vyspi.last_pgn, 
+	    0, 0, 
+	    binbuflen);
 
-    uint8_t pkgType = (uint8_t)binbuf[len] & 0x0F;
-    uint8_t pkgOrg  = (uint8_t)((binbuf[len] & 0xF0) >> 5);
-    uint8_t pkgLen =  (uint8_t)binbuf[len + 1] & 0xFF;
+    for (i = 0; i < strlen(tmp) && i < scbuflen; i++) {
+      scbuf[j++] = tmp[i];
+    }
 
-    // skip 2 byte header now
-    len += 2;
- 
-    if((pkgLen <= 0) || (binbuflen <= len)) 
+    char * ibuf = (const char *)&binbuf[0];
+    const char *hexchar = "0123456789abcdef";
+
+    /*@ -shiftimplementation @*/
+    for (i = 0; i < maxlen && i * 3 < scbuflen - 3; i++) {
+      scbuf[j++] = hexchar[(ibuf[i] & 0xf0) >> 4];
+      scbuf[j++] = hexchar[ibuf[i] & 0x0f];
+      scbuf[j++] = ',';
+    }
+    /*@ +shiftimplementation @*/
+    j--; // back last ',' to overwrite with '\0'
+    scbuf[j] = '\0';
+
+    /*
+  } else if (pkgType == PKG_TYPE_NMEA0183) {
+      
+    if(len + pkgLen >= binbuflen) 
       break;
 
-    if(pkgType == PKG_TYPE_NMEA2000) {
+    printf("VYSPI: NMEA 0183 org= %d, len= %d\n", 
+	   pkgOrg, pkgLen);
 
-      if(len + pkgLen + 8 > binbuflen) {
-        printf("VYSPI: exit prematurely: %d + 8 + %d > %d\n",
-		    len, pkgLen, binbuflen);
-	break;
-      }
+    memcpy(scbuf, (char *)&binbuf[len], pkgLen);
+    j += pkgLen;
 
-      uint32_t pgn   = getleu32(binbuf, len);
-      uint32_t pkgid = getleu32(binbuf, len + 4);
+    scbuf[j++] = '\0';
 
-      printf("VYSPI: PGN = %u, pid= %u, org= %u, len= %u\n", 
-		  pgn, pkgid, pkgOrg, pkgLen);
-
-      const char *ibuf = (const char *)&binbuf[len];
-      const char *hexchar = "0123456789abcdef";
-
-      /*@ -shiftimplementation @*/
-      for (i = 0; i < pkgLen && i * 2 < scbuflen - 2; i++) {
-	scbuf[j++] = hexchar[(ibuf[i] & 0xf0) >> 4];
-	scbuf[j++] = hexchar[ibuf[i] & 0x0f];
-      }
-      /*@ +shiftimplementation @*/
-      scbuf[j++] = '\0';
-
-      len += 8 + pkgLen;
-
-    } else if (pkgType == PKG_TYPE_NMEA0183) {
-      
-      if(len + pkgLen >= binbuflen) 
-	break;
-
-      printf("VYSPI: NMEA 0183 org= %d, len= %d\n", 
-		  pkgOrg, pkgLen);
-
-      memcpy(scbuf, (char *)&binbuf[len], pkgLen);
-      j += pkgLen;
-
-      scbuf[j++] = '\0';
-
-      // length is packet length
-      len += pkgLen;
-
-    } else {
-
-      // TODO - continue to process and write out unparseable data
-      printf("UNKOWN: len= %d\n", 
-		  pkgLen);	  
-    }
+    // length is packet length
+    len += pkgLen;
+    */
   }
 
-    return scbuf;
+  return scbuf;
 }
 /*@+mustdefine@*/
 
