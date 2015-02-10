@@ -262,7 +262,9 @@ void gpsd_set_century(struct gps_device_t *session)
 }
 
 #ifdef NMEA_ENABLE
-timestamp_t gpsd_utc_resolve(/*@in@*/struct gps_device_t *session)
+timestamp_t gpsd_utc_resolve(/*@in@*/struct gps_device_t *session, 
+			     register struct tm * date,
+			     double subseconds)
 /* resolve a UTC date, checking for rollovers */
 {
     /*
@@ -273,8 +275,7 @@ timestamp_t gpsd_utc_resolve(/*@in@*/struct gps_device_t *session)
      */
     timestamp_t t;
 
-    t = (timestamp_t)mkgmtime(&session->driver.nmea.date) +
-	session->driver.nmea.subseconds;
+    t = (timestamp_t)mkgmtime(date) + subseconds;
     session->context->valid &=~ GPS_TIME_VALID;
 
     /*

@@ -1317,7 +1317,9 @@ gps_mask_t nmea_parse(char *sentence, struct gps_device_t * session)
 
     /* timestamp recording for fixes happens here */
     if ((retval & TIME_SET) != 0) {
-	session->newdata.time = gpsd_utc_resolve(session);
+        session->newdata.time = gpsd_utc_resolve(session,
+					   &session->driver.nmea.date, 
+					   session->driver.nmea.subseconds);
 	/*
 	 * WARNING: This assumes time is always field 0, and that field 0
 	 * is a timestamp whenever TIME_SET is set.
