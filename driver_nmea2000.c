@@ -69,7 +69,7 @@ static void print_data(struct gps_context_t *context,
 	char  bu[128];
 
         ptr = 0;
-        l2 = sprintf(&bu[ptr], "got data:%6u:%3d: ", pgn->pgn, len);
+        l2 = sprintf(&bu[ptr], "NMEA2000: %6u:%3d: ", pgn->pgn, len);
 	ptr += l2;
         for (l1=0;l1<len;l1++) {
             if (((l1 % 20) == 0) && (l1 != 0)) {
@@ -112,20 +112,16 @@ static int decode_ais_header(struct gps_context_t *context,
 	ais->mmsi   = (unsigned int)  getleu32(bu, 1);
 	ais->mmsi  &= mask;
 	gpsd_report(context->debug, LOG_INF,
-		    "NMEA2000 AIS  message type %u, MMSI %09d:\n",
+		    "NMEA2000 AIS message type %u, MMSI %09d:\n",
 		    ais->type, ais->mmsi);
-	printf("NMEA2000 AIS  message type %2u, MMSI %09u:\n",
-	       ais->type, ais->mmsi);
 	return(1);
     } else {
         ais->type   =  0;
 	ais->repeat =  0;
 	ais->mmsi   =  0;
 	gpsd_report(context->debug, LOG_ERROR,
-		    "NMEA2000 AIS  message type %u, too short message.\n",
+		    "NMEA2000 AIS message type %u, too short message.\n",
 		    ais->type);
-	printf("NMEA2000 AIS  message type %u, too short message.\n",
-	       ais->type);
     }
     return(0);
 }
@@ -961,7 +957,6 @@ static gps_mask_t hnd_127245(unsigned char *bu, int len, PGN *pgn, struct gps_de
 		"pgn %6d(%3d):\n", pgn->pgn, session->driver.nmea2000.unit);
     return(0);
 }
-
 
 /*
  *   PGN 127250: NAV Vessel Heading
