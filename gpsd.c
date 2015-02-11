@@ -540,9 +540,9 @@ static /*@null@*//*@observer@ */ struct subscriber_t *allocate_client(void)
 	if (subscribers[si].fd == UNALLOCATED_FD) {
 	    subscribers[si].fd = 0;	/* mark subscriber as allocated */
 	    subscribers[si].policy.raw     = false;
-	    subscribers[si].policy.nmea    = false;
+	    subscribers[si].policy.nmea    = true;
 	    subscribers[si].policy.watcher = true;
-	    subscribers[si].policy.json    = true;
+	    subscribers[si].policy.json    = false;
 	    return &subscribers[si];
 	}
     }
