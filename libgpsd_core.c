@@ -19,10 +19,11 @@
 #include <stdarg.h>
 #include <fcntl.h>
 #include <ctype.h>
-#include <sys/types.h>
-#include <sys/stat.h>
 #include <syslog.h>
 #include <errno.h>
+#include <sys/types.h>
+#include <sys/select.h>
+#include <sys/stat.h>
 #ifndef S_SPLINT_S
 #include <sys/wait.h>
 #include <sys/socket.h>
@@ -1090,6 +1091,9 @@ int gpsd_await_data(/*@out@*/fd_set *rfds,
     struct timeval tv;
 #endif /* COMPAT_SELECT */
 
+#ifdef EFDS
+    FD_ZERO(efds);
+#endif /* EFDS */
     (void)memcpy((char *)rfds, (char *)all_fds, sizeof(fd_set));
     gpsd_report(debug, LOG_RAW + 2, "select waits\n");
     /*
@@ -1117,8 +1121,25 @@ int gpsd_await_data(/*@out@*/fd_set *rfds,
     if (status == -1) {
 	if (errno == EINTR)
 	    return AWAIT_NOT_READY;
-	gpsd_report(debug, LOG_ERROR, "select: %s\n", strerror(errno));
-	return AWAIT_FAILED;
+	else if (errno == EBADF) {
+	    int fd;
+	    for (fd = 0; fd < FD_SETSIZE; fd++)
+		/*
+		 * All we care about here is a cheap, fast, uninterruptible
+		 * way to check if a file descriptor is valid.
+		 * FIXME: pass out error fds when we can do a library bump.
+		 */
+		if (FD_ISSET(fd, all_fds) && fcntl(fd, F_GETFL, 0) == -1) {
+		    FD_CLR(fd, all_fds);
+#ifdef EFDS
+		    FD_SET(fd, efds);
+#endif /* EFDS */
+		}
+	    return AWAIT_NOT_READY;
+	} else {
+	    gpsd_report(debug, LOG_ERROR, "select: %s\n", strerror(errno));
+	    return AWAIT_FAILED;
+	}
     }
     /*@ +usedef +nullpass @*/
 
@@ -1709,3 +1730,36 @@ void gpsd_zero_satellites( /*@out@*/ struct gps_data_t *out)
     gps_clear_dop(&out->dop);
 #endif
 }
+
+void ntpshm_latch(struct gps_device_t *device, struct timedrift_t /*@out@*/*td)
+/* latch the fact that we've saved a fix */
+{
+    double fix_time, integral, fractional;
+
+#ifdef HAVE_CLOCK_GETTIME
+    /*@i2@*/(void)clock_gettime(CLOCK_REALTIME, &td->clock);
+#else
+    struct timeval clock_tv;
+    (void)gettimeofday(&clock_tv, NULL);
+    TVTOTS(&td->clock, &clock_tv);
+#endif /* HAVE_CLOCK_GETTIME */
+    fix_time = device->newdata.time;
+    /* assume zero when there's no offset method */
+    if (device->device_type == NULL
+	|| device->device_type->time_offset == NULL)
+	fix_time += 0.0;
+    else
+	fix_time += device->device_type->time_offset(device);
+    /* it's ugly but timestamp_t is double */
+    fractional = modf(fix_time, &integral);
+    /*@-type@*/ /* splint is confused about struct timespec */
+    td->real.tv_sec = (time_t)integral;
+    td->real.tv_nsec = (long)(fractional * 1e+9);
+    /*@+type@*/
+    device->last_fixtime.real = device->newdata.time;
+#ifndef S_SPLINT_S
+    device->last_fixtime.clock = td->clock.tv_sec + td->clock.tv_nsec / 1e9;
+#endif /* S_SPLINT_S */
+}
+
+/* end */

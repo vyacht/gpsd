@@ -477,7 +477,10 @@ struct gps_device_t {
     int shmIndexPPS;
 # endif /* PPS_ENABLE */
 #endif /* NTPSHM_ENABLE */
-    volatile timestamp_t last_fixtime;		/* so updates happen once */
+    volatile struct {
+	timestamp_t real;
+	timestamp_t clock;
+    } last_fixtime;	/* so updates happen once */
 #ifdef PPS_ENABLE
 #if defined(HAVE_SYS_TIMEPPS_H)
     pps_handle_t kernelpps_handle;
@@ -548,8 +551,7 @@ struct gps_device_t {
 #endif /* GEOSTAR_ENABLE */
 #ifdef SIRF_ENABLE
 	struct {
-	    bool need_ack;		/* if NZ we're awaiting ACK */
-	    time_t last_send;		/* for tracking send timeouts */
+	    unsigned int need_ack;	/* if NZ we're awaiting ACK */
 	    unsigned int cfg_stage;	/* configuration stage counter */
 	    unsigned int driverstate;	/* for private use */
 #define SIRF_LT_231	0x01		/* SiRF at firmware rev < 231 */
@@ -866,6 +868,7 @@ extern unsigned int ais_binary_encode(struct ais_t *ais, /*@out@*/unsigned char 
 extern void ntpshm_context_init(struct gps_context_t *);
 extern void ntpshm_session_init(struct gps_device_t *);
 extern int ntpshm_put(struct gps_device_t *, int, struct timedrift_t *);
+extern void ntpshm_latch(struct gps_device_t *device,  /*@out@*/struct timedrift_t *td);
 extern void ntpshm_link_deactivate(struct gps_device_t *);
 extern void ntpshm_link_activate(struct gps_device_t *);
 
@@ -1054,6 +1057,10 @@ static /*@unused@*/ inline void memory_barrier(void)
 #endif
 #endif /* S_SPLINT_S */
 }
+
+# ifdef __cplusplus
+}
+# endif
 
 #endif /* _GPSD_H_ */
 // Local variables:

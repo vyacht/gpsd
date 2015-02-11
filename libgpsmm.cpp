@@ -83,6 +83,12 @@ void gpsmm::enable_debug(int level, FILE *fp)
 #endif /* CLIENTDEBUG_ENABLE */
 }
 
+// cppcheck-suppress unusedFunction 
+bool gpsmm::is_open(void)
+{
+	return to_user != NULL;
+}
+
 gpsmm::~gpsmm()
 {
     if ( to_user != NULL ) {

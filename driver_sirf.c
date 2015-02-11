@@ -236,21 +236,20 @@ static bool sirf_write(struct gps_device_t *session, unsigned char *msg)
     unsigned int crc;
     size_t i, len;
     bool ok;
+    unsigned int type = (unsigned int)msg[4];
 
     /*
      * Control strings spaced too closely together confuse the SiRF
      * IV.  This wasn't an issue on older SiRFs, but they've gone to a
      * lower-powered processor that apparently has trouble keeping up.  
      * Now you have to wait for the ACK, otherwise chaos ensues.
+     * Add instrumentation to reveal when this may happen.
      */
-    if (time(NULL) - session->driver.sirf.last_send > SIRF_RETRY_TIME)
-	session->driver.sirf.need_ack = false;
     /* can also be false because ACK was received after last send */
-    if (session->driver.sirf.need_ack) {
+    if (session->driver.sirf.need_ack > 0) {
 	gpsd_report(session->context->debug, LOG_WARN,
-		    "SiRF: write of control type %02x failed, awaiting ACK.\n",
-		    msg[4]);
-	return false;
+		    "SiRF: warning, write of control type %02x while awaiting ACK for %02x.\n",
+		    type, session->driver.sirf.need_ack);
     }
 
     len = (size_t) ((msg[2] << 8) | msg[3]);
@@ -266,11 +265,10 @@ static bool sirf_write(struct gps_device_t *session, unsigned char *msg)
     msg[len + 5] = (unsigned char)(crc & 0x00ff);
 
     gpsd_report(session->context->debug, LOG_PROG,
-		"SiRF: Writing control type %02x:\n", msg[4]);
+		"SiRF: Writing control type %02x:\n", type);
     ok = (gpsd_write(session, (const char *)msg, len+8) == (ssize_t) (len+8));
  
-    session->driver.sirf.need_ack = true;
-    session->driver.sirf.last_send = time(NULL);
+    session->driver.sirf.need_ack = type;
     return (ok);
 }
 
@@ -939,13 +937,6 @@ static gps_mask_t sirf_msg_sysparam(struct gps_device_t *session,
     session->driver.sirf.degraded_timeout = (unsigned char)getub(buf, 10);
     session->driver.sirf.dr_timeout = (unsigned char)getub(buf, 11);
     session->driver.sirf.track_smooth_mode = (unsigned char)getub(buf, 12);
-#ifdef RECONFIGURE_ENABLE
-    if (!session->context->readonly) {
-	gpsd_report(session->context->debug, LOG_PROG,
-		    "SiRF: Setting Navigation Parameters\n");
-	(void)sirf_write(session, modecontrol);
-    }
-#endif /* RECONFIGURE_ENABLE */
     return 0;
 }
 
@@ -1240,14 +1231,14 @@ gps_mask_t sirf_parse(struct gps_device_t * session, unsigned char *buf,
     case 0x0b:			/* Command Acknowledgement MID 11 */
 	gpsd_report(session->context->debug, LOG_PROG,
 		    "SiRF: ACK 0x0b: %02x\n", getub(buf, 1));
-	session->driver.sirf.need_ack = false;
+	session->driver.sirf.need_ack = 0;
 	return 0;
 
     case 0x0c:			/* Command NAcknowledgement MID 12 */
 	gpsd_report(session->context->debug, LOG_PROG,
 		    "SiRF: NAK 0x0c: %02x\n", getub(buf, 1));
 	/* ugh -- there's no alternative but silent failure here */
-	session->driver.sirf.need_ack = false;
+	session->driver.sirf.need_ack = 0;
 	return 0;
 
     case 0x0d:			/* Visible List MID 13 */
@@ -1400,12 +1391,11 @@ static void sirfbin_event_hook(struct gps_device_t *session, event_t event)
     }
 
     if (event == event_configure) {
+#ifdef __UNUSED__
 	/* might not be time for the next init string yet */ 
-	if (time(NULL) - session->driver.sirf.last_send > SIRF_RETRY_TIME)
-	    session->driver.sirf.need_ack = false;
-	/* can also be false because ACK was received after last send */
-	if (session->driver.sirf.need_ack)
+	if (session->driver.sirf.need_ack > 0)
 	    return;
+#endif /* UNUSED */
 
 	switch (session->driver.sirf.cfg_stage++) {
 	case 0:
@@ -1414,66 +1404,96 @@ static void sirfbin_event_hook(struct gps_device_t *session, event_t event)
 
 	case 1:
 	    gpsd_report(session->context->debug, LOG_PROG,
-			"SiRF: Probing for firmware version...\n");
+			"SiRF: Probing for firmware version.\n");
 	    (void)sirf_write(session, versionprobe);
 	    break;
 
 	case 2:
-		gpsd_report(session->context->debug, LOG_PROG,
-			    "SiRF: Requesting navigation parameters...\n");
-	    (void)sirf_write(session, navparams);
-	    break;
-
-	case 3:
 #ifdef RECONFIGURE_ENABLE
-	    /* unset MID 64 first since there is a flood of them */
-	    gpsd_report(session->context->debug, LOG_PROG, "SiRF: unset MID 64...\n");
+	    /* unset MID 0x40 = 64 first since there is a flood of them */
+	    gpsd_report(session->context->debug, LOG_PROG, "SiRF: unset MID 64.\n");
 	    putbyte(unsetmidXX, 6, 0x40);
 	    (void)sirf_write(session, unsetmidXX);
 	    break;
 
-	case 4:
+	case 3:
+	    /*
+	     * The response to this request will save the navigation
+	     * parameters so they can be reverted before close.
+	     */
 	    gpsd_report(session->context->debug, LOG_PROG,
-			"SiRF: Requesting periodic ecef reports...\n");
-	    (void)sirf_write(session, requestecef);
+			"SiRF: Requesting navigation parameters.\n");
+	    (void)sirf_write(session, navparams);
+	    break;
+
+	case 4:
+	    /* unset GND (0x29 = 41), it's not reliable on SiRF II */
+	    gpsd_report(session->context->debug, LOG_PROG, "SiRF: unset MID 64.\n");
+	    putbyte(unsetmidXX, 6, 0x29);
+	    (void)sirf_write(session, unsetmidXX);
 	    break;
 
 	case 5:
+	    if (!session->context->readonly) {
+		gpsd_report(session->context->debug, LOG_PROG,
+			    "SiRF: Setting Navigation Parameters.\n");
+		(void)sirf_write(session, modecontrol);
+	    }
+	    break;
+
+	case 6:
 	    gpsd_report(session->context->debug, LOG_PROG,
-			"SiRF: Requesting periodic tracker reports...\n");
-	    (void)sirf_write(session, requesttracker);
+			"SiRF: Requesting periodic ecef reports.\n");
+	    (void)sirf_write(session, requestecef);
 	    break;
 
 	case 7:
 	    gpsd_report(session->context->debug, LOG_PROG,
-			"SiRF: Setting DGPS control to use SBAS...\n");
-	    (void)sirf_write(session, dgpscontrol);
+			"SiRF: Requesting periodic tracker reports.\n");
+	    (void)sirf_write(session, requesttracker);
 	    break;
 
 	case 8:
 	    gpsd_report(session->context->debug, LOG_PROG,
-			"SiRF: Setting SBAS to auto/integrity mode...\n");
-	    (void)sirf_write(session, sbasparams);
+			"SiRF: Setting DGPS control to use SBAS.\n");
+	    (void)sirf_write(session, dgpscontrol);
 	    break;
 
 	case 9:
 	    gpsd_report(session->context->debug, LOG_PROG,
-			"SiRF: Enabling PPS message...\n");
-	    (void)sirf_write(session, enablemid52);
+			"SiRF: Setting SBAS to auto/integrity mode.\n");
+	    (void)sirf_write(session, sbasparams);
+	    break;
 
+	case 10:
+	    gpsd_report(session->context->debug, LOG_PROG,
+			"SiRF: Enabling PPS message.\n");
+	    (void)sirf_write(session, enablemid52);
+	    break;
+
+	case 11:
 	    /* SiRF recommends at least 57600 for SiRF IV nav data */
 	    if (session->gpsdata.dev.baudrate >= 57600) {
 		/* fast enough, turn on nav data */
 		gpsd_report(session->context->debug, LOG_PROG,
-			    "SiRF: Enabling subframe transmission...\n");
+			    "SiRF: Enabling subframe transmission.\n");
 		(void)sirf_write(session, enablesubframe);
 	    } else {
 		/* too slow, turn off nav data */
 		gpsd_report(session->context->debug, LOG_PROG,
-			    "SiRF: Disabling subframe transmission...\n");
+			    "SiRF: Disabling subframe transmission.\n");
 		(void)sirf_write(session, disablesubframe);
 	    }
 	    break;
+
+	case 12:
+	    /* disable navigation debug messages (the value 5 is magic) */
+	    gpsd_report(session->context->debug, LOG_PROG,
+			"SiRF: disable MID 7, 28, 29, 30, 31.\n");
+	    putbyte(unsetmidXX, 5, 0x05);
+	    (void)sirf_write(session, unsetmidXX);
+	    break;
+
 #endif /* RECONFIGURE_ENABLE */
 	default:
 	    /* initialization is done */

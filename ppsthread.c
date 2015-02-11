@@ -238,7 +238,7 @@ static int init_kernel_pps(struct gps_device_t *session)
 static /*@null@*/ void *gpsd_ppsmonitor(void *arg)
 {
     struct gps_device_t *session = (struct gps_device_t *)arg;
-    double last_fixtime = 0;
+    double last_fixtime_real = 0, last_fixtime_clock = 0;
 #ifndef HAVE_CLOCK_GETTIME
     struct timeval  clock_tv = {0, 0};
 #endif /* HAVE_CLOCK_GETTIME */
@@ -299,7 +299,8 @@ static /*@null@*/ void *gpsd_ppsmonitor(void *arg)
 	    break;
 	}
         /* quick, grab a copy of last_fixtime before it changes */
-	last_fixtime = session->last_fixtime;
+	last_fixtime_real = session->last_fixtime.real;
+	last_fixtime_clock = session->last_fixtime.clock;
 
 /*@-noeffect@*/
         /* get the time after we just woke up */
@@ -338,7 +339,8 @@ static /*@null@*/ void *gpsd_ppsmonitor(void *arg)
 	edge = (state > state_last) ? 1 : 0;
 #endif /* TIOCMIWAIT */
 
-	/* ok and log used by KPPS and TIOCMIWAIT, */
+	/* ok and log used by KPPS and TIOCMIWAIT */
+	// cppcheck-suppress redundantAssignment
 	ok = false;  
 	log = NULL;  
 #if defined(HAVE_SYS_TIMEPPS_H) && !defined(S_SPLINT_S)
@@ -348,17 +350,17 @@ static /*@null@*/ void *gpsd_ppsmonitor(void *arg)
              * PPS timestamp removes about 20uS of latency, and about +/-5uS 
              * of jitter 
              */
-#ifdef TIOCMIWAIT,
+#ifdef TIOCMIWAIT
 	    /*
 	     * We use of a non-NULL zero timespec here,
 	     * which means to return immediately with -1 (section
 	     * 3.4.3).  This is because we know we just got a pulse because 
-             * TIOCMIWAIT, just woke up.
+             * TIOCMIWAIT just woke up.
 	     * The timestamp has already been captured in the kernel, and we 
              * are merely fetching it here.
 	     */
             memset( (void *)&kernelpps_tv, 0, sizeof(kernelpps_tv));
-#else /* not TIOCMIWAIT, */
+#else /* not TIOCMIWAIT */
 	    /*
 	     * RFC2783 specifies that a NULL timeval means to wait.
              *
@@ -541,7 +543,7 @@ static /*@null@*/ void *gpsd_ppsmonitor(void *arg)
 	    log = "Too long for 0.5Hz\n";
 	}
 #endif /* TIOCMIWAIT */
-	if ( ok && last_second_used >= last_fixtime ) {
+	if ( ok && last_second_used >= last_fixtime_real ) {
 		/* uh, oh, this second already handled */
 		ok = 0;
 		log = "this second already handled\n";
@@ -550,7 +552,8 @@ static /*@null@*/ void *gpsd_ppsmonitor(void *arg)
 	if (ok) {
 	    /* offset is the skew from expected to observed pulse time */
 	    double offset;
-	    long l_offset;
+	    /* delay after last fix */
+	    double delay;
 	    char *log1 = NULL;
 	    /* drift.real is the time we think the pulse represents  */
 	    struct timedrift_t drift;
@@ -580,7 +583,7 @@ static /*@null@*/ void *gpsd_ppsmonitor(void *arg)
              */
 
 	    /*@+relaxtypes@*/
-	    drift.real.tv_sec = last_fixtime + 1;
+	    drift.real.tv_sec = last_fixtime_real + 1;
 	    drift.real.tv_nsec = 0;  /* need to be fixed for 5Hz */
 	    drift.clock = clock_ts;
 	    /*@-relaxtypes@*/
@@ -589,15 +592,15 @@ static /*@null@*/ void *gpsd_ppsmonitor(void *arg)
 	     * GPS serial input then use that */
 	    offset = (drift.real.tv_sec - drift.clock.tv_sec);
 	    offset += ((drift.real.tv_nsec - drift.clock.tv_nsec) / 1e9);
-	    l_offset = (long) offset;
-	    if (0 > l_offset || 1000000 < l_offset) {
+	    delay = (drift.clock.tv_sec + drift.clock.tv_nsec / 1e9) - last_fixtime_clock;
+	    if (0.0 > delay || 1.0 < delay) {
 		gpsd_report(session->context->debug, LOG_RAW,
-			    "PPS: no current GPS seconds: %ld\n",
-			    (long)l_offset);
+			    "PPS: no current GPS seconds: %f\n",
+			    delay);
 		log1 = "timestamp out of range";
 	    } else {
 		/*@-compdef@*/
-		last_second_used = last_fixtime;
+		last_second_used = last_fixtime_real;
 		if (session->thread_report_hook != NULL) 
 		    log1 = session->thread_report_hook(session, &drift);
 		else

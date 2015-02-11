@@ -73,6 +73,19 @@ The second 'n' is losing information that it shouldn't.
 
 Display update should not stop while this is going on.
 
+*** Time offset debugging in gpsmon ***
+
+Hall Murray:
+> The gpsmon logging stuff should include time stamps.
+>
+> There should be some way for gpsmon to display the time offset that it would
+> send to NTP via SHM.  I don't see any obvious empty space on the screen.  If
+> nothing else, it could use the PPS space or alternate with the PPS info,
+> perhaps via a keyboard command.
+>
+> Or perhaps a higher level keyboard command to switch into timekeeping
+> debugging mode rather than position debugging mode.
+
 **** Speed, mode and rate-changes in client-mode gpsmon.
 
 Are not implemented.  In theory they could be.
@@ -87,6 +100,28 @@ reliable in client mode.
 We caw now *really* measure latency from GPS top of second when it has
 1PPS.  Add this capability to gpsprof and revise the "Where's the
 Latency?" white paper.
+
+*** Low-pwer autoconfiguration in the uBlox driver ***
+
+Anthony Stirk <upuaut@gmail.com> writes on Wed May 21 06:09:00 2014:
+
+    The low power modes are really good on the ublox modules (especially the
+    MAX7's) however a word of warning.
+
+    We use the 1 sec cyclic mode on our balloon trackers but if the module
+    looses satellites or is jammed out (cheap Chinese cameras do it) the ublox
+    modules seem to hang and become unresponsive. To mitigate against this you
+    need to put the module back in max performance mode as soon as the
+    satellites drops below 4.
+
+    I'm not sure for most applications the low power mode needs to be used at
+    all on the newer ublox modules. The values for the MAX-7Q are 22mA (6Q
+    50mA) under acquire, tracking (i.e locked and in max performance) current
+    at is 17mA  (39mA 6Q) and power saving reduces this to 5mA or less (15mA on
+    the 6Q). We've observed the issue on the 6 and 7 series.
+
+A possibility: drop the chip to low-power mode when it can see > 4
+sats, revert to normal otherwise.
 
 *** Dispatcher/network issues
 
@@ -120,6 +155,21 @@ message 6 and 8 subtypes - specifically, 6/23, 8/21, 8/22, 8/24, and
 **** Addressed case of AIS Types 25 and 26 is not handled.
 
 We'd need machinery to shift a byte array 30 bits left...
+
+**** AIS struct needs a 'structured' bit detected by the driver ****
+
+Turns out that dispatching JSON dump on Types 6 and 8 by DAC/FID 
+isn't reliable, because sometimes unstructured Type 8s can
+false-match with a structured type.  Observed in the wild with 
+an unstructured Type 8 misconstrued as an Inland AIS Type 10.
+To fix this, the driver needs to store the 'structured' bit in
+the AIS structure.  Will require a library bump, but afterwards
+some code can be removed from the JSON dumper. 
+
+When this happens, also dump AIS text fields unconditionally (not on
+"scaled"). xgps may need changes.
+
+Also, in gps.h, move the tag field to privdata.
 
 ** To do:
 

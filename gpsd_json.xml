@@ -144,14 +144,14 @@ Others may be reported or not depending on the fix quality.</para>
 	<entry>lat</entry>
 	<entry>No</entry>
 	<entry>numeric</entry>
-        <entry>Latitude in degrees: +/- signifies West/East.  Present
+        <entry>Latitude in degrees: +/- signifies North/South.  Present
         when mode is 2 or 3.</entry>
 </row>
 <row>
 	<entry>lon</entry>
 	<entry>No</entry>
 	<entry>numeric</entry>
-        <entry>Longitude in degrees: +/- signifies North/South. Present
+        <entry>Longitude in degrees: +/- signifies East/West. Present
         when mode is 2 or 3.</entry>
 </row>
 <row>
@@ -1014,7 +1014,7 @@ object.</para>
 	<entry>pps</entry>
 	<entry>No</entry>
 	<entry>boolean</entry>
-        <entry>If true, emit a PPS bar when the device issues
+        <entry>If true, emit a PPS JSON message when the device issues
         1PPS.  Intended to be used with the "nmea" and "raw" modes.
         Default is false. <emphasis role="bold">Note: this is an
         unstable experimental feature which may change or be removed
@@ -2352,12 +2352,12 @@ decimeters. Various other scaling conversions are described in
 <refsect1 id='subframe'><title>SUBFRAME DUMP FORMATS</title>
 
 <para>Subframe support is always compiled into
-<application>gpsd</application> but many GPS do not output Subframe data
-or the <application>gpsd</application> driver may not support Subframes.
+<application>gpsd</application> but many GPSes do not output subframe data
+or the <application>gpsd</application> driver may not support subframes.
 </para>
 
 <para>Subframe packets are dumped as JSON objects with class "SUBFRAME".
-Each Subframe report object contains a "frame" field giving the subframe
+Each subframe report object contains a "frame" field giving the subframe
 number, a "tSV" field for the transmitting satellite number, a "TOW17"
 field containing the 17 MSBs of the start of the next 12-second message
 and a "scaled" field telling whether the remainder of the fields are

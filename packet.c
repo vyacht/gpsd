@@ -90,18 +90,28 @@ PERMISSIONS
  * application, they'd just add complexity.
  *
  * The NMEA portion of the state machine allows the following talker IDs:
- *      GP -- Global Positioning System.
- *      GL -- GLONASS, according to IEIC 61162-1
- *      GN -- Mixed GPS and GLONASS data, according to IEIC 61162-1
- *      II -- Integrated Instrumentation (Raytheon's SeaTalk system).
- *      IN -- Integrated Navigation (Garmin uses this).
- *      WI -- Weather instrument (Airmar PB200, Radio Ocean ROWIND, Vaisala WXT520).
- *      HC -- Heading/compass (Airmar PB200).
- *      TI -- Turn indicator (Airmar PB200).
- *      EC -- Electronic Chart Display & Information System (ECDIS)
- *      SD -- Depth Sounder
- *      P  -- Vendor-specific sentence
+ *      $GP -- Global Positioning System.
+ *      $GL -- GLONASS, according to IEIC 61162-1
+ *      $GN -- Mixed GPS and GLONASS data, according to IEIC 61162-1
+ *      $II -- Integrated Instrumentation (Raytheon's SeaTalk system).
+ *      $IN -- Integrated Navigation (Garmin uses this).
+ *      $WI -- Weather instrument (Airmar PB200, Radio Ocean ROWIND, Vaisala WXT520).
+ *      $HC -- Heading/compass (Airmar PB200).
+ *      $TI -- Turn indicator (Airmar PB200).
+ *      $EC -- Electronic Chart Display & Information System (ECDIS)
+ *      $SD -- Depth Sounder
+ *      $P  -- Vendor-specific sentence
  *
+ *      !AB -- NMEA 4.0 Base AIS station
+ *      !AD -- MMEA 4.0 Dependent AIS Base Station 
+ *      !AI -- Mobile AIS station
+ *      !AN -- NMEA 4.0 Aid to Navigation AIS station
+ *      !AR -- NMEA 4.0 AIS Receiving Station
+ *      !AX -- NMEA 4.0 Repeater AIS station
+ *      !AS -- NMEA 4.0 Limited Base Station
+ *      !AT -- NMEA 4.0 AIS Transmitting Station
+ *      !BS -- Base AIS station (deprecated in NMEA 4.0)
+ *      !SA -- NMEA 4.0 Physical Shore AIS Station
  */
 
 enum
@@ -415,11 +425,13 @@ static void nextstate(struct gps_packet_t *lexer, unsigned char c)
 	    lexer->state = AIS_LEAD_1;
 	else if (c == 'B')
 	    lexer->state = AIS_LEAD_ALT1;
+	else if (c == 'S')
+	    lexer->state = AIS_LEAD_ALT3;
 	else
 	    lexer->state = GROUND_STATE;
 	break;
     case AIS_LEAD_1:
-	if (c == 'I')
+	if (strchr("BDINRSTX", c) != NULL)
 	    lexer->state = AIS_LEAD_2;
 	else
 	    lexer->state = GROUND_STATE;
@@ -437,6 +449,18 @@ static void nextstate(struct gps_packet_t *lexer, unsigned char c)
 	    lexer->state = GROUND_STATE;
 	break;
     case AIS_LEAD_ALT2:
+	if (isalpha(c))
+	    lexer->state = NMEA_LEADER_END;
+	else
+	    lexer->state = GROUND_STATE;
+	break;
+    case AIS_LEAD_ALT3:
+	if (c == 'A')
+	    lexer->state = AIS_LEAD_ALT4;
+	else
+	    lexer->state = GROUND_STATE;
+	break;
+    case AIS_LEAD_ALT4:
 	if (isalpha(c))
 	    lexer->state = NMEA_LEADER_END;
 	else

@@ -2810,25 +2810,35 @@ void json_aivdm_dump(const struct ais_t *ais,
 	    };
 #define STATUS_DISPLAY(n) (((n) < (unsigned int)NITEMS(status_vocabulary)) ? status_vocabulary[n] : "INVALID STATUS")
 
+	    structured = false;
 	    switch (ais->type8.fid) {
 	    case 10:        /* Inland ship static and voyage-related data */
 		for (cp = shiptypes; cp < shiptypes + NITEMS(shiptypes); cp++)
-		    if (cp->code == ais->type8.dac200fid10.type
-			|| cp->ais == ais->type8.dac200fid10.type)
+		    if (cp->code == ais->type8.dac200fid10.shiptype
+			|| cp->ais == ais->type8.dac200fid10.shiptype
+			|| cp->code == 0)
 			break;
+		/*
+		 * FIXME: AIS struct should have "structured" bit set by driver
+		 * This is a kluge.
+		 */
+		if (cp->code == 0
+		    || (int)ais->type8.dac200fid10.hazard >= NITEMS(hazard_types)
+		    || !isascii((int)ais->type8.dac200fid10.vin[0]))
+		    break;
 		(void)snprintf(buf + strlen(buf), buflen - strlen(buf),
 			       "\"vin\":\"%s\",\"length\":%u,\"beam\":%u,"
-			       "\"type\":%u,\"type_text\":\"%s\","
+			       "\"shiptype\":%u,\"shiptype_text\":\"%s\","
 			       "\"hazard\":%u,\"hazard_text\":\"%s\","
 			       "\"draught\":%u,"
 			       "\"loaded\":%u,\"loaded_text\":\"%s\","
-			       "\"speed_q\":\"%s\","
-			       "\"course_q\":\"%s\","
-			       "\"heading_q\":\"%s\"}",
+			       "\"speed_q\":%s,"
+			       "\"course_q\":%s,"
+			       "\"heading_q\":%s}\r\n",
 			       ais->type8.dac200fid10.vin,
 			       ais->type8.dac200fid10.length,
 			       ais->type8.dac200fid10.beam,
-			       ais->type8.dac200fid10.type,
+			       ais->type8.dac200fid10.shiptype,
 			       cp->legend,
 			       ais->type8.dac200fid10.hazard,
 			       HTYPE_DISPLAY(ais->type8.dac200fid10.hazard),
@@ -2841,6 +2851,12 @@ void json_aivdm_dump(const struct ais_t *ais,
 		structured = true;
 		break;
 	    case 23:	/* EMMA warning */
+		/*
+		 * FIXME: AIS struct should have "structured" bit set by driver
+		 * This is a kluge.
+		 */
+		if ((int)ais->type8.dac200fid23.type >= NITEMS(emma_types))
+		    break;
 		(void)snprintf(buf + strlen(buf), buflen - strlen(buf),
 			       "\"start\":\"%4u-%02u-%02uT%02u:%02u\","
 			       "\"end\":\"%4u-%02u-%02uT%02u:%02u\",",
@@ -2869,7 +2885,7 @@ void json_aivdm_dump(const struct ais_t *ais,
 			ais->type8.dac200fid23.end_lon,
 			ais->type8.dac200fid23.end_lat);
 		(void)snprintf(buf + strlen(buf), buflen - strlen(buf),
-		    "\"type\":%u,\"type_text\":\"%s\",\"min\":%d,\"max\":%d,\"class\":%u,\"class_text\":\"%s\",\"wind\":%u,\"wind_text\":\"%s\"}",
+		    "\"type\":%u,\"type_text\":\"%s\",\"min\":%d,\"max\":%d,\"class\":%u,\"class_text\":\"%s\",\"wind\":%u,\"wind_text\":\"%s\"}\r\n",
 
 		    ais->type8.dac200fid23.type,
 		    EMMA_TYPE_DISPLAY(ais->type8.dac200fid23.type),
@@ -2893,7 +2909,7 @@ void json_aivdm_dump(const struct ais_t *ais,
 		}
 		if (buf[strlen(buf)-1] == ',')
 		    buf[strlen(buf)-1] = '\0';
-		(void)strlcat(buf, "]}", buflen - strlen(buf));
+		(void)strlcat(buf, "]}\r\n", buflen - strlen(buf));
 		structured = true;
 		break;
 	    case 40:	/* Inland AIS Signal Strength */
@@ -2908,7 +2924,7 @@ void json_aivdm_dump(const struct ais_t *ais,
 			ais->type8.dac200fid40.lon,
 			ais->type8.dac200fid40.lat);
 		(void)snprintf(buf + strlen(buf), buflen - strlen(buf),
-		    "\"form\":%u,\"facing\":%u,\"direction\":%u,\"direction_text\":\"%s\",\"status\":%u,\"status_text\":\"%s\"}",
+		    "\"form\":%u,\"facing\":%u,\"direction\":%u,\"direction_text\":\"%s\",\"status\":%u,\"status_text\":\"%s\"}\r\n",
 		    ais->type8.dac200fid40.form,
 		    ais->type8.dac200fid40.facing,
 		    ais->type8.dac200fid40.direction,
@@ -3200,7 +3216,7 @@ void json_aivdm_dump(const struct ais_t *ais,
 			   "\"name\":\"%s\",\"lon\":%.4f,"
 			   "\"lat\":%.4f,\"accuracy\":%s,\"to_bow\":%u,"
 			   "\"to_stern\":%u,\"to_port\":%u,\"to_starboard\":%u,"
-			   "\"epfd\"%u,\"epfd_text\":\"%s\","
+			   "\"epfd\":%u,\"epfd_text\":\"%s\","
 			   "\"second\":%u,\"regional\":%u,"
 			   "\"off_position\":%s,\"raim\":%s,"
 			   "\"virtual_aid\":%s}\r\n",

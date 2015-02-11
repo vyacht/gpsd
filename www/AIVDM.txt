@@ -1,6 +1,6 @@
 = AIVDM/AIVDO protocol decoding =
 Eric S. Raymond <esr@thyrsus.com>
-v1.44, November 2013
+v1.46, Aug 2014
 
 This document is mastered in asciidoc format.  If you are reading it in HTML,
 you can find the original at the GPSD project website
@@ -233,6 +233,26 @@ nonempty message ID field:
 !AIVDM,2,1,3,B,55P5TL01VIaAL@7WKO@mBplU@<PDhh000000001S;AJ::4A80?4i@E53,0*3E
 !AIVDM,2,2,3,B,1@0000000000000,2*55
 --------------------------------------------------------------------
+
+== Talker IDS ==
+
+The AI prefix commonly found on these sentences is an NMEA talker ID
+for a mobile AIS station.  Other possible values are as listed:
+
+.AIS talker IDs
+[width="25%",frame="topbot",options="header"]
+|================================================
+| !AB | NMEA 4.0 Base AIS station
+| !AD | MMEA 4.0 Dependent AIS Base Station 
+| !AI | Mobile AIS station
+| !AN | NMEA 4.0 Aid to Navigation AIS station
+| !AR | NMEA 4.0 AIS Receiving Station
+| !AS | NMEA 4.0 Limited Base Station
+| !AT | NMEA 4.0 AIS Transmitting Station
+| !AX | NMEA 4.0 Repeater AIS station
+| !BS | Base AIS station (deprecated in NMEA 4.0)
+| !SA | NMEA 4.0 Physical Shore AIS Station
+|================================================
 
 == AIVDM/AIVDO Payload Armoring ==
 
@@ -961,6 +981,12 @@ in use for type 6.
 |==============================================================================
 
 DAC/FID pairs are assigned separately per message type.
+
+Note that the apparent presence of one of these DAC/FID pairs dooes
+not guarantee that the message is structured.  Decoders should 
+perform range validation on the structured fields and interpret the
+message as unstructured if any check fails. (As of Aug 2014 no such
+collisions have been in the wild; but see the parallel note for Type 8.)
 
 A list of binary layouts for selected subtypes of message 6 follows.
 
@@ -2076,6 +2102,12 @@ DAC/FID pairs are assigned separately per message type.  For St. Lawrence
 Seaway messages, the DAC may be 316 (Canada) or 366 (U.S.) depending
 on the transmitter location.
 
+Note that the apparent presence of one of these DAC/FID pairs dooes
+not guarantee that the message is structured.  Decoders should 
+perform range validation on the structured fields and interpret the
+message as unstructured if any check fails. Actual false matches with
+DAC/FID = 200/10 have been observed in the wild.
+
 DAC/FID pairs 1/23, 1/28, and 1/30 have addressed versions descrubed
 under type 6.
 
@@ -2084,7 +2116,7 @@ Jan 2013. The deprecated IMO236 1/11 has a different binary layout from
 the IMO289 1/31.  FID type 17 is in use; there is a proposed
 update for it in <<IMO289>>.
 
-Breakdowns Message 8 subtypes from <<IMO289>> follow.
+Breakdowns of Message 8 subtypes from <<IMO289>> follow.
 
 ==== Meteorological and Hydrological Data (IMO236) ====
 
@@ -3565,7 +3597,7 @@ message 5.
 |56-103  | 48 |European Vessel ID     |vin      |t|8 six-bit characters
 |104-116 | 13 |Length of ship         |length   |u|1-8000 * 0.1m, default 0
 |117-126 | 10 |Beam of ship           |beam     |u|1-1000 * 0.1m, default 0
-|127-140 | 14 |Ship/combination type  |type     |e|ERI Classification
+|127-140 | 14 |Ship/combination type  |shiptype |e|ERI Classification
 |141-143 |  3 |Hazardous cargo        |hazard   |e|See "Hazard Codes" below
 |144-154 | 11 |Draught                |draught  |u|1-200 * 0.01m, default 0
 |155-156 |  2 |Loaded/Unloaded        |loaded   |e|See "Load Status" below
@@ -3581,7 +3613,7 @@ message 5.
 OPEN-QUESTION: <<INLAND>> is not explicit whether the
 "Ship/combination type" field is to contain full ERI codes with range
 8000-8370 or ERI SOLAS codes in the range 1-99.  The tables below
-expand both.
+expand both.  Full ERI codes have been observed in the wild.
 
 .ERI Classification
 [frame="topbot",options="header"]
@@ -4502,14 +4534,19 @@ during the quiet period.
 Equivalent of a Type 5 message for ships using Class B equipment.  Also
 used to associate an MMSI with a name on either class A or class B equipment.
 
-A "Type 24" may be in part A or part B format; either is 168 bits.
-According to the standard, parts A and B are expected to be broadcast
-in adjacent pairs; in the real world they may (due to quirks in
-various aggregation methods) be separated by other sentances or even
+A "Type 24" may be in part A or part B format; According to the
+standard, parts A and B are expected to be broadcast in adjacent
+pairs; in the real world they may (due to quirks in various
+aggregation methods) be separated by other sentances or even
 interleaved with different Type 24 pairs; decoders must cope with
 this.  The interpretation of some fields in Type B format changes
 depending on the range of the Type B MMSI field. 160 bits for part A,
 168 bits for part B.
+
+According to the standard, both the A and B parts are supposed to
+be 168 bits. However, in the wild, A parts are often transmitted
+with only 160 bits, omitting the 'spare' 7 bits at the end.
+Implementers should be permissive about this.
 
 <<IALA>> does not describe this message type; format information
 is thanks to Kurt Schwehr.
@@ -4747,6 +4784,75 @@ The last field is a time tag based on the standard C programming
 language time function. Both date and time to the nearest second can be  
 derived from this field. This field is always provided, regardless of  
 the type of AIS equipment.
+
+== NMEA Tag Blocks ==
+
+Beginning with NMEA 4.10, the standard describes a way to intersperse 
+"tag blocks" with AIS sentences in order to supply additional
+metadata, notably a Unix timestamp to be associated with a sentence
+(or contiguous group of sentences such as an armored AIS Type 5).
+
+The tag black facility is complex, in some respects poorly specified,
+and there has been yet much public discussion of it.  This section
+should be considered provisional and in need of improvement.
+
+The general format of a tag block is: an opening backslash, followed
+by multiple comma-separated fields none of which may contain
+backslashes, followed by an asterisk and NMEA checksum, followed by a
+closing backslash.
+
+The following is an example of an AIS Type 1 sentence preceded by a
+tag block:
+
+-------------------------------------------------------------------------------------------------
+\g:1-2-73874,n:157036,s:r003669945,c:1241544035*4A\!AIVDM,1,1,,B,15N4cJ`005Jrek0H@9n`DW5608EP,0*13
+-------------------------------------------------------------------------------------------------
+
+Each comma-separated field is expected to be a type key, followed by a
+colon, followed by content.  The semantics of the type keys are as
+follows (table from <<NMEA-ADVANCE>>):
+
+Confusingly, there is a different standard introduced with NMEA 4.00,
+IEC 62320-1, that uses the same tag block format but a slightly
+different (overlapping) set of field keys
+
+.NMEA 4.00 Field Types
+[frame="topbot",options="header"]
+|===========================================================================
+| IEC   | NMEA	| Type           | Description
+|  c    | c	| int>0          | UNIX time in seconds or milliseconds
+|  d    | d	| string         | Destination (at most 15 chars)
+| xGy   | g	| int-int-int	 | Sentence grouping
+|  x    | n	| int>0          | line count
+|       | r	| int>0          | relative time
+|  s    | s	| string         | Source / station
+|  i    | t	| string         | Text string (at most 15 chars)
+|===========================================================================
+
+The IEC 62320-1 and NMEA 4.10 c field is an emission time for the
+sentence it precedes. We're not yet sure what the time unit is.
+
+The NMEA 4.10 g value describes a sentence or sentence group to
+associate the tag block to. It is a triple of ints separated by
+dashes.  The first number is the sentence number, the second is total
+number of sentences to make up one group.  The third number is an
+identifier for that particular group.  If there is no g value, the tag
+block simply applies to the following sentence.
+
+As of May 2014 no NMEA 4.10 relative time fields have been observed in the
+wild. It is unknown whether the unit is seconds or milliseconds.
+
+The d, i/t, and s fields are intended to be used for fitering by 
+station IDs included in them.
+
+Part of the NMEA 4.10 standard describes a configuration message facility by
+which AIS message receivers can send queries to AIS senders, and under
+some circumstances change the semantics if tag blocks (in particular,
+by specifying time units and epoch).
+
+We do not yet have more definite information on the meaning of these
+fields or how they are related to nearby AIVDM/AIVDO sentences.  We
+hope to add this in a future revision.
 
 == AIS Payload Byte Alignment, Padding, and Bit Stuffing ==
 
@@ -5032,7 +5138,8 @@ specified for the Status field.
 
 In Inland Ship Static and Voyage Related Data, which of two possible
 ERI numeric codesets are used for the Type field - the 4-digit codes
-in the 8000-8073 range, or the AIS codes in the 1-99 range?
+in the 8000-8073 range, or the AIS codes in the 1-99 range?  Full ERI
+codes have been observed in the wild.
 
 In the <<INLAND>> description of Message 5 extensions, footnote 6 is
 incomprehensible and not actually referenced in the table.
@@ -5145,6 +5252,8 @@ Identification System]
 - [[[SART]]] http://en.wikipedia.org/wiki/AIS-SART
 
 - [[[GITTIP]]] https://www.gittip.com/esr/
+
+- [[NMEA-ADVANCE]] http://www.nmea.org/Assets/0183_advancements_nmea_oct_1_2010%20(2).pdf
 
 == Change history ==
 
@@ -5287,3 +5396,10 @@ waterways. Also Inland AIS standard messages are now covered.
 
 Version 1.44 adds substantial new information on MMSIs and updates
 the <<MMSI link>>, which was stale.
+
+Version 1.45 adds a description of variant AIS talker IDs and NMEA
+4.10 tag blocks.
+
+Version 1.46 corrects an error in the specification on Inland AIS Type
+10s. It also adds a bit more information on AIS tag blocks.
+
