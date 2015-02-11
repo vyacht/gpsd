@@ -846,6 +846,8 @@ extern void nmea_tpv_dump(struct gps_device_t *, /*@out@*/char[], size_t);
 extern void nmea_sky_dump(struct gps_device_t *, /*@out@*/char[], size_t);
 extern void nmea_subframe_dump(struct gps_device_t *, /*@out@*/char[], size_t);
 extern void nmea_ais_dump(struct gps_device_t *, /*@out@*/char[], size_t);
+extern void nmea_navigation_dump(struct gps_device_t *session,  /*@out@*/char[], size_t);
+extern void nmea_environment_dump(struct gps_device_t *session,  /*@out@*/char[], size_t);
 extern unsigned int ais_binary_encode(struct ais_t *ais, /*@out@*/unsigned char *bits, int flag);
 
 extern void ntpshm_context_init(struct gps_context_t *);
