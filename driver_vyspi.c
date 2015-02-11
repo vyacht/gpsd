@@ -2265,6 +2265,19 @@ static gps_mask_t hnd_130312(unsigned char *bu, int len, PGN *pgn, struct gps_de
     return(0);
 }
 
+/*
+ *   PGN 130311: NAV Environmental Parameters
+ */
+static gps_mask_t hnd_unknown(unsigned char *bu, int len, PGN *pgn, struct gps_device_t *session)
+{
+    print_data(session->context, bu, len, pgn);
+    gpsd_report(session->context->debug, LOG_DATA,
+		"pgn %6d(%3d): unkown\n", pgn->pgn, session->driver.nmea2000.unit);
+
+    return 0;
+}
+
+
 /*@-usereleased@*/
 static const char msg_059392[] = {"ISO Acknowledgment"};
 static const char msg_059904[] = {"ISO Request"};
@@ -2273,6 +2286,10 @@ static const char msg_126208[] = {"NMEA Command/Request/Acknowledge"};
 static const char msg_126464[] = {"ISO  Transmit/Receive PGN List"};
 static const char msg_126992[] = {"GNSS System Time"};
 static const char msg_126996[] = {"ISO  Product Information"};
+
+static const char msg_127488[] = {"Engine "};
+static const char msg_127489[] = {"Engine "};
+static const char msg_127505[] = {"Fluid "};
 
 static const char msg_127506[] = {"PWR DC Detailed Status"};
 static const char msg_127508[] = {"PWR Battery Status"};
@@ -2315,6 +2332,8 @@ static const char msg_130306[] = {"NAV Wind Data"};
 static const char msg_130310[] = {"NAV Water Temp., Outside Air Temp., Atmospheric Pressure"};
 static const char msg_130311[] = {"NAV Temperature"};
 static const char msg_130312[] = {"NAV Temperature"};
+
+static const char msg_unknown[] = {"Unkown sentence"};
 
 static const char msg_error [] = {"**error**"};
 
@@ -2366,6 +2385,12 @@ static PGN pwrpgn[] = {{ 59392, 0, 0, hnd_059392, &msg_059392[0]},
 		       {127513, 1, 3, hnd_127513, &msg_127513[0]},
 		       {0     , 0, 0, NULL,       &msg_error [0]}};
 
+static PGN engpng[] = {{127488, 0, 0, hnd_127488, &msg_127488[0]},
+		       {127489, 1, 3, hnd_127489, &msg_127489[0]},
+		       {127505, 1, 3, hnd_127505, &msg_127505[0]},
+		       {0     , 0, 0, NULL,       &msg_error [0]}};
+
+
 static PGN navpgn[] = {{ 59392, 0, 0, hnd_059392, &msg_059392[0]},
 		       { 59904, 0, 0, hnd_059904, &msg_059904[0]},
 		       { 60928, 0, 0, hnd_060928, &msg_060928[0]},
@@ -2399,6 +2424,8 @@ static PGN navpgn[] = {{ 59392, 0, 0, hnd_059392, &msg_059392[0]},
 		       {130311, 0, 4, hnd_130311, &msg_130311[0]},
 		       {130312, 0, 4, hnd_130312, &msg_130312[0]},
 		       {0     , 0, 0, NULL,       &msg_error [0]}};
+
+static PGN defpgn[] = {{0,      0, 0, hnd_unknown, &msg_unknown[0]}};
 
 
 /*@+usereleased@*/
@@ -2466,6 +2493,16 @@ static PGN *vyspi_find_pgn(uint32_t pgn) {
       if (work == NULL) {
 	pgnlist = &navpgn[0];
 	work = vyspi_search_pgnlist(pgn, pgnlist);
+      }
+      if (work == NULL) {
+	pgnlist = &engpng[0];
+	work = vyspi_search_pgnlist(pgn, pgnlist);
+      }
+
+      // using a default to catch all unknown
+      if(work == NULL) {
+	pgnlist = &defpgn[0];
+	work = &pgnlist[0];
       }
 
       return work;
