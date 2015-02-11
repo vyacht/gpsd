@@ -60,7 +60,7 @@ static void visibilize(/*@out@*/char *buf2, size_t len, const char *buf)
     const char *sp;
 
     buf2[0] = '\0';
-    for (sp = buf; *sp != '\0' && strlen(buf2)+4 < len; sp++)
+    for(sp = buf; *sp != '\0' && strlen(buf2)+4 < len; sp++)
 	if (isprint(*sp) || (sp[0] == '\n' && sp[1] == '\0')
 	  || (sp[0] == '\r' && sp[2] == '\0'))
 	    (void)snprintf(buf2 + strlen(buf2), 2, "%c", *sp);
@@ -191,7 +191,7 @@ int gpsd_switch_driver(struct gps_device_t *session, char *type_name)
 	return 0;
 
     gpsd_report(session->context->debug, LOG_PROG,
-		"switch_driver(%s) called...\n", type_name);
+		"switch_driver (%s) called...\n", type_name);
     /*@ -compmempass @*/
     for (dp = gpsd_drivers, i = 0; *dp; dp++, i++)
 	if (strcmp((*dp)->type_name, type_name) == 0) {
@@ -263,6 +263,72 @@ void gps_context_init(struct gps_context_t *context)
 }
 /*@+compdestroy@*/
 
+void gpsd_navigation_clear(struct navigation_t * nav) {
+
+  nav->set = 0;
+
+  // speed is knots
+  nav->speed_over_ground = NAN;
+  nav->eps               = NAN;		/* Speed uncertainty, meters/sec */
+
+  nav->speed_thru_water  = NAN;
+
+  // deg north
+  nav->course_over_ground= NAN;
+  nav->epd               = NAN;		/* Track uncertainty, degrees */
+
+  // deg / sec
+  nav->rate_of_turn      = NAN; 
+
+  // deg
+  nav->rudder_angle      = NAN; 
+
+  // metric meters
+  nav->depth             = NAN;
+  nav->depth_offset      = NAN;
+
+  // nm
+  nav->distance_total    = NAN;
+  nav->distance_trip     = NAN;
+
+  // magnetic or true heading
+  nav->heading[0]        = NAN;
+  nav->heading[1]        = NAN;
+
+  // meters
+  nav->xte               = NAN;
+
+}
+
+void gpsd_environment_clear(struct environment_t * env) {
+
+  int i = 0;
+
+  env->set = 0;
+
+  env->wind.apparent.angle = NAN;
+  env->wind.apparent.speed = NAN;
+  env->wind.true_north.angle = NAN;
+  env->wind.true_north.speed = NAN;
+  env->wind.magnetic_north.angle = NAN;
+  env->wind.magnetic_north.speed = NAN;
+  env->wind.calculated_ground.angle = NAN;
+  env->wind.calculated_ground.speed = NAN;
+  env->wind.calculated_water.angle = NAN;
+  env->wind.calculated_water.speed = NAN;
+
+  for(i = 0; i < 5; i++) 
+    env->temp[i] = NAN;
+
+  env->pressure = NAN;
+
+  env->humidity = NAN;
+
+  env->variation = NAN;
+  env->deviation = NAN;
+
+}
+
 void gpsd_init(struct gps_device_t *session, struct gps_context_t *context,
 	       const char *device)
 /* initialize GPS polling */
@@ -289,6 +355,8 @@ void gpsd_init(struct gps_device_t *session, struct gps_context_t *context,
     session->gpsdata.epe = NAN;
     session->mag_var = NAN;
     session->gpsdata.dev.cycle = session->gpsdata.dev.mincycle = 1;
+    gpsd_environment_clear(&session->gpsdata.environment);
+    gpsd_navigation_clear(&session->gpsdata.navigation);
 #ifdef TIMING_ENABLE
     session->sor = 0.0;
     session->chars = 0;

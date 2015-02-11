@@ -1833,6 +1833,120 @@ struct dop_t {
     double xdop, ydop, pdop, hdop, vdop, tdop, gdop;
 };
 
+enum compass_t {
+  compass_magnetic,
+  compass_true
+};
+
+struct navigation_t {
+
+#define NAV_SOG_PSET            (1llu<< 1)
+#define NAV_EPS_PSET            (1llu<< 2)
+#define NAV_STW_PSET	        (1llu<< 3)
+#define NAV_COG_PSET	        (1llu<< 4)
+#define NAV_EPD_PSET	        (1llu<< 5)
+#define NAV_DPT_PSET	        (1llu<< 6)
+#define NAV_DPT_OFF_PSET        (1llu<< 7)
+#define NAV_DIST_TOT_PSET	(1llu<< 8)
+#define NAV_DIST_TRIP_PSET	(1llu<< 9)
+#define NAV_HDG_TRUE_PSET	(1llu<<10)
+#define NAV_HDG_MAGN_PSET	(1llu<<11)
+#define NAV_ROT_PSET	        (1llu<<12)
+#define NAV_RUDDER_ANGLE_PSET	(1llu<<13)
+#define NAV_XTE_PSET	        (1llu<<14)
+
+  gps_mask_t set;
+
+  // speed is knots
+  double speed_over_ground;
+  double eps;		/* Speed uncertainty, meters/sec */
+
+  double speed_thru_water;
+
+  // deg north
+  double course_over_ground;
+  double epd;		/* Track uncertainty, degrees */
+
+  // deg / sec
+  double rate_of_turn; 
+
+  // deg
+  double rudder_angle; 
+
+  // metric meters
+  double depth;
+  double depth_offset;
+
+  // nm
+  double distance_total;
+  double distance_trip;
+
+  // magnetic or true heading
+  double heading[2];
+
+  // meters
+  double xte;
+
+};
+
+struct wind_t {
+  // deg 0 .. 360, in case of apparent: right of bow (clockwise)
+  double angle;
+  
+  // speed in knots
+  double speed;
+};
+
+struct wind_reference_t {
+  struct wind_t apparent; // or "relative"
+  struct wind_t true_north; 
+  struct wind_t magnetic_north; 
+  struct wind_t calculated_ground;
+  struct wind_t calculated_water;
+};
+
+enum temp_reference_t {
+  temp_water,
+  temp_air,
+  temp_inside
+};
+
+struct environment_t {
+  // hack for now
+#define ENV_WIND_APPARENT_SPEED_PSET	(1llu<< 1)
+#define ENV_WIND_APPARENT_ANGLE_PSET	(1llu<< 2)
+#define ENV_WIND_TRUE_GROUND_SPEED_PSET	(1llu<< 3)
+#define ENV_WIND_TRUE_GROUND_ANGLE_PSET	(1llu<< 4)
+#define ENV_WIND_TRUE_WATER_SPEED_PSET	(1llu<< 5)
+#define ENV_WIND_TRUE_WATER_ANGLE_PSET	(1llu<< 6)
+#define ENV_TEMP_WATER_PSET	        (1llu<< 7)
+#define ENV_TEMP_AIR_PSET	        (1llu<< 8)
+#define ENV_VARIATION_PSET	        (1llu<< 9)
+#define ENV_DEVIATION_PSET	        (1llu<<10)
+
+  gps_mask_t set;
+
+  struct wind_reference_t wind;
+
+  // we take it in deg Celsius
+  double temp[5];
+
+  double pressure;
+
+  double humidity;
+
+  /*
+    we store variation/declination as values -/+ [0..180] degrees
+    compass course has lon - is W, + is E, same with declination
+   */
+  double variation; // or "declination"
+  // should add variation source
+
+  // compass error in degrees
+  double deviation;
+  
+};
+
 struct rawdata_t {
     /* raw measurement data */
     double codephase[MAXCHANNELS];	/* meters */
@@ -1960,8 +2074,10 @@ struct gps_data_t {
 #define LOGMESSAGE_SET	(1llu<<30)
 #define ERROR_SET	(1llu<<31)
 #define TIMEDRIFT_SET	(1llu<<32)
-#define EOF_SET		(1llu<<33)
-#define SET_HIGH_BIT	34
+#define NAVIGATION_SET	(1llu<<33)
+#define ENVIRONMENT_SET	(1llu<<34)
+#define EOF_SET		(1llu<<35)
+#define SET_HIGH_BIT	35
     timestamp_t online;		/* NZ if GPS is on line, 0 if not.
 				 *
 				 * Note: gpsd clears this time when sentences
@@ -2020,6 +2136,8 @@ struct gps_data_t {
 	struct subframe_t subframe;
 	struct ais_t ais;
 	struct attitude_t attitude;
+    struct navigation_t navigation;
+    struct environment_t environment;
 	struct rawdata_t raw;
 	struct gst_t gst;
 	/* "artificial" structures for various protocol responses */
