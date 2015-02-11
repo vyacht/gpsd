@@ -409,23 +409,33 @@ static gps_mask_t hnd_127258(unsigned char *bu, int len, PGN *pgn, struct gps_de
  */
 static gps_mask_t hnd_129025(unsigned char *bu, int len, PGN *pgn, struct gps_device_t *session)
 {
+    int64_t lat;
+    int64_t lon;
+    gps_mask_t mask = 0;
+
+    lat = getles32(bu, 0);
+    lon = getles32(bu, 4);
+
     print_data(session->context, bu, len, pgn);
     gpsd_report(session->context->debug, LOG_DATA,
 		"pgn %6d(%3d):\n", pgn->pgn, session->driver.nmea2000.unit);
 
-    /*@-type@*//* splint has a bug here */
-    session->newdata.latitude = getles32(bu, 0) * 1e-7;
-    session->newdata.longitude = getles32(bu, 4) * 1e-7;
-    /*@+type@*/
+    if((lat != 0x7fffffff) && (lon != 0x7fffffff)) {
+      /*@-type@*//* splint has a bug here */
+      session->newdata.latitude =  lat * 1e-7;
+      session->newdata.longitude = lon * 1e-7;
+      /*@+type@*/
+      mask = LATLON_SET | get_mode(session);
+    }
 
     (void)strlcpy(session->gpsdata.tag, "129025", sizeof(session->gpsdata.tag));
 
     gpsd_report(session->context->debug, LOG_IO,
 		"                   lat = %f, lon = %f\n",
-		session->newdata.latitude,
-		session->newdata.longitude);
+		(lat != 0x7fffffff)?session->newdata.latitude:NAN,
+		(lon != 0x7fffffff)?session->newdata.longitude:NAN);
 
-    return LATLON_SET | get_mode(session);
+    return mask;
 }
 
 
@@ -648,6 +658,7 @@ static gps_mask_t hnd_129539(unsigned char *bu, int len, PGN *pgn, struct gps_de
     gps_mask_t mask;
     unsigned int req_mode;
     unsigned int act_mode;
+    int16_t hdop, vdop, tdop;
 
     print_data(session->context, bu, len, pgn);
     gpsd_report(session->context->debug, LOG_DATA,
@@ -668,12 +679,24 @@ static gps_mask_t hnd_129539(unsigned char *bu, int len, PGN *pgn, struct gps_de
 
     session->driver.nmea2000.mode    = mode_tab[act_mode];
 
+    hdop = getles16(bu, 2);
+    vdop = getles16(bu, 4);
+    tdop = getles16(bu, 6);
+
     /*@-type@*//* splint has a bug here */
-    session->gpsdata.dop.hdop        = getleu16(bu, 2) * 1e-2;
-    session->gpsdata.dop.vdop        = getleu16(bu, 4) * 1e-2;
-    session->gpsdata.dop.tdop        = getleu16(bu, 6) * 1e-2;
+    if(hdop != 0x7fff) {
+      session->gpsdata.dop.hdop        = hdop * 1e-2;
+      mask                            |= DOP_SET;
+    }
+    if(vdop != 0x7fff) {
+      session->gpsdata.dop.vdop        = vdop * 1e-2;
+      mask                            |= DOP_SET;
+    }
+    if(tdop != 0x7fff) {
+      session->gpsdata.dop.tdop        = tdop * 1e-2;
+      mask                            |= DOP_SET;
+    } 
     /*@+type@*/
-    mask                            |= DOP_SET;
 
     gpsd_report(session->context->debug, LOG_DATA,
 		"pgn %6d(%3d):\n", pgn->pgn, session->driver.nmea2000.unit);
