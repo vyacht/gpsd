@@ -1065,6 +1065,22 @@ static void rstrip(char *str)
     }
 }
 
+static void gpsd_device_write(const char *buf, size_t len)
+{
+  struct gps_device_t *devp;
+
+  for (devp = devices; devp < devices + MAXDEVICES; devp++) {
+    if (allocated_device(devp)) {
+      const struct gps_type_t *dt = devp->device_type;
+      (void)awaken(devp);
+      if((dt != NULL) && (dt->packet_type == NMEA_PACKET)) {
+	(void)gpsd_write(devp, buf, (size_t)len);
+	gpsd_report(context.debug, LOG_INF, "gpsd_write: %s (%s)\n", buf, devp->gpsdata.dev.path);
+      }
+    }
+  }
+}
+
 static void handle_request(struct subscriber_t *sub,
 			   const char *buf, const char **after,
 			   char *reply, size_t replylen)
@@ -1408,11 +1424,32 @@ static void raw_report(struct subscriber_t *sub, struct gps_device_t *device)
 #endif /* BINARY_ENABLE */
 }
 
-static void pseudonmea_report(struct subscriber_t *sub,
-			  gps_mask_t changed,
+static void pseudonmea_write(gps_mask_t changed,
+			     char *buf, size_t len, 
+			     struct gps_device_t *device) {
+    struct subscriber_t *sub;
+    /* update all subscribers associated with this device */
+    for (sub = subscribers; sub < subscribers + MAXSUBSCRIBERS; sub++) {
+      /*@-nullderef@*/
+      if (sub == NULL || sub->active == 0 || !subscribed(sub, device))
+	continue;
+      if (sub->policy.watcher && sub->policy.nmea) {
+	if (changed & DATA_IS) {
+	  (void)throttled_write(sub, buf, len);
+	}
+      }
+    }
+    gpsd_device_write(buf, len);
+}
+
+static void pseudonmea_report(gps_mask_t changed,
 			  struct gps_device_t *device)
 /* report pseudo-NMEA in appropriate circumstances */
 {
+    gpsd_report(context.debug, LOG_INF,
+	      "<= PSEUDONMEA %s\n",
+	      device->gpsdata.dev.path);
+
     if (GPS_PACKET_TYPE(device->packet.type)
 	&& !TEXTUAL_PACKET_TYPE(device->packet.type)) {
 	char buf[MAX_PACKET_LENGTH * 3 + 2];
@@ -1422,7 +1459,7 @@ static void pseudonmea_report(struct subscriber_t *sub,
 	    gpsd_report(context.debug, LOG_IO, 
 			"<= GPS (binary tpv) %s: %s\n",
 			device->gpsdata.dev.path, buf);
-	    (void)throttled_write(sub, buf, strlen(buf));
+	    pseudonmea_write(changed, buf, strlen(buf), device);
 	}
 
 	if ((changed & SATELLITE_SET) != 0) {
@@ -1430,7 +1467,7 @@ static void pseudonmea_report(struct subscriber_t *sub,
 	    gpsd_report(context.debug, LOG_IO,
 			"<= GPS (binary sky) %s: %s\n",
 			device->gpsdata.dev.path, buf);
-	    (void)throttled_write(sub, buf, strlen(buf));
+	    pseudonmea_write(changed, buf, strlen(buf), device);
 	}
 
 	if ((changed & SUBFRAME_SET) != 0) {
@@ -1438,7 +1475,7 @@ static void pseudonmea_report(struct subscriber_t *sub,
 	    gpsd_report(context.debug, LOG_IO,
 			"<= GPS (binary subframe) %s: %s\n",
 			device->gpsdata.dev.path, buf);
-	    (void)throttled_write(sub, buf, strlen(buf));
+	    pseudonmea_write(changed, buf, strlen(buf), device);
 	}
 #ifdef AIVDM_ENABLE
 	if ((changed & AIS_SET) != 0) {
@@ -1446,7 +1483,7 @@ static void pseudonmea_report(struct subscriber_t *sub,
 	    gpsd_report(context.debug, LOG_IO,
 			"<= AIS (binary ais) %s: %s\n",
 			device->gpsdata.dev.path, buf);
-	    (void)throttled_write(sub, buf, strlen(buf));
+	    pseudonmea_write(changed, buf, strlen(buf), device);
 	}
 #endif /* AIVDM_ENABLE */
     }
@@ -1603,6 +1640,9 @@ static void all_reports(struct gps_device_t *device, gps_mask_t changed)
 	shm_update(&context, &device->gpsdata);
 #endif /* SHM_EXPORT_ENABLE */
 
+    /* report pseudonmea packages to devices and users subscribed */
+    pseudonmea_report(changed, device);
+
 #ifdef SOCKET_EXPORT_ENABLE
     /* update all subscribers associated with this device */
     for (sub = subscribers; sub < subscribers + MAXSUBSCRIBERS; sub++) {
@@ -1640,7 +1680,7 @@ static void all_reports(struct gps_device_t *device, gps_mask_t changed)
 				"time to report a fix\n");
 
 		if (sub->policy.nmea)
-		    pseudonmea_report(sub, changed, device);
+		    pseudonmea_report(changed, device);
 
 		if (sub->policy.json)
 		{
@@ -1682,6 +1722,8 @@ static int handle_gpsd_request(struct subscriber_t *sub, const char *buf)
 		handle_request(sub, buf, &end,
 			       reply + strlen(reply),
 			       sizeof(reply) - strlen(reply));
+    } else if (buf[0] == '$') {
+	gpsd_device_write(buf, strlen(buf));
     }
     return (int)throttled_write(sub, reply, strlen(reply));
 }
