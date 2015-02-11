@@ -55,7 +55,7 @@ static void print_data(struct gps_context_t *context,
 	char  bu[128];
 
         ptr = 0;
-        l2 = sprintf(&bu[ptr], "got data:%6u:%3d: ", pgn->pgn, len);
+        l2 = sprintf(&bu[ptr], "VYSPI: :%6u:%3d: ", pgn->pgn, len);
 	ptr += l2;
         for (l1=0;l1<len;l1++) {
             if (((l1 % 20) == 0) && (l1 != 0)) {
@@ -88,7 +88,7 @@ static gps_mask_t get_mode(struct gps_device_t *session)
     }
 }
 
-static int decode_ais_header(struct gps_context_t *context,
+static int vy_decode_ais_header(struct gps_context_t *context,
     unsigned char *bu, int len, struct ais_t *ais, unsigned int mask)
 {
     if (len > 4) {
@@ -97,26 +97,22 @@ static int decode_ais_header(struct gps_context_t *context,
 	ais->mmsi   = (unsigned int)  getleu32(bu, 1);
 	ais->mmsi  &= mask;
 	gpsd_report(context->debug, LOG_INF,
-		    "NMEA2000 AIS  message type %u, MMSI %09d:\n",
+		    "VY:NMEA2000 AIS message type %u, MMSI %09d:\n",
 		    ais->type, ais->mmsi);
-	printf("NMEA2000 AIS  message type %2u, MMSI %09u:\n",
-	       ais->type, ais->mmsi);
 	return(1);
     } else {
         ais->type   =  0;
 	ais->repeat =  0;
 	ais->mmsi   =  0;
 	gpsd_report(context->debug, LOG_ERROR,
-		    "NMEA2000 AIS  message type %u, too short message.\n",
+		    "VY:NMEA2000 AIS message type %u, too short message.\n",
 		    ais->type);
-	printf("NMEA2000 AIS  message type %u, too short message.\n",
-	       ais->type);
     }
     return(0);
 }
 
 
-static void decode_ais_channel_info(unsigned char *bu,
+static void vy_decode_ais_channel_info(unsigned char *bu,
 				    int len,
 				    unsigned int offset,
 				    struct gps_device_t *session)
@@ -372,7 +368,7 @@ static gps_mask_t hnd_127258(unsigned char *bu, int len, PGN *pgn, struct gps_de
     uint8_t sid;
     uint8_t src;
     uint8_t reserved1;
-     int8_t age;
+    int8_t age;
     double  var;
     uint16_t reserved2;
 
@@ -825,9 +821,9 @@ static gps_mask_t hnd_129038(unsigned char *bu, int len, PGN *pgn, struct gps_de
     ais =  &session->gpsdata.ais;
     print_data(session->context, bu, len, pgn);
     gpsd_report(session->context->debug, LOG_DATA,
-		"pgn %6d(%3d):\n", pgn->pgn, session->driver.nmea2000.unit);
+		"vy pgn %6d(%3d):\n", pgn->pgn, session->driver.nmea2000.unit);
 
-    if (decode_ais_header(session->context, bu, len, ais, 0xffffffffU) != 0) {
+    if (vy_decode_ais_header(session->context, bu, len, ais, 0xffffffffU) != 0) {
         ais->type1.lon       = (int)          (getles32(bu, 5) * 0.06);
 	ais->type1.lat       = (int)          (getles32(bu, 9) * 0.06);
 	ais->type1.accuracy  = (bool)         ((bu[13] >> 0) & 0x01);
@@ -840,7 +836,13 @@ static gps_mask_t hnd_129038(unsigned char *bu, int len, PGN *pgn, struct gps_de
 	ais->type1.turn      =                 ais_turn_rate((int)getles16(bu, 23));
 	ais->type1.status    = (unsigned int) ((bu[25] >> 0) & 0xff);
 	ais->type1.maneuver  = 0; /* Not transmitted ???? */
-	decode_ais_channel_info(bu, len, 163, session);
+	gpsd_report(session->context->debug, LOG_IO,
+		    "                   lon = %f, lat = %f, course = %u, speed = %u\n",
+		ais->type1.lon / AIS_LATLON_DIV, 
+		ais->type1.lat / AIS_LATLON_DIV, 
+		ais->type1.course,
+		ais->type1.speed);
+	vy_decode_ais_channel_info(bu, len, 163, session);
 
 	return(ONLINE_SET | AIS_SET);
     }
@@ -860,7 +862,7 @@ static gps_mask_t hnd_129039(unsigned char *bu, int len, PGN *pgn, struct gps_de
     gpsd_report(session->context->debug, LOG_DATA,
 		"pgn %6d(%3d):\n", pgn->pgn, session->driver.nmea2000.unit);
 
-    if (decode_ais_header(session->context, bu, len, ais, 0xffffffffU) != 0) {
+    if (vy_decode_ais_header(session->context, bu, len, ais, 0xffffffffU) != 0) {
         ais->type18.lon      = (int)          (getles32(bu, 5) * 0.06);
 	ais->type18.lat      = (int)          (getles32(bu, 9) * 0.06);
 	ais->type18.accuracy = (bool)         ((bu[13] >> 0) & 0x01);
@@ -878,7 +880,16 @@ static gps_mask_t hnd_129039(unsigned char *bu, int len, PGN *pgn, struct gps_de
 	ais->type18.band     = (bool)         ((bu[24] >> 5) & 0x01);
 	ais->type18.msg22    = (bool)         ((bu[24] >> 6) & 0x01);
 	ais->type18.assigned = (bool)         ((bu[24] >> 7) & 0x01);
-	decode_ais_channel_info(bu, len, 163, session);
+
+	vy_decode_ais_channel_info(bu, len, 163, session);
+
+	gpsd_report(session->context->debug, LOG_IO,
+		    "                   lon = %f, lat = %f, course = %d, speed = %u, ch = %c\n",
+		ais->type1.lon / AIS_LATLON_DIV, 
+		ais->type1.lat / AIS_LATLON_DIV, 
+		ais->type1.course,
+		ais->type1.speed,
+		session->driver.aivdm.ais_channel);
 
 	return(ONLINE_SET | AIS_SET);
     }
@@ -899,7 +910,7 @@ static gps_mask_t hnd_129040(unsigned char *bu, int len, PGN *pgn, struct gps_de
     gpsd_report(session->context->debug, LOG_DATA,
 		"pgn %6d(%3d):\n", pgn->pgn, session->driver.nmea2000.unit);
 
-    if (decode_ais_header(session->context, bu, len, ais, 0xffffffffU) != 0) {
+    if (vy_decode_ais_header(session->context, bu, len, ais, 0xffffffffU) != 0) {
         uint16_t length, beam, to_bow, to_starboard;
 	int l;
 
@@ -937,7 +948,7 @@ static gps_mask_t hnd_129040(unsigned char *bu, int len, PGN *pgn, struct gps_de
 	    ais->type19.shipname[l] = (char) bu[32+l];
 	}
 	ais->type19.shipname[AIS_SHIPNAME_MAXLEN] = (char) 0;
-	decode_ais_channel_info(bu, len, 422, session);
+	vy_decode_ais_channel_info(bu, len, 422, session);
 
 	return(ONLINE_SET | AIS_SET);
     }
@@ -957,7 +968,7 @@ static gps_mask_t hnd_129794(unsigned char *bu, int len, PGN *pgn, struct gps_de
     gpsd_report(session->context->debug, LOG_DATA,
 		"pgn %6d(%3d):\n", pgn->pgn, session->driver.nmea2000.unit);
 
-    if (decode_ais_header(session->context, bu, len, ais, 0xffffffffU) != 0) {
+    if (vy_decode_ais_header(session->context, bu, len, ais, 0xffffffffU) != 0) {
         uint16_t  length, beam, to_bow, to_starboard, date;
 	int       l;
 	uint32_t  time;
@@ -1034,7 +1045,7 @@ static gps_mask_t hnd_129794(unsigned char *bu, int len, PGN *pgn, struct gps_de
 	       ais->type5.hour,
 	       ais->type5.minute);
 #endif /* of #if NMEA2000_DEBUG_AIS */
-	decode_ais_channel_info(bu, len, 592, session);
+	vy_decode_ais_channel_info(bu, len, 592, session);
         return(ONLINE_SET | AIS_SET);
     }
     return(0);
@@ -1054,7 +1065,7 @@ static gps_mask_t hnd_129798(unsigned char *bu, int len, PGN *pgn, struct gps_de
     gpsd_report(session->context->debug, LOG_DATA,
 		"pgn %6d(%3d):\n", pgn->pgn, session->driver.nmea2000.unit);
 
-    if (decode_ais_header(session->context, bu, len, ais, 0xffffffffU) != 0) {
+    if (vy_decode_ais_header(session->context, bu, len, ais, 0xffffffffU) != 0) {
         ais->type9.lon       = (int)          (getles32(bu, 5) * 0.06);
 	ais->type9.lat       = (int)          (getles32(bu, 9) * 0.06);
 	ais->type9.accuracy  = (bool)         ((bu[13] >> 0) & 0x01);
@@ -1068,7 +1079,7 @@ static gps_mask_t hnd_129798(unsigned char *bu, int len, PGN *pgn, struct gps_de
 	ais->type9.dte	     = (unsigned int) ((bu[30] >> 0) & 0x01);
 /*      ais->type9.spare     = (bu[30] >> 1) & 0x7f; */
 	ais->type9.assigned  = 0; /* Not transmitted ???? */
-	decode_ais_channel_info(bu, len, 163, session);
+	vy_decode_ais_channel_info(bu, len, 163, session);
 
         return(ONLINE_SET | AIS_SET);
     }
@@ -1089,7 +1100,7 @@ static gps_mask_t hnd_129802(unsigned char *bu, int len, PGN *pgn, struct gps_de
     gpsd_report(session->context->debug, LOG_DATA,
 		"pgn %6d(%3d):\n", pgn->pgn, session->driver.nmea2000.unit);
 
-    if (decode_ais_header(session->context, bu, len, ais, 0x3fffffff) != 0) {
+    if (vy_decode_ais_header(session->context, bu, len, ais, 0x3fffffff) != 0) {
         int                   l;
 
 /*      ais->type14.channel = (bu[ 5] >> 0) & 0x1f; */
@@ -1097,7 +1108,7 @@ static gps_mask_t hnd_129802(unsigned char *bu, int len, PGN *pgn, struct gps_de
 	    ais->type14.text[l] = (char) bu[6+l];
 	}
 	ais->type14.text[36] = (char) 0;
-	decode_ais_channel_info(bu, len, 40, session);
+	vy_decode_ais_channel_info(bu, len, 40, session);
 
         return(ONLINE_SET | AIS_SET);
     }
@@ -1117,7 +1128,7 @@ static gps_mask_t hnd_129809(unsigned char *bu, int len, PGN *pgn, struct gps_de
     gpsd_report(session->context->debug, LOG_DATA,
 		"pgn %6d(%3d):\n", pgn->pgn, session->driver.nmea2000.unit);
 
-    if (decode_ais_header(session->context, bu, len, ais, 0xffffffffU) != 0) {
+    if (vy_decode_ais_header(session->context, bu, len, ais, 0xffffffffU) != 0) {
         int                   l;
 	int                   index   = session->driver.aivdm.context[0].type24_queue.index;
 	struct ais_type24a_t *saveptr = &session->driver.aivdm.context[0].type24_queue.ships[index];
@@ -1139,7 +1150,7 @@ static gps_mask_t hnd_129809(unsigned char *bu, int len, PGN *pgn, struct gps_de
 	index %= MAX_TYPE24_INTERLEAVE;
 	session->driver.aivdm.context[0].type24_queue.index = index;
 
-	decode_ais_channel_info(bu, len, 200, session);
+	vy_decode_ais_channel_info(bu, len, 200, session);
 
 	ais->type24.part = part_a;
 	return(ONLINE_SET | AIS_SET);
@@ -1160,7 +1171,7 @@ static gps_mask_t hnd_129810(unsigned char *bu, int len, PGN *pgn, struct gps_de
     gpsd_report(session->context->debug, LOG_DATA,
 		"pgn %6d(%3d):\n", pgn->pgn, session->driver.nmea2000.unit);
 
-    if (decode_ais_header(session->context, bu, len, ais, 0xffffffffU) != 0) {
+    if (vy_decode_ais_header(session->context, bu, len, ais, 0xffffffffU) != 0) {
       int l, i;
 
 	ais->type24.shiptype = (unsigned int) ((bu[ 5] >> 0) & 0xff);
@@ -1315,7 +1326,9 @@ static gps_mask_t hnd_127245(unsigned char *bu, int len, PGN *pgn, struct gps_de
     dir_order    = bu[1] & 0xff;       // TODO: guess would be 1 bit?
     reserved1    = bu[1];
     angle_order  = getles16(bu, 2);    // TODO N/A
-    position     = getles16(bu, 4) * 0.0001 * RAD_2_DEG; // corresponds to RSA port rudder sensor
+
+    // corresponds to RSA port rudder sensor
+    position     = getles16(bu, 4) * 0.0001 * RAD_2_DEG; 
 
     reserved2    = getub(bu, 6);
 
@@ -1556,6 +1569,7 @@ static gps_mask_t hnd_127251(unsigned char *bu, int len, PGN *pgn, struct gps_de
 
     print_data(session->context, bu, len, pgn);
 
+    print_data(session->context, bu, len, pgn);
     gpsd_report(session->context->debug, LOG_DATA, 
 		"pgn %6d(%3d):\n", pgn->pgn, session->driver.nmea2000.unit);
 
@@ -2394,7 +2408,7 @@ static void vyspi_preparse(struct gps_device_t *session) {
   size_t packetlen = vyspi_packetlen(lexer);
 
   gpsd_report(session->context->debug, LOG_DATA, 
-	      "VYSPI: preparse called with packet len = %u\n", packetlen);
+	      "VYSPI: preparse called with packet len = %lu\n", packetlen);
 
   // one extra for reading both, len and type/origin
   while(packet_buffered_input(lexer)) {
@@ -2422,7 +2436,7 @@ static void vyspi_preparse(struct gps_device_t *session) {
     if(pkgType == PKG_TYPE_NMEA2000) {
 
       if(lexer->inbuflen < lexer->inbufptr - lexer->inbuffer + pkgLen + 8) {
-	gpsd_report(session->context->debug, LOG_WARN, "VYSPI: exit prematurely: %d + 8 + %d > %d\n",
+	gpsd_report(session->context->debug, LOG_WARN, "VYSPI: exit prematurely: %ld + 8 + %d > %lu\n",
 		    (lexer->inbufptr - lexer->inbuffer), pkgLen, packetlen);
 	// discard 
 	lexer->inbufptr = lexer->inbuffer + lexer->inbuflen;
@@ -2459,7 +2473,7 @@ static void vyspi_preparse(struct gps_device_t *session) {
     } else if (pkgType == PKG_TYPE_NMEA0183) {
       
       if(lexer->inbuflen < lexer->inbufptr - lexer->inbuffer + pkgLen) {
-	gpsd_report(session->context->debug, LOG_WARN, "VYSPI: exit prematurely: %d + %d > %d\n",
+	gpsd_report(session->context->debug, LOG_WARN, "VYSPI: exit prematurely: %ld + %d > %lu\n",
 		    (lexer->inbufptr - lexer->inbuffer), pkgLen, packetlen);
 	// discard 
 	lexer->inbufptr = lexer->inbuffer + lexer->inbuflen;
@@ -2530,7 +2544,7 @@ static ssize_t vyspi_get(struct gps_device_t *session)
 
     if(status <= 0) {
       gpsd_report(session->context->debug, LOG_DATA, 
-		  "VYSPI: exit with len in bytes= %d, errno= %d\n", 
+		  "VYSPI: exit with len in bytes= %lu, errno= %d\n", 
 		  status, errno);
       return 0;
     }
@@ -2754,9 +2768,12 @@ const char /*@ observer @*/ *gpsd_vyspidump(struct gps_device_t *device) {
 
   char *binbuf = (char *)device->packet.outbuffer;
   size_t binbuflen = device->packet.outbuflen;
-
-  printf("VYSPI: gpsd_vyspidump %u entered with len = %d\n", 
-	 device->driver.vyspi.last_pgn, binbuflen);
+ 
+  /*
+  gpsd_report(session->context->debug, LOG_SPIN, 
+	      "VYSPI: gpsd_vyspidump %u entered with len = %ld\n", 
+	      device->driver.vyspi.last_pgn, binbuflen);
+  */
 
   size_t j = 0;
   size_t i = 0;
@@ -2765,9 +2782,11 @@ const char /*@ observer @*/ *gpsd_vyspidump(struct gps_device_t *device) {
     (size_t) ((binbuflen >
 	       MAX_PACKET_LENGTH) ? MAX_PACKET_LENGTH : binbuflen);
 
-  printf("VYSPI: gpsd_vyspidump called with packet len = %d\n", 
-	 binbuflen);
-
+  /*
+  gpsd_report(session->context->debug, LOG_SPIN, 
+	      "VYSPI: gpsd_vyspidump called with packet len = %lu\n", 
+	      binbuflen);
+  */
 
   if (NULL == binbuf || 0 == binbuflen) {
     scbuf[0] = '\0';
@@ -2777,7 +2796,7 @@ const char /*@ observer @*/ *gpsd_vyspidump(struct gps_device_t *device) {
   if(PKG_TYPE_NMEA2000 == PKG_TYPE_NMEA2000) {
 
     char tmp[255];
-    sprintf(tmp, "%s,%u,%u,%u,%u,%u,", 
+    sprintf(tmp, "%s,%u,%u,%u,%u,%lu,", 
 	    "now", 0, 
 	    device->driver.vyspi.last_pgn, 
 	    0, 0, 
@@ -2787,7 +2806,7 @@ const char /*@ observer @*/ *gpsd_vyspidump(struct gps_device_t *device) {
       scbuf[j++] = tmp[i];
     }
 
-    char * ibuf = (const char *)&binbuf[0];
+    const char * ibuf = (const char *)&binbuf[0];
     const char *hexchar = "0123456789abcdef";
 
     /*@ -shiftimplementation @*/
