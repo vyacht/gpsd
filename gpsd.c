@@ -1486,6 +1486,20 @@ static void pseudonmea_report(gps_mask_t changed,
 	    pseudonmea_write(changed, buf, strlen(buf), device);
 	}
 #endif /* AIVDM_ENABLE */
+	if ((changed & ENVIRONMENT_SET) != 0) {
+	    nmea_environment_dump(device, buf, sizeof(buf));
+	    gpsd_report(context.debug, LOG_IO,
+			"<= GPS (binary environment) %s: %s\n",
+			device->gpsdata.dev.path, buf);
+	    pseudonmea_write(changed, buf, strlen(buf), device);
+	}
+	if ((changed & NAVIGATION_SET) != 0) {
+	    nmea_navigation_dump(device, buf, sizeof(buf));
+	    gpsd_report(context.debug, LOG_IO,
+			"<= GPS (binary navigation) %s: %s\n",
+			device->gpsdata.dev.path, buf);
+	    pseudonmea_write(changed, buf, strlen(buf), device);
+	}
     }
 }
 #endif /* SOCKET_EXPORT_ENABLE */

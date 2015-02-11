@@ -415,6 +415,280 @@ static void gpsd_binary_ais_dump(struct gps_device_t *session,
 }
 #endif /* AIVDM_ENABLE */
 
+static void gpsd_binary_vwr_dump(struct gps_device_t *session,
+				     char bufp[], size_t len)
+{
+  // $--VWR,x.x,a,x.x,N,x.x,M,x.x,K*hh<CR><LF>
+
+  (void)snprintf(bufp, len, "$GPVWR,");
+
+  if ( !isnan(session->gpsdata.environment.wind.apparent.angle) ) {
+      double ang = session->gpsdata.environment.wind.apparent.angle;
+      (void)snprintf(bufp + strlen(bufp), len - strlen(bufp),
+		     "%.2f,%c,", 
+		     ang <= 180 ? ang:360.0 - ang,
+		     ang <= 180 ? 'R':'L');
+  } else {
+      (void)strlcat(bufp, ",,", len);
+  }
+
+  if ( !isnan(session->gpsdata.environment.wind.apparent.speed) ) {
+      (void)snprintf(bufp + strlen(bufp), len - strlen(bufp),
+		     "%.2f,N,", session->gpsdata.environment.wind.apparent.speed);
+  } else {
+      (void)strlcat(bufp, ",,", len);
+  }
+
+  (void)strlcat(bufp, ",,,", len);
+
+  nmea_add_checksum(bufp);
+}
+
+static void gpsd_binary_vtg_dump(struct gps_device_t *session,
+				     char bufp[], size_t len)
+{ 
+  // $--VTG,x.x,x,x.x,x.x,*hh<CR><LF>
+  (void)snprintf(bufp, len, "$GPVTG,");
+
+  if ( !isnan(session->gpsdata.navigation.course_over_ground) ) {
+      (void)snprintf(bufp + strlen(bufp), len - strlen(bufp),
+		     "%.2f,T,", session->gpsdata.navigation.course_over_ground);
+  } else {
+      (void)strlcat(bufp, ",,", len);
+  }
+
+  // no magnetic at this point in time
+  (void)strlcat(bufp, ",,", len);
+
+  if ( !isnan(session->gpsdata.navigation.speed_over_ground) ) {
+      (void)snprintf(bufp + strlen(bufp), len - strlen(bufp),
+		     "%.2f,N,", session->gpsdata.navigation.speed_over_ground);
+      (void)snprintf(bufp + strlen(bufp), len - strlen(bufp),
+		     "%.2f,K", session->gpsdata.navigation.speed_over_ground * KNOTS_TO_KPH);
+  } else {
+      (void)strlcat(bufp, ",,", len);
+      (void)strlcat(bufp, ",,", len);
+  }
+  nmea_add_checksum(bufp);
+}
+
+static void gpsd_binary_vhw_dump(struct gps_device_t *session,
+				     char bufp[], size_t len)
+{ 
+  // $--VHW,x.x,T,x.x,M,x.x,N,x.x,K*hh<CR><LF>
+
+  (void)snprintf(bufp, len, "$GPVHW,");
+
+  if ( !isnan(session->gpsdata.navigation.heading[compass_true]) ) {
+      (void)snprintf(bufp + strlen(bufp), len - strlen(bufp),
+		     "%.2f,T,", 
+		     session->gpsdata.navigation.heading[compass_true]);
+  } else {
+      (void)strlcat(bufp, ",,", len);
+  }
+
+  if ( !isnan(session->gpsdata.navigation.heading[compass_magnetic]) ) {
+      (void)snprintf(bufp + strlen(bufp), len - strlen(bufp),
+		     "%.2f,M,", 
+		     session->gpsdata.navigation.heading[compass_magnetic]);
+  } else {
+      (void)strlcat(bufp, ",,", len);
+  }
+
+  if ( !isnan(session->gpsdata.navigation.speed_thru_water) ) {
+
+      (void)snprintf(bufp + strlen(bufp), len - strlen(bufp),
+		     "%.2f,N,%.2f,K", 
+		     session->gpsdata.navigation.speed_thru_water,
+                     session->gpsdata.navigation.speed_thru_water * KNOTS_TO_KPH );
+
+  } else {
+      (void)strlcat(bufp, ",,,", len);
+  }
+
+  nmea_add_checksum(bufp);
+}
+
+static void gpsd_binary_dpt_dump(struct gps_device_t *session,
+				     char bufp[], size_t len)
+{ 
+  // $--DBT,x.x,f,x.x,M,x.x,F*hh<CR><LF>
+  if (!isnan(session->gpsdata.navigation.depth_offset)) {
+    if (!isnan(session->gpsdata.navigation.depth)) {
+      (void)snprintf(bufp, len, "$GPDPT,%.2f,%.2f",
+		     session->gpsdata.navigation.depth,
+		     session->gpsdata.navigation.depth_offset);
+      nmea_add_checksum(bufp);
+    }
+  } else if (!isnan(session->gpsdata.navigation.depth)) {
+    (void)snprintf(bufp, len, "$GPDBT,%.2f,f,%.2f,M,,",
+		 session->gpsdata.navigation.depth *  METERS_TO_FEET,
+		 session->gpsdata.navigation.depth);
+    nmea_add_checksum(bufp);
+  }
+}
+
+static void gpsd_binary_mwv_dump(struct gps_device_t *session,
+				     char bufp[], size_t len)
+{ 
+  /*
+    $--MWV,x.x,a,x.x,a*hh<CR><LF>
+
+    Field Number:
+
+    1. Wind Angle, 0 to 360 degrees
+    2. Reference, R = Relative, T = True
+    3. Wind Speed
+    4. Wind Speed Units, K/M/N
+    5. Status, A = Data Valid
+    6. Checksum
+  */
+
+  if (!isnan(session->gpsdata.environment.wind.calculated_ground.angle)) {
+    (void)snprintf(bufp, len, "$GPMWV,%.2f,T,%.2f,K,A",
+		 session->gpsdata.environment.wind.calculated_ground.angle,
+		   session->gpsdata.environment.wind.calculated_ground.speed);
+    nmea_add_checksum(bufp);
+  }
+}
+
+static void gpsd_binary_hdg_dump(struct gps_device_t *session,
+				     char bufp[], size_t len)
+{ 
+  // $--HDG,x.x,x.x,a,x.x,a*hh<CR><LF>
+
+  (void)snprintf(bufp, len, "$GPHDG,");
+
+  if (!isnan(session->gpsdata.navigation.heading[compass_magnetic])) {
+    (void)snprintf(bufp + strlen(bufp), len - strlen(bufp),
+		   "%.2f,",
+		   session->gpsdata.navigation.heading[compass_magnetic]);
+  } else {
+    (void)strlcat(bufp, ",", len);
+  }
+
+  if (isnan(session->gpsdata.environment.deviation))
+    (void)strlcat(bufp, ",,", len);
+  else
+    (void)snprintf(bufp + strlen(bufp), len - strlen(bufp),
+		   "%.2f,%c,", 
+		   fabs(session->gpsdata.environment.deviation),
+		   session->gpsdata.environment.deviation > 0?'E':'W');
+
+  if (isnan(session->gpsdata.environment.variation))
+    (void)strlcat(bufp, ",,", len);
+  else
+    (void)snprintf(bufp + strlen(bufp), len - strlen(bufp),
+		   "%.2f,%c", 
+		   fabs(session->gpsdata.environment.variation),
+		   session->gpsdata.environment.variation > 0?'E':'W');
+
+  nmea_add_checksum(bufp);
+}
+
+
+static void gpsd_binary_rsa_dump(struct gps_device_t *session,
+				     char bufp[], size_t len)
+{ 
+  // $--RSA,x.x,A,x.x,A
+
+  if (!isnan(session->gpsdata.navigation.rudder_angle)) {
+    (void)snprintf(bufp, len - strlen(bufp),
+		   "$GPRSA,%.2f,A,,,", 
+   		   session->gpsdata.navigation.rudder_angle);
+    nmea_add_checksum(bufp);
+  }
+
+}
+
+static void gpsd_binary_xte_dump(struct gps_device_t *session,
+				     char bufp[], size_t len)
+{ 
+  /*
+   === XTE - Cross-Track Error, Measured ===
+
+   ------------------------------------------------------------------------------
+        1 2 3   4 5 6   7
+        | | |   | | |   |
+    $--XTE,A,A,x.x,a,N,m,*hh<CR><LF>
+   ------------------------------------------------------------------------------
+
+   Field Number:
+
+   1. Status
+     - V = LORAN-C Blink or SNR warning
+     - V = general warning flag or other navigation systems when a reliable
+         fix is not available
+   2. Status
+     - V = Loran-C Cycle Lock warning flag
+     - A = OK or not used
+   3. Cross Track Error Magnitude
+   4. Direction to steer, L or R
+   5. Cross Track Units, N = Nautical Miles
+   6. FAA mode indicator (NMEA 2.3 and later, optional)
+   7. Checksum
+  */
+
+  if (!isnan(session->gpsdata.navigation.xte)) {
+    (void)snprintf(bufp, len - strlen(bufp),
+		   "$GPXTE,A,A,%.2f,%c,N,", 
+   		   fabs(session->gpsdata.navigation.xte * METERS_TO_NM),
+		   session->gpsdata.navigation.xte < 0?'R':'L');
+    nmea_add_checksum(bufp);
+  }
+
+}
+
+static void gpsd_binary_rot_dump(struct gps_device_t *session,
+				     char bufp[], size_t len)
+{ 
+  // $--ROT,x.x,A
+
+  if (!isnan(session->gpsdata.navigation.rate_of_turn)) {
+
+    // from deg / sec to deg / min
+    (void)snprintf(bufp, len - strlen(bufp),
+		   "$GPROT,%.2f,A", 
+   		   session->gpsdata.navigation.rate_of_turn * 60.0); 
+    nmea_add_checksum(bufp);
+  }
+
+}
+
+static void gpsd_binary_distance_traveled_dump(struct gps_device_t *session,
+				     char bufp[], size_t len) {
+  //  $--VLW,x.x,N,x.x,N*hh<CR><LF>xs
+  (void)snprintf(bufp, len, "$GPVLW,");
+
+  if (!isnan(session->gpsdata.navigation.distance_total)) {
+    (void)snprintf(bufp + strlen(bufp), len - strlen(bufp), 
+		 "%.2f,N,",
+		   session->gpsdata.navigation.distance_total);
+  } else {
+    (void)strlcat(bufp, ",,", len);
+  }
+
+  if (!isnan(session->gpsdata.navigation.distance_trip)) {
+    (void)snprintf(bufp + strlen(bufp), len - strlen(bufp), 
+		 "%.2f,N,",
+		   session->gpsdata.navigation.distance_trip);
+  } else {
+    (void)strlcat(bufp, ",,", len);
+  }
+
+  nmea_add_checksum(bufp);
+}
+
+static void gpsd_binary_temp_water_dump(struct gps_device_t *session,
+				     char bufp[], size_t len) {
+  //  $--MTW,x.x,C*hh<CR><LF>
+  if (!isnan(session->gpsdata.environment.temp[temp_water])) {
+    (void)snprintf(bufp, len, "$GPMTW,%.2f,C",
+		 session->gpsdata.environment.temp[temp_water]);
+    nmea_add_checksum(bufp);
+  }
+}
+
 /*@-compdef -mustdefine@*/
 /* *INDENT-OFF* */
 void nmea_tpv_dump(struct gps_device_t *session,
@@ -465,6 +739,102 @@ void nmea_ais_dump(struct gps_device_t *session,
 				   len - strlen(bufp));
 }
 #endif /* AIVDM_ENABLE */
+
+void nmea_navigation_dump(struct gps_device_t *session,
+		   /*@out@*/ char bufp[], size_t len)
+{
+    bufp[0] = '\0';
+    if ((session->gpsdata.set & NAVIGATION_SET) != 0) {
+      switch(session->gpsdata.navigation.set) {
+      case NAV_STW_PSET:
+	gpsd_binary_vhw_dump(session, bufp + strlen(bufp),
+					  len - strlen(bufp));
+	break;
+
+      case NAV_SOG_PSET:
+      case NAV_COG_PSET:
+	gpsd_binary_vtg_dump(session, bufp + strlen(bufp),
+					   len - strlen(bufp));
+	break;
+
+      case NAV_DIST_TOT_PSET:
+      case NAV_DIST_TRIP_PSET:
+	gpsd_binary_distance_traveled_dump(session, bufp + strlen(bufp),
+					   len - strlen(bufp));
+	break;
+
+      case NAV_DPT_PSET:
+	gpsd_binary_dpt_dump(session, bufp + strlen(bufp),
+				   len - strlen(bufp));
+	break;
+
+      case NAV_HDG_MAGN_PSET:
+	gpsd_binary_hdg_dump(session, bufp + strlen(bufp),
+				   len - strlen(bufp));
+	break;
+
+      case NAV_HDG_TRUE_PSET:
+	gpsd_binary_vhw_dump(session, bufp + strlen(bufp),
+				   len - strlen(bufp));
+	break;
+
+      case NAV_ROT_PSET:
+	gpsd_binary_rot_dump(session, bufp + strlen(bufp),
+				   len - strlen(bufp));
+	break;
+
+      case NAV_XTE_PSET:
+	gpsd_binary_xte_dump(session, bufp + strlen(bufp),
+				   len - strlen(bufp));
+	break;
+
+      case NAV_RUDDER_ANGLE_PSET:
+	gpsd_binary_rsa_dump(session, bufp + strlen(bufp),
+				   len - strlen(bufp));
+	break;
+
+      default:
+	break;
+      };
+    }
+}
+
+void nmea_environment_dump(struct gps_device_t *session,
+		   /*@out@*/ char bufp[], size_t len)
+{
+    bufp[0] = '\0';
+    if ((session->gpsdata.set & ENVIRONMENT_SET) != 0) {
+      switch(session->gpsdata.environment.set) {
+
+      case ENV_WIND_APPARENT_SPEED_PSET:
+      case ENV_WIND_APPARENT_ANGLE_PSET:
+	gpsd_binary_vwr_dump(session, bufp + strlen(bufp),
+				   len - strlen(bufp));
+	break;
+
+      case ENV_WIND_TRUE_GROUND_SPEED_PSET:
+      case ENV_WIND_TRUE_GROUND_ANGLE_PSET:
+      case ENV_WIND_TRUE_WATER_SPEED_PSET:
+      case ENV_WIND_TRUE_WATER_ANGLE_PSET:
+	gpsd_binary_mwv_dump(session, bufp + strlen(bufp),
+				   len - strlen(bufp));
+	break;
+
+      case ENV_TEMP_WATER_PSET:
+	gpsd_binary_temp_water_dump(session, bufp + strlen(bufp),
+				   len - strlen(bufp));
+	break;
+
+      case ENV_TEMP_AIR_PSET:
+      case ENV_VARIATION_PSET:
+      case ENV_DEVIATION_PSET:
+	break;
+
+      default:
+	break;
+      };
+    }
+}
 
 /*@+compdef +mustdefine@*/
 
