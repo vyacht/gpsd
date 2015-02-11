@@ -470,6 +470,123 @@ static gps_mask_t hnd_129026(unsigned char *bu, int len, PGN *pgn, struct gps_de
     return SPEED_SET | TRACK_SET | get_mode(session);
 }
 
+/*
+ *   PGN 129029: GNSS Positition Data
+ */
+static gps_mask_t hnd_129029(unsigned char *bu, int len, PGN *pgn, struct gps_device_t *session)
+{
+    gps_mask_t mask;
+    int64_t lat;
+    int64_t lon;
+    int64_t alt;
+    int32_t sep;
+    int16_t pdop;
+    int16_t hdop;
+
+
+    print_data(session->context, bu, len, pgn);
+    gpsd_report(session->context->debug, LOG_DATA,
+		"pgn %6d(%3d):\n", pgn->pgn, session->driver.nmea2000.unit);
+
+    mask                             = 0;
+    session->driver.nmea2000.sid[3]  = bu[0];
+
+    /*@-type@*//* splint has a bug here */
+    session->newdata.time            = getleu16(bu,1) * 24*60*60 + getleu32(bu, 3)/1e4;
+    /*@+type@*/
+    mask                            |= TIME_SET;
+
+    /*@-type@*//* splint has a bug here */
+    
+    lat = getles64(bu, 7);
+    lon = getles64(bu, 15);
+
+    if((lat != 0x7fffffffffffffff) && (lon !=  0x7fffffffffffffff)) {
+      session->newdata.latitude        = lat * 1e-16;
+      session->newdata.longitude       = lon * 1e-16;
+
+      /*@+type@*/
+      mask                            |= LATLON_SET;
+    }
+
+    /*@-type@*//* splint has a bug here */
+    alt = getles64(bu, 23);
+    if(alt != 0x7fffffffffffffff) {
+      session->newdata.altitude        = alt * 1e-6;
+      /*@+type@*/
+      mask                            |= ALTITUDE_SET;
+    }
+
+    //  printf("mode %x %x\n", (bu[31] >> 4) & 0x0f, bu[31]);
+    // TODO GPS100 says =no GPS, 1=GNSS fix, 2=DGNSS fix, 6=Estimated (dead reckoning). 
+    switch ((bu[31] >> 4) & 0x0f) {
+    case 0:
+        session->gpsdata.status      = STATUS_NO_FIX;
+	break;
+    case 1:
+        session->gpsdata.status      = STATUS_FIX;
+	break;
+    case 2:
+        session->gpsdata.status      = STATUS_DGPS_FIX;
+	break;
+    case 3:
+    case 4:
+    case 5:
+        session->gpsdata.status      = STATUS_FIX; /* Is this correct ? */
+	break;
+    default:
+        session->gpsdata.status      = STATUS_NO_FIX;
+	break;
+    }
+    mask                            |= STATUS_SET;
+
+    /*@-type@*//* splint has a bug here */
+    sep = getles32(bu, 38);
+    if(sep != 0x7fffffff) {
+      session->gpsdata.separation      = sep / 100.0;
+      /*@+type@*/
+      if(alt != 0x7fffffffffffffff) {
+	session->newdata.altitude       -= session->gpsdata.separation;
+      }
+    }
+
+    if(bu[33] != 0xff) {
+      session->gpsdata.satellites_used = (int)bu[33];
+    }
+
+    /*@-type@*//* splint has a bug here */
+    hdop = getles16(bu, 34);
+    pdop = getles16(bu, 36);
+
+    if((hdop != 0x7fff) && (pdop != 0x7fff)) {
+      session->gpsdata.dop.hdop        = hdop * 0.01;
+      session->gpsdata.dop.pdop        = pdop * 0.01;
+      /*@+type@*/
+      mask                            |= DOP_SET;
+    }
+
+    (void)strlcpy(session->gpsdata.tag, "129029", sizeof(session->gpsdata.tag));
+
+    char times[JSON_DATE_MAX + 1];
+    unix_to_iso8601(session->newdata.time, times, sizeof(times));
+    gpsd_report(session->context->debug, LOG_IO,
+		"                   SID = %u, time = %s, lat = %f, lon = %f, alt = %f\n",
+		session->driver.nmea2000.sid[3],
+		times, 
+		session->newdata.latitude,
+		session->newdata.longitude,
+		session->newdata.altitude + session->gpsdata.separation);
+
+    gpsd_report(session->context->debug, LOG_IO,
+		"                   status = %d, sep = %f, sats = %d, hdop = %f, pdop = %f\n",
+		session->gpsdata.status,
+		session->gpsdata.separation,
+		session->gpsdata.satellites_used,
+		session->gpsdata.dop.hdop,
+		session->gpsdata.dop.pdop);
+
+    return mask | get_mode(session);
+}
 
 /*
  *   PGN 126992: GNSS System Time
@@ -691,94 +808,6 @@ static gps_mask_t hnd_129541(unsigned char *bu, int len, PGN *pgn, struct gps_de
 		"pgn %6d(%3d):\n", pgn->pgn, session->driver.nmea2000.unit);
 }
 
-/*
- *   PGN 129029: GNSS Positition Data
- */
-static gps_mask_t hnd_129029(unsigned char *bu, int len, PGN *pgn, struct gps_device_t *session)
-{
-    gps_mask_t mask;
-
-    print_data(session->context, bu, len, pgn);
-    gpsd_report(session->context->debug, LOG_DATA,
-		"pgn %6d(%3d):\n", pgn->pgn, session->driver.nmea2000.unit);
-
-    mask                             = 0;
-    session->driver.nmea2000.sid[3]  = bu[0];
-
-    /*@-type@*//* splint has a bug here */
-    session->newdata.time            = getleu16(bu,1) * 24*60*60 + getleu32(bu, 3)/1e4;
-    /*@+type@*/
-    mask                            |= TIME_SET;
-
-    /*@-type@*//* splint has a bug here */
-    session->newdata.latitude        = getles64(bu, 7) * 1e-16;  //TODO: 0x7fff ffff ffff ffff
-    session->newdata.longitude       = getles64(bu, 15) * 1e-16;
-    /*@+type@*/
-    mask                            |= LATLON_SET;
-
-    /*@-type@*//* splint has a bug here */
-    session->newdata.altitude        = getles64(bu, 23) * 1e-6;
-    /*@+type@*/
-    mask                            |= ALTITUDE_SET;
-
-//  printf("mode %x %x\n", (bu[31] >> 4) & 0x0f, bu[31]);
-    // TODO GPS100 says =no GPS, 1=GNSS fix, 2=DGNSS fix, 6=Estimated (dead reckoning). 
-    switch ((bu[31] >> 4) & 0x0f) {
-    case 0:
-        session->gpsdata.status      = STATUS_NO_FIX;
-	break;
-    case 1:
-        session->gpsdata.status      = STATUS_FIX;
-	break;
-    case 2:
-        session->gpsdata.status      = STATUS_DGPS_FIX;
-	break;
-    case 3:
-    case 4:
-    case 5:
-        session->gpsdata.status      = STATUS_FIX; /* Is this correct ? */
-	break;
-    default:
-        session->gpsdata.status      = STATUS_NO_FIX;
-	break;
-    }
-    mask                            |= STATUS_SET;
-
-    /*@-type@*//* splint has a bug here */
-    session->gpsdata.separation      = getles32(bu, 38) / 100.0;
-    /*@+type@*/
-    session->newdata.altitude       -= session->gpsdata.separation;
-
-    session->gpsdata.satellites_used = (int)bu[33];
-
-    /*@-type@*//* splint has a bug here */
-    session->gpsdata.dop.hdop        = getleu16(bu, 34) * 0.01;
-    session->gpsdata.dop.pdop        = getleu16(bu, 36) * 0.01;
-    /*@+type@*/
-    mask                            |= DOP_SET;
-
-    (void)strlcpy(session->gpsdata.tag, "129029", sizeof(session->gpsdata.tag));
-
-    char times[JSON_DATE_MAX + 1];
-    unix_to_iso8601(session->newdata.time, times, sizeof(times));
-    gpsd_report(session->context->debug, LOG_IO,
-		"                   SID = %u, time = %s, lat = %f, lon = %f, alt = %f\n",
-		session->driver.nmea2000.sid[3],
-		times, 
-		session->newdata.latitude,
-		session->newdata.longitude,
-		session->newdata.altitude + session->gpsdata.separation);
-
-    gpsd_report(session->context->debug, LOG_IO,
-		"                   status = %d, sep = %f, sats = %d, hdop = %f, pdop = %f\n",
-		session->gpsdata.status,
-		session->gpsdata.separation,
-		session->gpsdata.satellites_used,
-		session->gpsdata.dop.hdop,
-		session->gpsdata.dop.pdop);
-
-    return mask | get_mode(session);
-}
 
 /*
  *   PGN 129033 Time & Date [2]
