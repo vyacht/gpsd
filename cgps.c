@@ -365,8 +365,8 @@ static void update_compass_panel(struct gps_data_t *gpsdata)
     (void)mvwprintw(datawin, 1, DATAWIN_VALUE_OFFSET, "%-*s", 27, scr);
 
     /* Fill in the heading. */
-    if (isnan(gpsdata->fix.track) == 0) {
-	(void)snprintf(scr, sizeof(scr), "%.1f degrees", gpsdata->fix.track);
+    if (isnan(gpsdata->navigation.course_over_ground) == 0) {
+	(void)snprintf(scr, sizeof(scr), "%.1f degrees", gpsdata->navigation.course_over_ground);
     } else
 	(void)snprintf(scr, sizeof(scr), "n/a");
     (void)mvwprintw(datawin, 2, DATAWIN_VALUE_OFFSET, "%-*s", 27, scr);
@@ -379,8 +379,8 @@ static void update_compass_panel(struct gps_data_t *gpsdata)
     (void)mvwprintw(datawin, 3, DATAWIN_VALUE_OFFSET, "%-*s", 27, scr);
 
     /* Fill in the roll. */
-    if (isnan(gpsdata->fix.speed) == 0)
-	(void)snprintf(scr, sizeof(scr), "%.1f", gpsdata->fix.speed);
+    if (isnan(gpsdata->navigation.speed_over_ground) == 0)
+	(void)snprintf(scr, sizeof(scr), "%.1f", gpsdata->navigation.speed_over_ground);
     else
 	(void)snprintf(scr, sizeof(scr), "n/a");
     (void)mvwprintw(datawin, 4, DATAWIN_VALUE_OFFSET, "%-*s", 27, scr);
@@ -509,21 +509,21 @@ static void update_gps_panel(struct gps_data_t *gpsdata)
     (void)mvwprintw(datawin, 4, DATAWIN_VALUE_OFFSET, "%-*s", 27, scr);
 
     /* Fill in the speed. */
-    if (gpsdata->fix.mode >= MODE_2D && isnan(gpsdata->fix.track) == 0)
+    if (gpsdata->fix.mode >= MODE_2D && isnan(gpsdata->navigation.speed_over_ground) == 0)
 	(void)snprintf(scr, sizeof(scr), "%.1f %s",
-		       gpsdata->fix.speed * speedfactor, speedunits);
+		       gpsdata->navigation.speed_over_ground * speedfactor, speedunits);
     else
 	(void)snprintf(scr, sizeof(scr), "n/a");
     (void)mvwprintw(datawin, 5, DATAWIN_VALUE_OFFSET, "%-*s", 27, scr);
 
     /* Fill in the heading. */
-    if (gpsdata->fix.mode >= MODE_2D && isnan(gpsdata->fix.track) == 0) {
+    if (gpsdata->fix.mode >= MODE_2D && isnan(gpsdata->navigation.course_over_ground) == 0) {
 	double magheading = true2magnetic(gpsdata->fix.latitude,
 					 gpsdata->fix.longitude,
-					  gpsdata->fix.track);
+					  gpsdata->navigation.course_over_ground);
 	if (!magnetic_flag || isnan(magheading) != 0) {
 	    (void)snprintf(scr, sizeof(scr), "%.1f deg (true)",
-			   gpsdata->fix.track);
+			   gpsdata->navigation.course_over_ground);
 	} else {
 	    (void)snprintf(scr, sizeof(scr), "%.1f deg (mag) ",
 		magheading);
@@ -605,18 +605,18 @@ static void update_gps_panel(struct gps_data_t *gpsdata)
 			scr);
 
 	/* Fill in the estimated track error. */
-	if (isnan(gpsdata->fix.epd) == 0)
+	if (isnan(gpsdata->navigation.epd) == 0)
 	    (void)snprintf(scr, sizeof(scr), "+/- %d deg",
-			   (int)(gpsdata->fix.epd));
+			   (int)(gpsdata->navigation.epd));
 	else
 	    (void)snprintf(scr, sizeof(scr), "n/a");
 	(void)mvwprintw(datawin, 12, DATAWIN_VALUE_OFFSET + 5, "%-*s", 22,
 			scr);
 
 	/* Fill in the estimated speed error. */
-	if (isnan(gpsdata->fix.eps) == 0)
+	if (isnan(gpsdata->navigation.eps) == 0)
 	    (void)snprintf(scr, sizeof(scr), "+/- %d %s",
-			   (int)(gpsdata->fix.eps * speedfactor), speedunits);
+			   (int)(gpsdata->navigation.eps * speedfactor), speedunits);
 	else
 	    (void)snprintf(scr, sizeof(scr), "n/a");
 	(void)mvwprintw(datawin, 13, DATAWIN_VALUE_OFFSET + 5, "%-*s", 22,

@@ -97,10 +97,6 @@ struct gps_fix_t {
     double epx;  	/* Longitude position uncertainty, meters */
     double altitude;	/* Altitude in meters (valid if mode == 3) */
     double epv;  	/* Vertical position uncertainty, meters */
-    double track;	/* Course made good (relative to true north) */
-    double epd;		/* Track uncertainty, degrees */
-    double speed;	/* Speed over ground, meters/sec */
-    double eps;		/* Speed uncertainty, meters/sec */
     double climb;       /* Vertical speed, meters/sec */
     double epc;		/* Vertical speed uncertainty */
 };
@@ -1804,7 +1800,6 @@ struct ais_t
 };
 
 struct attitude_t {
-    double heading;
     double pitch;
     double roll;
     double yaw;
@@ -1819,8 +1814,6 @@ struct attitude_t {
     double acc_z;
     double gyro_x;
     double gyro_y;
-    double temp;
-    double depth;
     /* compass status -- TrueNorth (and any similar) devices only */
     char mag_st;
     char pitch_st;
@@ -2047,8 +2040,8 @@ struct gps_data_t {
 #define TIMERR_SET	(1llu<<3)
 #define LATLON_SET	(1llu<<4)
 #define ALTITUDE_SET	(1llu<<5)
-#define SPEED_SET	(1llu<<6)
-#define TRACK_SET	(1llu<<7)
+
+
 #define CLIMB_SET	(1llu<<8)
 #define STATUS_SET	(1llu<<9)
 #define MODE_SET	(1llu<<10)
@@ -2057,8 +2050,8 @@ struct gps_data_t {
 #define VERR_SET	(1llu<<13)
 #define ATTITUDE_SET	(1llu<<14)
 #define SATELLITE_SET	(1llu<<15)
-#define SPEEDERR_SET	(1llu<<16)
-#define TRACKERR_SET	(1llu<<17)
+
+
 #define CLIMBERR_SET	(1llu<<18)
 #define DEVICE_SET	(1llu<<19)
 #define DEVICELIST_SET	(1llu<<20)
@@ -2136,8 +2129,8 @@ struct gps_data_t {
 	struct subframe_t subframe;
 	struct ais_t ais;
 	struct attitude_t attitude;
-    struct navigation_t navigation;
-    struct environment_t environment;
+        struct navigation_t navigation;
+        struct environment_t environment;
 	struct rawdata_t raw;
 	struct gst_t gst;
 	/* "artificial" structures for various protocol responses */

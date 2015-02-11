@@ -954,11 +954,11 @@ static void gpsd_error_model(struct gps_device_t *session,
      * and climb/sink in the simplest possible way.
      */
     if (fix->mode >= MODE_2D && oldfix->mode >= MODE_2D
-	&& isnan(fix->speed) != 0) {
+	&& isnan(session->gpsdata.navigation.speed_over_ground) != 0) {
 	if (fix->time == oldfix->time)
-	    fix->speed = 0;
+	    session->gpsdata.navigation.speed_over_ground = 0;
 	else
-	    fix->speed =
+	    session->gpsdata.navigation.speed_over_ground =
 		earth_distance(fix->latitude, fix->longitude,
 			       oldfix->latitude, oldfix->longitude)
 		/ (fix->time - oldfix->time);
@@ -1008,7 +1008,7 @@ static void gpsd_error_model(struct gps_device_t *session,
 	 * didn't set the speed error and climb error members itself,
 	 * try to compute them now.
 	 */
-	if (isnan(fix->eps) != 0) {
+	if (isnan(session->gpsdata.navigation.eps) != 0) {
 	    if (oldfix->mode > MODE_NO_FIX && fix->mode > MODE_NO_FIX
 		&& isnan(oldfix->epx) == 0 && isnan(oldfix->epy) == 0
 		&& isnan(oldfix->time) == 0 && isnan(oldfix->time) == 0
@@ -1016,9 +1016,9 @@ static void gpsd_error_model(struct gps_device_t *session,
 		timestamp_t t = fix->time - oldfix->time;
 		double e =
 		    EMIX(oldfix->epx, oldfix->epy) + EMIX(fix->epx, fix->epy);
-		fix->eps = e / t;
+		session->gpsdata.navigation.eps = e / t;
 	    } else
-		fix->eps = NAN;
+		session->gpsdata.navigation.eps = NAN;
 	}
 	if ((fix->mode >= MODE_3D)
 	    && isnan(fix->epc) != 0 && fix->time > oldfix->time) {
@@ -1044,7 +1044,7 @@ static void gpsd_error_model(struct gps_device_t *session,
 	     * garbage, throw back NaN if the distance from the previous
 	     * fix is less than the error estimate.
 	     */
-	    fix->epd = NAN;
+	    session->gpsdata.navigation.eps = NAN;
 	    if (oldfix->mode >= MODE_2D) {
 		double adj =
 		    earth_distance(oldfix->latitude, oldfix->longitude,
@@ -1052,7 +1052,7 @@ static void gpsd_error_model(struct gps_device_t *session,
 		if (isnan(adj) == 0 && adj > EMIX(fix->epx, fix->epy)) {
 		    double opp = EMIX(fix->epx, fix->epy);
 		    double hyp = sqrt(adj * adj + opp * opp);
-		    fix->epd = RAD_2_DEG * 2 * asin(opp / hyp);
+		    session->gpsdata.navigation.eps = RAD_2_DEG * 2 * asin(opp / hyp);
 		}
 	    }
 	}
@@ -1474,8 +1474,8 @@ gps_mask_t gpsd_poll(struct gps_device_t *session)
 	/* don't downgrade mode if holding previous fix */
 	if (session->gpsdata.fix.mode > session->newdata.mode)
 	    session->gpsdata.set &= ~MODE_SET;
-	//gpsd_report(session->context->debug, LOG_PROG,
-	//              "transfer mask on %s: %02x\n", session->gpsdata.tag, session->gpsdata.set);
+	/*	gpsd_report(session->context->debug, LOG_PROG,
+		"transfer mask on %s: %02x\n", session->gpsdata.tag, session->gpsdata.set); */
 	gps_merge_fix(&session->gpsdata.fix,
 		      session->gpsdata.set, &session->newdata);
 #ifdef CHEAPFLOATS_ENABLE

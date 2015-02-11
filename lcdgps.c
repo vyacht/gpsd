@@ -198,11 +198,11 @@ static void update_lcd(struct gps_data_t *gpsdata)
 
     /* As a pilot, a heading of "0" gives me the heebie-jeebies (ie, 0
        == "invalid heading data", 360 == "North"). */
-    track=(int)(gpsdata->fix.track);
+    track=(int)(gpsdata->navigation.course_over_ground);
     if (track == 0) track = 360;
 
     snprintf(tmpbuf, 254, "widget_set gpsd three 1 3 {%.1f %s %d deg}\n",
-             gpsdata->fix.speed*speedfactor, speedunits,
+             gpsdata->navigation.speed_over_ground*speedfactor, speedunits,
              track);
     send_lcd(tmpbuf);
 

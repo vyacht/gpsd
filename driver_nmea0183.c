@@ -191,9 +191,11 @@ static gps_mask_t processGPRMC(int count, char *field[],
 	}
 	do_lat_lon(&field[3], &session->newdata);
 	mask |= LATLON_SET;
-	session->newdata.speed = safe_atof(field[7]) * KNOTS_TO_MPS;
-	session->newdata.track = safe_atof(field[8]);
-	mask |= (TRACK_SET | SPEED_SET);
+	session->gpsdata.navigation.speed_over_ground = safe_atof(field[7]) * KNOTS_TO_MPS;
+	session->gpsdata.navigation.set |= NAV_SOG_PSET;
+	session->gpsdata.navigation.course_over_ground = safe_atof(field[8]);
+	session->gpsdata.navigation.set |= NAV_COG_PSET;
+	mask |= NAVIGATION_SET;
 	/*
 	 * This copes with GPSes like the Magellan EC-10X that *only* emit
 	 * GPRMC. In this case we set mode and status here so the client
@@ -216,8 +218,8 @@ static gps_mask_t processGPRMC(int count, char *field[],
 		field[9], field[1],
 		session->newdata.latitude,
 		session->newdata.longitude,
-		session->newdata.speed,
-		session->newdata.track,
+		session->gpsdata.navigation.speed_over_ground,
+		session->gpsdata.navigation.course_over_ground,
 		session->newdata.mode,
 		session->gpsdata.status);
     return mask;
@@ -790,7 +792,8 @@ static gps_mask_t processHDT(int c UNUSED, char *field[],
     gps_mask_t mask;
     mask = ONLINE_SET;
 
-    session->gpsdata.attitude.heading = safe_atof(field[1]);
+    session->gpsdata.navigation.heading[compass_true] = safe_atof(field[1]);
+
     session->gpsdata.attitude.mag_st = '\0';
     session->gpsdata.attitude.pitch = NAN;
     session->gpsdata.attitude.pitch_st = '\0';
@@ -809,14 +812,14 @@ static gps_mask_t processHDT(int c UNUSED, char *field[],
     session->gpsdata.attitude.acc_z = NAN;
     session->gpsdata.attitude.gyro_x = NAN;
     session->gpsdata.attitude.gyro_y = NAN;
-    session->gpsdata.attitude.temp = NAN;
-    session->gpsdata.attitude.depth = NAN;
-    mask |= (ATTITUDE_SET);
+
+    mask |= (NAVIGATION_SET);
+    session->gpsdata.navigation.set = NAV_HDG_TRUE_PSET;
 
     gpsd_report(session->context->debug, LOG_RAW,
 		"time %.3f, heading %lf.\n",
 		session->newdata.time,
-		session->gpsdata.attitude.heading);
+		session->gpsdata.navigation.heading[compass_true]);
     return mask;
 }
 
@@ -839,32 +842,23 @@ static gps_mask_t processDBT(int c UNUSED, char *field[],
     mask = ONLINE_SET;
 
     if (field[3][0] != '\0') {
-	session->newdata.altitude = -safe_atof(field[3]);
-	mask |= (ALTITUDE_SET);
+	session->gpsdata.navigation.depth = safe_atof(field[3]);
+	mask |= (NAVIGATION_SET);
+	session->gpsdata.navigation.set = NAV_DPT_PSET;
     } else if (field[1][0] != '\0') {
-	session->newdata.altitude = -safe_atof(field[1]) / METERS_TO_FEET;
-	mask |= (ALTITUDE_SET);
+	session->gpsdata.navigation.depth = safe_atof(field[1]) / METERS_TO_FEET;
+	mask |= (NAVIGATION_SET);
+	session->gpsdata.navigation.set = NAV_DPT_PSET;
     } else if (field[5][0] != '\0') {
-	session->newdata.altitude = -safe_atof(field[5]) / METERS_TO_FATHOMS;
-	mask |= (ALTITUDE_SET);
+	session->gpsdata.navigation.depth = safe_atof(field[5]) / METERS_TO_FATHOMS;
+	mask |= (NAVIGATION_SET);
+	session->gpsdata.navigation.set = NAV_DPT_PSET;
     }
 
-    if ((mask & ALTITUDE_SET) != 0) {
-	if (session->newdata.mode < MODE_3D) {
-	    session->newdata.mode = MODE_3D;
-	    mask |= MODE_SET;
-	}
-    }
-
-    /*
-     * Hack: We report depth below keep as negative altitude because there's
-     * no better place to put it.  Should work in practice as nobody is
-     * likely to be operating a depth sounder at varying altitudes.
-     */
     gpsd_report(session->context->debug, LOG_RAW,
-		"mode %d, depth %lf.\n",
-		session->newdata.mode,
-		session->newdata.altitude);
+		"depth %lf.\n",
+		session->gpsdata.navigation.depth);
+
     return mask;
 }
 
@@ -924,8 +918,6 @@ static gps_mask_t processTNTHTM(int c UNUSED, char *field[],
     session->gpsdata.attitude.acc_z = NAN;
     session->gpsdata.attitude.gyro_x = NAN;
     session->gpsdata.attitude.gyro_y = NAN;
-    session->gpsdata.attitude.temp = NAN;
-    session->gpsdata.attitude.depth = NAN;
     mask |= (ATTITUDE_SET);
 
     gpsd_report(session->context->debug, LOG_RAW,
@@ -973,8 +965,6 @@ static gps_mask_t processOHPR(int c UNUSED, char *field[],
     session->gpsdata.attitude.yaw = NAN;
     session->gpsdata.attitude.yaw_st = '\0';
     session->gpsdata.attitude.dip = NAN;
-    session->gpsdata.attitude.temp = safe_atof(field[4]);
-    session->gpsdata.attitude.depth = safe_atof(field[5]) / METERS_TO_FEET;
     session->gpsdata.attitude.mag_len = safe_atof(field[6]);
     session->gpsdata.attitude.mag_x = safe_atof(field[7]);
     session->gpsdata.attitude.mag_y = safe_atof(field[8]);
@@ -986,6 +976,10 @@ static gps_mask_t processOHPR(int c UNUSED, char *field[],
     session->gpsdata.attitude.gyro_x = safe_atof(field[15]);
     session->gpsdata.attitude.gyro_y = safe_atof(field[16]);
     mask |= (ATTITUDE_SET);
+
+    // these shouldn't be used
+    session->gpsdata.environment.temp = safe_atof(field[4]);
+    session->gpsdata.navigation.depth = safe_atof(field[5]);
 
     gpsd_report(session->context->debug, LOG_RAW,
 		"Heading %lf.\n", session->gpsdata.attitude.heading);

@@ -188,26 +188,26 @@ void json_tpv_dump(const struct gps_device_t *session,
 	    (void)snprintf(reply + strlen(reply),
 			   replylen - strlen(reply),
 			   "\"epv\":%.3f,", gpsdata->fix.epv);
-	if (isnan(gpsdata->fix.track) == 0)
+	if (isnan(gpsdata->navigation.course_over_ground) == 0)
 	    (void)snprintf(reply + strlen(reply),
 			   replylen - strlen(reply),
-			   "\"track\":%.4f,", gpsdata->fix.track);
-	if (isnan(gpsdata->fix.speed) == 0)
+			   "\"cog\":%.4f,", gpsdata->navigation.course_over_ground);
+	if (isnan(gpsdata->navigation.speed_over_ground) == 0)
 	    (void)snprintf(reply + strlen(reply),
 			   replylen - strlen(reply),
-			   "\"speed\":%.3f,", gpsdata->fix.speed);
+			   "\"sog\":%.3f,", gpsdata->navigation.speed_over_ground);
 	if ((gpsdata->fix.mode >= MODE_3D) && isnan(gpsdata->fix.climb) == 0)
 	    (void)snprintf(reply + strlen(reply),
 			   replylen - strlen(reply),
 			   "\"climb\":%.3f,", gpsdata->fix.climb);
-	if (isnan(gpsdata->fix.epd) == 0)
+	if (isnan(gpsdata->navigation.epd) == 0)
 	    (void)snprintf(reply + strlen(reply),
 			   replylen - strlen(reply),
-			   "\"epd\":%.4f,", gpsdata->fix.epd);
-	if (isnan(gpsdata->fix.eps) == 0)
+			   "\"epd\":%.4f,", gpsdata->navigation.epd);
+	if (isnan(gpsdata->navigation.eps) == 0)
 	    (void)snprintf(reply + strlen(reply),
 			   replylen - strlen(reply),
-			   "\"eps\":%.2f,", gpsdata->fix.eps);
+			   "\"eps\":%.2f,", gpsdata->navigation.eps);	
 	if ((gpsdata->fix.mode >= MODE_3D) && isnan(gpsdata->fix.epc) == 0)
 	    (void)snprintf(reply + strlen(reply),
 			   replylen - strlen(reply),

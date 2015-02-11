@@ -60,16 +60,16 @@ static int json_tpv_read(const char *buf, struct gps_data_t *gpsdata,
 			         .dflt.real = NAN},
 	{"epv",    t_real,    .addr.real = &gpsdata->fix.epv,
 			         .dflt.real = NAN},
-	{"track",   t_real,   .addr.real = &gpsdata->fix.track,
+	{"cog",   t_real,   .addr.real = &gpsdata->navigation.course_over_ground,
 			         .dflt.real = NAN},
-	{"speed",   t_real,   .addr.real = &gpsdata->fix.speed,
+	{"sog",   t_real,   .addr.real = &gpsdata->navigation.speed_over_ground,
 			         .dflt.real = NAN},
 	{"climb",   t_real,   .addr.real = &gpsdata->fix.climb,
 			         .dflt.real = NAN},
-	{"epd",    t_real,    .addr.real = &gpsdata->fix.epd,
+	{"epd",    t_real,    .addr.real = &gpsdata->navigation.epd,
 			         .dflt.real = NAN},
-	{"eps",    t_real,    .addr.real = &gpsdata->fix.eps,
-			         .dflt.real = NAN},
+	{"eps",    t_real,    .addr.real = &gpsdata->navigation.eps,
+	                         .dflt.real = NAN},
 	{"epc",    t_real,    .addr.real = &gpsdata->fix.epc,
 			         .dflt.real = NAN},
 	{"mode",   t_integer, .addr.integer = &gpsdata->fix.mode,
@@ -204,7 +204,7 @@ static int json_att_read(const char *buf, struct gps_data_t *gpsdata,
 			             .len = sizeof(gpsdata->dev.path)},
 	{"tag",      t_string,    .addr.string = gpsdata->tag,
 			             .len = sizeof(gpsdata->tag)},
-	{"heading",  t_real,      .addr.real = &gpsdata->attitude.heading,
+	{"heading",  t_real,      .addr.real = &gpsdata->navigation.heading[compass_true], // TODO 
 			             .dflt.real = NAN},
 	{"mag_st",   t_character, .addr.character = &gpsdata->attitude.mag_st},
 	{"pitch",    t_real,      .addr.real = &gpsdata->attitude.pitch,
@@ -238,9 +238,9 @@ static int json_att_read(const char *buf, struct gps_data_t *gpsdata,
 	{"gyro_y",    t_real,      .addr.real = &gpsdata->attitude.gyro_y,
 			              .dflt.real = NAN},
 
-	{"temp", t_real, .addr.real = &gpsdata->attitude.temp,
+	{"temp", t_real, .addr.real = &gpsdata->environment.temp[temp_water],
 			         .dflt.real = NAN},
-	{"depth",    t_real,    .addr.real = &gpsdata->attitude.depth,
+	{"depth",    t_real,    .addr.real = &gpsdata->navigation.depth,
 			         .dflt.real = NAN},
 	{NULL},
 	/* *INDENT-ON* */
@@ -411,6 +411,7 @@ int libgps_json_unpack(const char *buf,
 	status = json_tpv_read(buf, gpsdata, end);
 	gpsdata->status = STATUS_FIX;
 	gpsdata->set = STATUS_SET;
+	gpsdata->navigation.set = 0;
 	if (isnan(gpsdata->fix.time) == 0)
 	    gpsdata->set |= TIME_SET;
 	if (isnan(gpsdata->fix.ept) == 0)
@@ -423,16 +424,22 @@ int libgps_json_unpack(const char *buf,
 	    gpsdata->set |= HERR_SET;
 	if (isnan(gpsdata->fix.epv) == 0)
 	    gpsdata->set |= VERR_SET;
-	if (isnan(gpsdata->fix.track) == 0)
-	    gpsdata->set |= TRACK_SET;
-	if (isnan(gpsdata->fix.speed) == 0)
-	    gpsdata->set |= SPEED_SET;
+	if (isnan(gpsdata->navigation.course_over_ground) == 0) {
+	    gpsdata->set |= NAVIGATION_SET;
+	    gpsdata->navigation.set |= NAV_COG_PSET;
+	}
+	if (isnan(gpsdata->navigation.speed_over_ground) == 0) {
+	    gpsdata->set |= NAVIGATION_SET;
+	    gpsdata->navigation.set |= NAV_SOG_PSET;
+	}
 	if (isnan(gpsdata->fix.climb) == 0)
 	    gpsdata->set |= CLIMB_SET;
+	/*
 	if (isnan(gpsdata->fix.epd) == 0)
 	    gpsdata->set |= TRACKERR_SET;
 	if (isnan(gpsdata->fix.eps) == 0)
 	    gpsdata->set |= SPEEDERR_SET;
+	*/
 	if (isnan(gpsdata->fix.epc) == 0)
 	    gpsdata->set |= CLIMBERR_SET;
 	if (isnan(gpsdata->fix.epc) == 0)

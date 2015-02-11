@@ -125,12 +125,16 @@ void ecef_to_wgs84fix(struct gps_fix_t *fix, double *separation,
     fix->climb =
 	vx * cos(phi) * cos(lambda) + vy * cos(phi) * sin(lambda) +
 	vz * sin(phi);
+
+    // TODO: fix with navaigation data
+    /*
     fix->speed = sqrt(pow(vnorth, 2) + pow(veast, 2));
     heading = atan2(fix_minuz(veast), fix_minuz(vnorth));
-    /*@ +evalorder @*/
+    @ +evalorder 
     if (heading < 0)
 	heading += 2 * GPS_PI;
     fix->track = heading * RAD_2_DEG;
+    */
 }
 
 /*

@@ -448,6 +448,9 @@ static gps_mask_t hnd_129026(unsigned char *bu, int len, PGN *pgn, struct gps_de
     uint8_t COG_Reference;
     uint8_t Reserved1;
     uint16_t Reserved2;
+    uint16_t track;
+    uint16_t speed;
+    gps_mask_t mask = 0;
 
     print_data(session->context, bu, len, pgn);
     gpsd_report(session->context->debug, LOG_DATA,
@@ -460,9 +463,22 @@ static gps_mask_t hnd_129026(unsigned char *bu, int len, PGN *pgn, struct gps_de
     COG_Reference = (bu[1] >> 0) & 0x03; 
     Reserved1     = (bu[1] >> 2) & 0xff;  // TODO: [7]: 6 bits in total
 
+    track = getleu16(bu, 2);
+    speed = getleu16(bu, 4);
+
     /*@-type@*//* splint has a bug here */
-    session->newdata.track           =  getleu16(bu, 2) * 1e-4 * RAD_2_DEG;
-    session->newdata.speed           =  getleu16(bu, 4) * 1e-2;
+    if(track != 0xffff) {
+      session->gpsdata.navigation.course_over_ground = track * 1e-4 * RAD_2_DEG;
+      session->gpsdata.navigation.set  = NAV_COG_PSET;
+      mask = NAVIGATION_SET;
+    }
+
+    if(speed != 0xffff) {
+      session->gpsdata.navigation.speed_over_ground = 
+	                                 speed * 1e-2 / KNOTS_TO_MPS;
+      session->gpsdata.navigation.set  = NAV_SOG_PSET;
+      mask |= NAVIGATION_SET;
+    }
     /*@+type@*/
 
     Reserved2     = getleu16(bu, 6);     // [7]: 2 bytes
@@ -470,14 +486,14 @@ static gps_mask_t hnd_129026(unsigned char *bu, int len, PGN *pgn, struct gps_de
     (void)strlcpy(session->gpsdata.tag, "129026", sizeof(session->gpsdata.tag));
 
     gpsd_report(session->context->debug, LOG_IO,
-		"                   SID= %u, cog ref= %s, track= %fdeg, speed= %fm/s; %fknots\n",
+		"                   SID= %u, cog ref= %s, track= %.2f deg, speed= %.2f m/s; %.2f knots\n",
 		session->driver.nmea2000.sid[0],
 		(COG_Reference == 0) ? "True" : "Magnetic",
-		session->newdata.track,
-		session->newdata.speed,
-		session->newdata.speed * 3600.0 / 1852.0);
+		(track != 0xffff)?session->gpsdata.navigation.course_over_ground : 0.0,
+		(speed != 0xffff)?session->gpsdata.navigation.speed_over_ground : 0.0,
+		(speed != 0xffff)?session->gpsdata.navigation.speed_over_ground / KNOTS_TO_MPS : 0.0);
 
-    return SPEED_SET | TRACK_SET | get_mode(session);
+    return mask;
 }
 
 /*
@@ -1425,7 +1441,9 @@ static gps_mask_t hnd_127250(unsigned char *bu, int len, PGN *pgn, struct gps_de
     uint16_t hdg;
     int16_t dev;
     int16_t var;
-    uint8_t ref; // Heading Sensor Reference (M&T?)
+    double heading = 0.0;
+    uint8_t ref = 0; // Heading Sensor Reference (M&T?)
+    const size_t buflen = 255;
     // [3] says ref = 1 for magnetic north (how many bits?)
 
     print_data(session->context, bu, len, pgn);
@@ -1434,66 +1452,76 @@ static gps_mask_t hnd_127250(unsigned char *bu, int len, PGN *pgn, struct gps_de
 
     /*@-type@*/
     hdg = getleu16(bu, 1);
-    session->gpsdata.attitude.heading = hdg * RAD_2_DEG * 0.0001;
-
-//  printf("ATT 0:%8.3f\n",session->gpsdata.attitude.heading);
-    dev = getles16(bu, 3);
-    if (dev != 0x07fff) {
-        session->gpsdata.attitude.heading += dev * RAD_2_DEG * 0.0001;
+    if (hdg != 0xffff) {
+        heading = hdg * RAD_2_DEG * 0.0001;
     }
-//  printf("ATT 1:%8.3f %6x\n",session->gpsdata.attitude.heading, aux);
+
+    dev = getles16(bu, 3);
+    if (dev != 0x7fff) {
+        session->gpsdata.environment.set       |= ENV_DEVIATION_PSET;
+        session->gpsdata.environment.deviation = dev * RAD_2_DEG * 0.0001;
+    }
+
     var = getles16(bu, 5);
-    if (var != 0x07fff) {
-        session->gpsdata.attitude.heading += var * RAD_2_DEG * 0.0001;
+    if (var != 0x7fff) {
+        session->gpsdata.environment.set       |= ENV_VARIATION_PSET;
+        session->gpsdata.environment.variation = var * RAD_2_DEG * 0.0001;
     }
 
     // observed b0000 0001, 1 = magnetic (see also [3]), 0 = true
     ref = getub(bu, 7) & 0x01; // ??? len, only a couple of bits
 
     /*@+type@*/
-//  printf("ATT 2:%8.3f %6x\n",session->gpsdata.attitude.heading, aux);
-    session->gpsdata.attitude.mag_st = '\0';
-    session->gpsdata.attitude.pitch = NAN;
-    session->gpsdata.attitude.pitch_st = '\0';
-    session->gpsdata.attitude.roll = NAN;
-    session->gpsdata.attitude.roll_st = '\0';
-    session->gpsdata.attitude.yaw = NAN;
-    session->gpsdata.attitude.yaw_st = '\0';
-    session->gpsdata.attitude.dip = NAN;
-    session->gpsdata.attitude.mag_len = NAN;
-    session->gpsdata.attitude.mag_x = NAN;
-    session->gpsdata.attitude.mag_y = NAN;
-    session->gpsdata.attitude.mag_z = NAN;
-    session->gpsdata.attitude.acc_len = NAN;
-    session->gpsdata.attitude.acc_x = NAN;
-    session->gpsdata.attitude.acc_y = NAN;
-    session->gpsdata.attitude.acc_z = NAN;
-    session->gpsdata.attitude.gyro_x = NAN;
-    session->gpsdata.attitude.gyro_y = NAN;
-    session->gpsdata.attitude.temp = NAN;
-    session->gpsdata.attitude.depth = NAN;
+    if (hdg != 0xffff) {
+      if(ref == 1) {
+	session->gpsdata.navigation.set = NAV_HDG_MAGN_PSET;
+	session->gpsdata.navigation.heading[compass_magnetic] = heading;
+      } else {
+	session->gpsdata.navigation.set = NAV_HDG_TRUE_PSET;
+	session->gpsdata.navigation.heading[compass_true] = heading;
+      }
+    } else {
+	session->gpsdata.navigation.set = 0;
+	session->gpsdata.navigation.heading[compass_magnetic] = NAN;
+	session->gpsdata.navigation.heading[compass_true] = NAN;
+    }
 
     gpsd_report(session->context->debug, LOG_DATA,
 		"pgn %6d(%3d):\n", pgn->pgn, session->driver.nmea2000.unit);
 
-    char hdgs[255];
-    char devs[255];
-    char vars[255];
-    sprintf(hdgs, "%f", hdg * RAD_2_DEG * 0.0001);
-    sprintf(devs, "%f", dev * RAD_2_DEG * 0.0001);
-    sprintf(vars, "%f", var * RAD_2_DEG * 0.0001);
+    char bufp[buflen];
+    memset(bufp, 0, buflen);
+
+    if (hdg == 0xffff) {
+      (void)sprintf(bufp, "Heading= %s, ", "-");
+      (void)sprintf(bufp + strlen(bufp), "Sensor= %s, ", "-");
+    } else {
+      (void)snprintf(bufp, buflen, "Heading= %.2f, ", heading);
+      (void)snprintf(bufp + strlen(bufp), buflen - strlen(bufp), "Sensor= %.2f, ", 
+		     hdg  * RAD_2_DEG * 0.0001);
+    }
+    if (dev == 0x7fff) {
+      (void)sprintf(bufp + strlen(bufp), "Deviation= %s, ", "-");
+    } else {
+      (void)snprintf(bufp + strlen(bufp), buflen - strlen(bufp), 
+		     "Deviation= %.2f, ", 
+		     dev * RAD_2_DEG * 0.0001);
+    }
+    if (var == 0x7fff) {
+      (void)sprintf(bufp + strlen(bufp), "Variation= %s", "-");
+    } else {
+      (void)snprintf(bufp + strlen(bufp), buflen - strlen(bufp), "Variation= %.2f", var * RAD_2_DEG * 0.0001);
+    }
 
     gpsd_report(session->context->debug, LOG_IO,
-		"                   SID = %d, Heading Sensor Reading= %s, Deviation= %s, Variation= %s, Heading Sensor Reference= %s (%u), Reserved = %u\n", 
+		"                   VY: SID = %d, %s, Heading Sensor Reference= %s (%u), Reserved = %u\n", 
 		sid, 
-		hdg != 0x7fff ? hdgs : "-",
-		dev != 0x7fff ? devs : "-",
-		var != 0x7fff ? vars : "-",
+		bufp,
 		ref == 1? "Magnetic":"True",
 		ref,
 		0);
 
-    return(ONLINE_SET | ATTITUDE_SET);
+    return (ONLINE_SET | NAVIGATION_SET | ENVIRONMENT_SET);
 }
 
 /*
@@ -1698,26 +1726,14 @@ static gps_mask_t hnd_128267(unsigned char *bu, int len, PGN *pgn, struct gps_de
     int16_t offset = getles16(bu, 5); // TODO: 0x7fff N/A, 1x10-3m
     uint8_t res = getub(bu, 7); // reserved, len in bits?
 
-    session->gpsdata.attitude.heading = NAN;
-    session->gpsdata.attitude.pitch = NAN;
-    session->gpsdata.attitude.pitch_st = '\0';
-    session->gpsdata.attitude.roll = NAN;
-    session->gpsdata.attitude.roll_st = '\0';
-    session->gpsdata.attitude.yaw = NAN;
-    session->gpsdata.attitude.yaw_st = '\0';
-    session->gpsdata.attitude.dip = NAN;
-    session->gpsdata.attitude.mag_len = NAN;
-    session->gpsdata.attitude.mag_x = NAN;
-    session->gpsdata.attitude.mag_y = NAN;
-    session->gpsdata.attitude.mag_z = NAN;
-    session->gpsdata.attitude.acc_len = NAN;
-    session->gpsdata.attitude.acc_x = NAN;
-    session->gpsdata.attitude.acc_y = NAN;
-    session->gpsdata.attitude.acc_z = NAN;
-    session->gpsdata.attitude.gyro_x = NAN;
-    session->gpsdata.attitude.gyro_y = NAN;
-    session->gpsdata.attitude.temp = NAN;
-    /*@i@*/session->gpsdata.attitude.depth = depth *.01;
+    session->gpsdata.navigation.depth = depth *.01;
+    session->gpsdata.navigation.set = NAV_DPT_PSET;
+
+    if(offset == 0x7fff) {
+      session->gpsdata.navigation.depth_offset = NAN;
+    } else {
+      session->gpsdata.navigation.depth_offset = offset * 0.001;
+    }
 
     gpsd_report(session->context->debug, LOG_DATA,
 		"pgn %6d(%3d):\n", pgn->pgn, session->driver.nmea2000.unit);
@@ -1725,10 +1741,10 @@ static gps_mask_t hnd_128267(unsigned char *bu, int len, PGN *pgn, struct gps_de
     gpsd_report(session->context->debug, LOG_IO, 
 		"                   SID = %d, depth = %f m, offset = %f m\n",
 		sid, 
-		depth * 0.01,
-		(float)offset * 0.001);
+	        session->gpsdata.navigation.depth,
+		session->gpsdata.navigation.depth_offset);
 
-    return(ONLINE_SET | ATTITUDE_SET);
+    return (ONLINE_SET | NAVIGATION_SET);
 }
 
 

@@ -125,7 +125,7 @@ static void gpsd_transit_fix_dump(struct gps_device_t *session,
 #define ZEROIZE(x)	(isnan(x)!=0 ? 0.0 : x)
     /*@ -usedef @*/
     (void)snprintf(bufp, len,
-		   "$GPRMC,%02d%02d%02d,%c,%09.4f,%c,%010.4f,%c,%.4f,%.3f,%02d%02d%02d,,",
+		   "$GPRMC,%02d%02d%02d,%c,%09.4f,%c,%010.4f,%c,",
 		   tm.tm_hour,
 		   tm.tm_min,
 		   tm.tm_sec,
@@ -133,10 +133,25 @@ static void gpsd_transit_fix_dump(struct gps_device_t *session,
 		   ZEROIZE(degtodm(fabs(session->gpsdata.fix.latitude))),
 		   ((session->gpsdata.fix.latitude > 0) ? 'N' : 'S'),
 		   ZEROIZE(degtodm(fabs(session->gpsdata.fix.longitude))),
-		   ((session->gpsdata.fix.longitude > 0) ? 'E' : 'W'),
-		   ZEROIZE(session->gpsdata.fix.speed * MPS_TO_KNOTS),
-		   ZEROIZE(session->gpsdata.fix.track),
+		   ((session->gpsdata.fix.longitude > 0) ? 'E' : 'W'));
+
+    if ( !isnan(session->gpsdata.navigation.speed_over_ground) ) {
+      (void)snprintf(bufp + strlen(bufp), len - strlen(bufp),
+		     "%.4f,", session->gpsdata.navigation.speed_over_ground);
+    } else {
+      (void)strlcat(bufp, ",", len);
+    }
+    if ( !isnan(session->gpsdata.navigation.course_over_ground) ) {
+      (void)snprintf(bufp + strlen(bufp), len - strlen(bufp),
+		     "%.3f,", session->gpsdata.navigation.course_over_ground);
+    } else {
+      (void)strlcat(bufp, ",", len);
+    }
+
+    (void)snprintf(bufp + strlen(bufp), len - strlen(bufp),
+		   "%02d%02d%02d,,",
 		   tm.tm_mday, tm.tm_mon, tm.tm_year);
+
     /*@ +usedef @*/
 #undef ZEROIZE
     nmea_add_checksum(bufp);

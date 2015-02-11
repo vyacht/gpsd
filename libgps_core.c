@@ -292,10 +292,10 @@ void libgps_dump_state(struct gps_data_t *collect)
     if (collect->set & ALTITUDE_SET)
 	(void)fprintf(debugfp, "ALTITUDE: altitude: %lf  U: climb: %lf\n",
 		      collect->fix.altitude, collect->fix.climb);
-    if (collect->set & SPEED_SET)
-	(void)fprintf(debugfp, "SPEED: %lf\n", collect->fix.speed);
-    if (collect->set & TRACK_SET)
-	(void)fprintf(debugfp, "TRACK: track: %lf\n", collect->fix.track);
+    if ((collect->set & NAVIGATION_SET) && (collect->navigation.set & NAV_SOG_PSET))
+    	(void)fprintf(debugfp, "SPEED: %lf\n", collect->navigation.speed_over_ground);
+    if ((collect->set & NAVIGATION_SET) && (collect->navigation.set & NAV_COG_PSET))
+    	(void)fprintf(debugfp, "TRACK: track: %lf\n", collect->navigation.course_over_ground);
     if (collect->set & CLIMB_SET)
 	(void)fprintf(debugfp, "CLIMB: climb: %lf\n", collect->fix.climb);
     if (collect->set & STATUS_SET) {
