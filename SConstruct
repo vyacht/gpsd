@@ -117,6 +117,7 @@ boolopts = (
     ("ublox",         False,  "u-blox Protocol support"),
     ("fury",          False,  "Jackson Labs Fury and Firefly support"),
     ("nmea2000",      True,   "NMEA2000/CAN support"),
+    ("seatalk",       True,   "Seatalk support"),
     # Non-GPS protocols
     ("vyspi",         True,  "VYSPI support"),
     ("aivdm",         True,  "AIVDM support"),
@@ -820,6 +821,7 @@ libgpsd_sources = [
     "driver_oncore.c",
     "driver_rtcm2.c",
     "driver_rtcm3.c",
+    "driver_seatalk.c",
     "driver_sirf.c",
     "driver_superstar2.c",
     "driver_tsip.c",

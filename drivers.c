@@ -1498,6 +1498,7 @@ extern const struct gps_type_t driver_navcom;
 extern const struct gps_type_t driver_nmea2000;
 extern const struct gps_type_t driver_vyspi;
 extern const struct gps_type_t driver_oncore;
+extern const struct gps_type_t driver_seatalk;
 extern const struct gps_type_t driver_sirf;
 extern const struct gps_type_t driver_superstar2;
 extern const struct gps_type_t driver_tsip;
@@ -1565,6 +1566,9 @@ static const struct gps_type_t *gpsd_driver_array[] = {
 #ifdef NAVCOM_ENABLE
     &driver_navcom,
 #endif /* NAVCOM_ENABLE */
+#ifdef SEATALK_ENABLE
+    &driver_seatalk,
+#endif /* SEATALK_ENABLE */
 #ifdef SIRF_ENABLE
     &driver_sirf,
 #endif /* SIRF_ENABLE */

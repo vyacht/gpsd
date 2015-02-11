@@ -77,7 +77,7 @@ typedef unsigned int speed_t;
 #ifdef EARTHMATE_ENABLE
 #define ZODIAC_ENABLE
 #endif
-#if defined(ZODIAC_ENABLE) || defined(SIRF_ENABLE) || defined(GARMIN_ENABLE) || defined(TSIP_ENABLE) || defined(EVERMORE_ENABLE) || defined(ITRAX_ENABLE) || defined(UBLOX_ENABLE) || defined(SUPERSTAR2_ENABLE) || defined(ONCORE_ENABLE) || defined(GEOSTAR_ENABLE) || defined(NAVCOM_ENABLE) || defined(NMEA2000_ENABLE)
+#if defined(ZODIAC_ENABLE) || defined(SIRF_ENABLE) || defined(GARMIN_ENABLE) || defined(TSIP_ENABLE) || defined(EVERMORE_ENABLE) || defined(ITRAX_ENABLE) || defined(UBLOX_ENABLE) || defined(SUPERSTAR2_ENABLE) || defined(ONCORE_ENABLE) || defined(GEOSTAR_ENABLE) || defined(NAVCOM_ENABLE) || defined(NMEA2000_ENABLE) || defined(SEATALK_ENABLE)
 #define BINARY_ENABLE
 #endif
 #if defined(TRIPMATE_ENABLE) || defined(BINARY_ENABLE)
@@ -157,10 +157,11 @@ struct gps_packet_t {
 #define GEOSTAR_PACKET   	14
 #define NMEA2000_PACKET 	15
 #define VYSPI_PACKET 	        16
-#define MAX_GPSPACKET_TYPE	16	/* increment this as necessary */
-#define RTCM2_PACKET    	17
-#define RTCM3_PACKET    	18
-#define JSON_PACKET    	    	19
+#define SEATALK_PACKET 	        17
+#define MAX_GPSPACKET_TYPE	17	/* increment this as necessary */
+#define RTCM2_PACKET    	18
+#define RTCM3_PACKET    	19
+#define JSON_PACKET    	    	20
 #define TEXTUAL_PACKET_TYPE(n)	((((n)>=NMEA_PACKET) && ((n)<=MAX_TEXTUAL_TYPE)) || (n)==JSON_PACKET)
 #define GPS_PACKET_TYPE(n)	(((n)>=NMEA_PACKET) && ((n)<=MAX_GPSPACKET_TYPE))
 #define LOSSLESS_PACKET_TYPE(n)	(((n)>=RTCM2_PACKET) && ((n)<=RTCM3_PACKET))
@@ -668,6 +669,18 @@ struct gps_device_t {
 	uint32_t last_pgn;
       } vyspi;
 #endif /* VYSPI_ENABLE */
+#ifdef SEATALK_ENABLE
+	struct {
+	  struct tm date;		/* date part of last sentence time */
+	  double subseconds;
+	  /* This is to cope with the reporting of 
+	     lat and lon in separate sentences */
+	  double lat;
+	  double lon;
+	  int lat_set;
+	  int lon_set;
+	} seatalk;
+#endif /* SEATALK_ENABLE */
 	/*
 	 * This is not conditionalized on RTCM104_ENABLE because we need to
 	 * be able to build gpsdecode even when RTCM support is not

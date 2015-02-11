@@ -36,6 +36,9 @@
 #if defined(VYSPI_ENABLE)
 #include "driver_vyspi.h"
 #endif /* defined(VYSPI_ENABLE) */
+#if defined(SEATALK_ENABLE)
+#include "driver_seatalk.h"
+#endif /* defined(SEATALK_ENABLE) */
 
 #if defined(PPS_ENABLE)
 static pthread_mutex_t report_mutex;
@@ -431,6 +434,8 @@ void gpsd_clear(struct gps_device_t *session)
 int gpsd_open(struct gps_device_t *session)
 /* open a device for access to its data */
 {
+  int ret = 0;
+
 #ifdef NETFEED_ENABLE
     /* special case: source may be a URI to a remote GNSS or DGPS service */
     if (netgnss_uri_check(session->gpsdata.dev.path)) {
@@ -536,8 +541,15 @@ int gpsd_open(struct gps_device_t *session)
         return vyspi_open(session);
     }
 #endif /* defined(VYSPI_ENABLE) && !defined(S_SPLINT_S) */
+#if defined(SEATALK_ENABLE) && !defined(S_SPLINT_S)
+    if (strncmp(session->gpsdata.dev.path, "st://", 5) == 0) {
+        return seatalk_open(session);
+    }
+#endif /* defined(SEATALK_ENABLE) && !defined(S_SPLINT_S) */
     /* fall through to plain serial open */
-    return gpsd_serial_open(session);
+    ret = gpsd_serial_open(session);
+    gpsd_switch_driver(session, "NMEA0183");
+    return ret;
 }
 
 /*@ -branchstate @*/
