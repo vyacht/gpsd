@@ -1233,7 +1233,7 @@ static gps_mask_t hnd_129810(unsigned char *bu, int len, PGN *pgn, struct gps_de
 		       ais->type24.dim.to_starboard);
 #endif /* of #if NMEA2000_DEBUG_AIS */
 
-		decode_ais_channel_info(bu, len, 264, session);
+		vy_decode_ais_channel_info(bu, len, 264, session);
 		ais->type24.part = both;
 		return(ONLINE_SET | AIS_SET);
 	    }
@@ -1248,7 +1248,7 @@ static gps_mask_t hnd_129810(unsigned char *bu, int len, PGN *pgn, struct gps_de
 	       ais->type24.dim.to_port,
 	       ais->type24.dim.to_starboard);
 #endif /* of #if NMEA2000_DEBUG_AIS */
-	decode_ais_channel_info(bu, len, 264, session);
+	vy_decode_ais_channel_info(bu, len, 264, session);
 	ais->type24.part = part_b;
 	return(ONLINE_SET | AIS_SET);
     }
