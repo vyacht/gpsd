@@ -444,7 +444,7 @@ static gps_mask_t hnd_129025(unsigned char *bu, int len, PGN *pgn, struct gps_de
  */
 static gps_mask_t hnd_129026(unsigned char *bu, int len, PGN *pgn, struct gps_device_t *session)
 {
-  // TODO 0 = True, 1 = magnetic, 2 == error, 3 == - ([1])
+    // TODO 0 = True, 1 = magnetic, 2 == error, 3 == - ([1])
     uint8_t COG_Reference;
     uint8_t Reserved1;
     uint16_t Reserved2;
@@ -1384,6 +1384,9 @@ static gps_mask_t hnd_127245(unsigned char *bu, int len, PGN *pgn, struct gps_de
 
     reserved2    = getub(bu, 6);
 
+    session->gpsdata.navigation.rudder_angle = position;
+    session->gpsdata.navigation.set          = NAV_RUDDER_ANGLE_PSET;
+
     print_data(session->context, bu, len, pgn);
     gpsd_report(session->context->debug, LOG_DATA,
 		"pgn %6d(%3d):\n", pgn->pgn, session->driver.nmea2000.unit);
@@ -1400,7 +1403,7 @@ static gps_mask_t hnd_127245(unsigned char *bu, int len, PGN *pgn, struct gps_de
 		position,
 		reserved2);
 
-    return(0);
+    return NAVIGATION_SET;
 }
 
 
@@ -1619,7 +1622,8 @@ static gps_mask_t hnd_127251(unsigned char *bu, int len, PGN *pgn, struct gps_de
     // TODO : find explain for odd magic number 3/16 deg/min (or 3/16/60 in deg/sec)
     rot = getles32(bu, 1) * 0.00001 * 3.0/16.0/60.0 * RAD_2_DEG; // per sec, let compiler optimize
 
-    print_data(session->context, bu, len, pgn);
+    session->gpsdata.navigation.set              = NAV_ROT_PSET;  
+    session->gpsdata.navigation.rate_of_turn     = rot;  
 
     print_data(session->context, bu, len, pgn);
     gpsd_report(session->context->debug, LOG_DATA, 
@@ -1629,7 +1633,8 @@ static gps_mask_t hnd_127251(unsigned char *bu, int len, PGN *pgn, struct gps_de
 		"                   sid = %d, rate = %f deg/s\n", 
 		sid, 
 		rot);
-    return(0);
+
+    return NAVIGATION_SET;
 }
 
 
@@ -1644,7 +1649,9 @@ static gps_mask_t hnd_128259(unsigned char *bu, int len, PGN *pgn, struct gps_de
 
     uint8_t sid = getub(bu, 0);
     uint16_t speed_water = getleu16(bu, 1);   // 1 x 10-2 m/s
-    uint16_t speed_ground = getleu16(bu, 3);  // [3] says not available means 0xffff, usually not used
+    // [3] says not available means 0xffff, usually not used
+    uint16_t speed_ground = getleu16(bu, 3);  
+
     /*
       http://askjackrabbit.typepad.com/ask_jack_rabbit/page/6/
 
@@ -1658,7 +1665,10 @@ static gps_mask_t hnd_128259(unsigned char *bu, int len, PGN *pgn, struct gps_de
     */
 
     uint16_t type = getleu16(bu, 5);          // TODO: len in bytes? what does it mean?
-    uint8_t reserved = getub(bu, 7);          // TODO: len in bits? all 1 for DST100UM
+    uint8_t reserved = getub(bu, 7);          // TODO: all 1 for DST100UM
+
+    session->gpsdata.navigation.set = NAV_STW_PSET;  
+    session->gpsdata.navigation.speed_thru_water = speed_water * 0.01;  
 
     gpsd_report(session->context->debug, LOG_DATA, 
 		"pgn %6d(%3d):\n", pgn->pgn, session->driver.nmea2000.unit);
@@ -1672,7 +1682,7 @@ static gps_mask_t hnd_128259(unsigned char *bu, int len, PGN *pgn, struct gps_de
 		speed_ground,
 		type);
 
-    return(0);
+    return NAVIGATION_SET;
 }
 
 
@@ -1737,6 +1747,12 @@ static gps_mask_t hnd_128275(unsigned char *bu, int len, PGN *pgn, struct gps_de
     uint32_t dist = getleu32(bu, 6); // total cumulative distance in meter 
     uint32_t rest = getleu32(bu, 10); // distance since last reset in meter
 
+    session->gpsdata.navigation.distance_total = dist * METERS_TO_NM;
+    session->gpsdata.navigation.set = NAV_DIST_TOT_PSET;
+
+    session->gpsdata.navigation.distance_trip  = rest * METERS_TO_NM;
+    session->gpsdata.navigation.set = NAV_DIST_TRIP_PSET;
+
     print_data(session->context, bu, len, pgn);
     gpsd_report(session->context->debug, LOG_DATA,
 		"pgn %6d(%3d):\n", pgn->pgn, session->driver.nmea2000.unit);
@@ -1758,7 +1774,7 @@ static gps_mask_t hnd_128275(unsigned char *bu, int len, PGN *pgn, struct gps_de
 		dist,
 		rest);
 
-    return(0);
+    return NAVIGATION_SET;
 }
 
 
@@ -1776,18 +1792,23 @@ static gps_mask_t hnd_129283(unsigned char *bu, int len, PGN *pgn, struct gps_de
     6 Reserved
   */
 
-    uint8_t sid;
-    uint8_t mode;
-    uint8_t reserve;
-    uint8_t terminated;
-    double  xte;
+    uint8_t  sid;
+    uint8_t  mode;
+    uint8_t  reserve;
+    uint8_t  terminated;
+    int32_t  xte;
     uint16_t reserved;
 
     sid          = getub(bu, 0);
     mode         = getub(bu, 1);           // TODO: bits ? meaning?
     reserve      = getub(bu, 1);           // TODO: bits ?
     terminated   = getub(bu, 1);           // TODO: bits ? 
-    xte          = getles32(bu, 2) * 0.01; // TODO: signed / unsigned, seen both
+    xte          = getles32(bu, 2);
+
+    if(xte != 0x7fffffff) {
+       session->gpsdata.navigation.xte  = xte * 0.01;
+       session->gpsdata.navigation.set  = NAV_XTE_PSET;
+    }
     reserved     = getleu16(bu, 7);
 
     print_data(session->context, bu, len, pgn);
@@ -1803,10 +1824,10 @@ static gps_mask_t hnd_129283(unsigned char *bu, int len, PGN *pgn, struct gps_de
     gpsd_report(session->context->debug, LOG_IO,
 		"                   Navigation Terminated= %d, XTE= %fm, res = %u\n",
 		terminated,
-		xte,
+		(xte != 0x7fffffff)?session->gpsdata.navigation.xte:0.0,
 		reserved);
 
-    return(0);
+    return NAVIGATION_SET;
 }
 
 
@@ -2024,7 +2045,7 @@ static gps_mask_t hnd_130306(unsigned char *bu, int len, PGN *pgn, struct gps_de
     uint8_t sid;
     double speed;
     double dir;
-    uint8_t ref;
+    uint8_t ref = 0xff;
     uint8_t res;
 
     sid          = getub(bu, 0);
@@ -2032,6 +2053,36 @@ static gps_mask_t hnd_130306(unsigned char *bu, int len, PGN *pgn, struct gps_de
     dir          = getleu16(bu, 3) * RAD_2_DEG * 0.0001; // 0.0001 rads per second ([10])
     ref          = getub(bu, 5) & 0x07;         // see res 24 - 21 bits
     res          = getub(bu, 6);                // 21 bits ([19]), makes ref == 3 bits
+
+    switch(ref) {
+
+    case 0x02:
+      session->gpsdata.environment.wind.apparent.angle = dir;
+      session->gpsdata.environment.set = ENV_WIND_APPARENT_ANGLE_PSET;
+      session->gpsdata.environment.wind.apparent.speed = speed / KNOTS_TO_MPS;
+      session->gpsdata.environment.set = ENV_WIND_APPARENT_SPEED_PSET;
+      break;
+
+    case 0x03: // Apparent
+      session->gpsdata.environment.wind.calculated_ground.angle = dir;
+      session->gpsdata.environment.set = ENV_WIND_TRUE_GROUND_ANGLE_PSET;
+
+      session->gpsdata.environment.wind.calculated_ground.speed = speed / KNOTS_TO_MPS;
+      session->gpsdata.environment.set = ENV_WIND_TRUE_GROUND_SPEED_PSET;
+      break;
+
+    case 0x04:
+      session->gpsdata.environment.wind.calculated_water.angle = dir;
+      session->gpsdata.environment.set = ENV_WIND_TRUE_WATER_ANGLE_PSET;
+
+      session->gpsdata.environment.wind.calculated_water.speed = speed / KNOTS_TO_MPS;
+      session->gpsdata.environment.set = ENV_WIND_TRUE_WATER_SPEED_PSET;
+      break;
+
+    default:
+      break;
+
+    }
 
     print_data(session->context, bu, len, pgn);
     gpsd_report(session->context->debug, LOG_DATA,
@@ -2044,7 +2095,8 @@ static gps_mask_t hnd_130306(unsigned char *bu, int len, PGN *pgn, struct gps_de
 		dir,
 		(ref < 5) ? wind_ref[ref] : "-",
 		res);
-    return(0);
+
+    return ENVIRONMENT_SET;
 }
 
 
@@ -2074,6 +2126,12 @@ static gps_mask_t hnd_130310(unsigned char *bu, int len, PGN *pgn, struct gps_de
     res          = getsb(bu, 7);
 
     #define PSI_2_BAR 1.0/14.50377
+    
+    session->gpsdata.environment.temp[temp_water] = water;
+    session->gpsdata.environment.set = ENV_TEMP_WATER_PSET;
+
+    session->gpsdata.environment.temp[temp_air] = air;
+    session->gpsdata.environment.set = ENV_TEMP_AIR_PSET;
 
     print_data(session->context, bu, len, pgn);
     gpsd_report(session->context->debug, LOG_DATA,
@@ -2086,7 +2144,8 @@ static gps_mask_t hnd_130310(unsigned char *bu, int len, PGN *pgn, struct gps_de
 		air * 0.01 - 273.15,
 		pres * PSI_2_BAR * 0.001, 
 		res);
-    return(0);
+
+    return ENVIRONMENT_SET;
 }
 
 
@@ -2098,7 +2157,7 @@ static gps_mask_t hnd_130311(unsigned char *bu, int len, PGN *pgn, struct gps_de
   /*[2], [10]
     rework of 130310 and should be used for new designs
     1 Sequence ID
-    2 Temperature Instance - 0x01 == outside temperature
+    2 Temperature Instance - 0x00 == sea, 0x01 == outside temperature
     3 Humidity Instance    - WSO100: 0x01 == outside humidity. 
     4 Temperature          - outside air units of 0.01°K. 
     5 Humidity             – relative humidity in units of 0.004%
@@ -2119,6 +2178,14 @@ static gps_mask_t hnd_130311(unsigned char *bu, int len, PGN *pgn, struct gps_de
     hum           = getleu16(bu, 4);  // TODO: s/u? 0x7fff for n/a?
     pres          = getleu16(bu, 6);  // TODO: s/u? 0xffff for n/a?
 
+    if(temp_inst == 0x00) {
+      session->gpsdata.environment.temp[temp_water] =  temp * 0.01 - 273.15;
+      session->gpsdata.environment.set = ENV_TEMP_WATER_PSET;
+    } else if(temp_inst == 0x01) {
+      session->gpsdata.environment.temp[temp_air] = temp * 0.01 - 273.15;;
+      session->gpsdata.environment.set = ENV_TEMP_AIR_PSET;
+    }
+
     print_data(session->context, bu, len, pgn);
     gpsd_report(session->context->debug, LOG_DATA,
 		"pgn %6d(%3d):\n", pgn->pgn, session->driver.nmea2000.unit);
@@ -2132,7 +2199,7 @@ static gps_mask_t hnd_130311(unsigned char *bu, int len, PGN *pgn, struct gps_de
 		hum * 0.004,
 		pres * 0.0001);
 
-    return(0);
+    return ENVIRONMENT_SET;
 }
 
 /*
