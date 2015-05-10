@@ -1965,8 +1965,33 @@ struct version_t {
     char remote[GPS_PATH_MAX];		/* could be from a remote device */
 };
 
+  /* this should actually go into a shared file with stm32/vynema */
+
+typedef enum {PORT_TYPE_HOST     = 0, 
+	      PORT_TYPE_NMEA0183 = 1, 
+	      PORT_TYPE_SEATALK  = 2} port_type_t;
+
+typedef enum {PORT_SPEED_4800 = 4800,
+	      PORT_SPEED_38400 = 38400,
+	      PORT_SPEED_115200 = 115200} port_speed_t;
+
+
+struct vy_port_t {
+  char type_str[PATH_MAX];
+  int no;
+  port_speed_t speed;
+  port_type_t type;
+};
+
+#define MAX_VY_PORT 3
+
 struct devconfig_t {
     char path[GPS_PATH_MAX];
+
+    /* host port = 0, port 1 and port 2 */
+    struct vy_port_t vy_portlist[MAX_VY_PORT];
+    int       vy_port_count;
+
     int flags;
 #define SEEN_GPS 	0x01
 #define SEEN_RTCM2	0x02

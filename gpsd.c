@@ -48,6 +48,7 @@
 #include "sockaddr.h"
 #include "gps_json.h"
 #include "revision.h"
+#include "frame.h"
 
 #if defined(SYSTEMD_ENABLE)
 #include "sd_socket.h"
@@ -1120,6 +1121,9 @@ static void gpsd_device_write(const char *buf, size_t len)
 	(void)gpsd_write(devp, buf, (size_t)len);
 	gpsd_report(context.debug, LOG_INF, "gpsd_write: %s (%s)\n", buf, devp->gpsdata.dev.path);
       }
+      if((dt != NULL) && (dt->packet_type == VYSPI_PACKET)) {
+	(void)vyspi_write(devp, buf, (size_t)len);
+      }
     }
   }
 }
@@ -1432,6 +1436,17 @@ static void raw_report(struct subscriber_t *sub, struct gps_device_t *device)
 	return;
     }
 
+    
+    if ((VYSPI_PACKET == device->packet.type) 
+	&& (FRM_TYPE_NMEA0183 == device->packet.frm_type)
+	&& (sub->policy.raw > 0 || sub->policy.nmea)) {
+	(void)throttled_write(sub,
+			      (char *)device->packet.outbuffer,
+			      device->packet.outbuflen);
+	return;
+    }
+    
+
     /*
      * Also, simply copy if user has specified
      * super-raw mode.
@@ -1530,11 +1545,19 @@ static void pseudonmea_report(gps_mask_t changed,
 	}
 #endif /* AIVDM_ENABLE */
 	if ((changed & ENVIRONMENT_SET) != 0) {
-	    nmea_environment_dump(device, buf, sizeof(buf));
+            int num = nmea_environment_dump(device, 0, buf, sizeof(buf));
 	    gpsd_report(context.debug, LOG_IO,
 			"<= GPS (binary environment) %s: %s\n",
 			device->gpsdata.dev.path, buf);
 	    pseudonmea_write(changed, buf, strlen(buf), device);
+
+            if(num > 1) {
+              nmea_environment_dump(device, 1, buf, sizeof(buf));
+	      gpsd_report(context.debug, LOG_IO,
+                        "<= GPS (binary environment) %s: %s\n",
+                        device->gpsdata.dev.path, buf);
+              pseudonmea_write(changed, buf, strlen(buf), device);
+            }
 	}
 	if ((changed & NAVIGATION_SET) != 0) {
 	    nmea_navigation_dump(device, buf, sizeof(buf));

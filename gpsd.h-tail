@@ -167,6 +167,12 @@ struct gps_packet_t {
 #define LOSSLESS_PACKET_TYPE(n)	(((n)>=RTCM2_PACKET) && ((n)<=RTCM3_PACKET))
 #define PACKET_TYPEMASK(n)	(1 << (n))
 #define GPS_TYPEMASK	(((2<<(MAX_GPSPACKET_TYPE+1))-1) &~ PACKET_TYPEMASK(COMMENT_PACKET))
+
+
+    unsigned int frm_type;
+    unsigned int frm_state;
+    unsigned int frm_7dflag;
+    unsigned int frm_offset;
     unsigned int state;
     size_t length;
     unsigned char inbuffer[MAX_PACKET_LENGTH*2+1];
@@ -862,7 +868,7 @@ extern void nmea_sky_dump(struct gps_device_t *, /*@out@*/char[], size_t);
 extern void nmea_subframe_dump(struct gps_device_t *, /*@out@*/char[], size_t);
 extern void nmea_ais_dump(struct gps_device_t *, /*@out@*/char[], size_t);
 extern void nmea_navigation_dump(struct gps_device_t *session,  /*@out@*/char[], size_t);
-extern void nmea_environment_dump(struct gps_device_t *session,  /*@out@*/char[], size_t);
+extern int nmea_environment_dump(struct gps_device_t *session, int num, /*@out@*/char[], size_t);
 extern unsigned int ais_binary_encode(struct ais_t *ais, /*@out@*/unsigned char *bits, int flag);
 
 extern void ntpshm_context_init(struct gps_context_t *);

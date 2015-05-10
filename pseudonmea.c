@@ -430,6 +430,40 @@ static void gpsd_binary_ais_dump(struct gps_device_t *session,
 }
 #endif /* AIVDM_ENABLE */
 
+static void gpsd_binary_mwv_dump(struct gps_device_t *session,
+                                     char bufp[], size_t len)
+{
+  // $--MWV,x.x,[R,T],x.x,[K/M/N]*hh<CR><LF>
+
+  (void)snprintf(bufp, len, "$GPMWV,");
+
+  if ( !isnan(session->gpsdata.environment.wind.apparent.angle) ) {
+      double ang = session->gpsdata.environment.wind.apparent.angle;
+      (void)snprintf(bufp + strlen(bufp), len - strlen(bufp),
+                     "%.2f,%c,", ang, 'R');
+  } else if ( !isnan(session->gpsdata.environment.wind.true_north.angle) ) {
+      double ang = session->gpsdata.environment.wind.true_north.angle;
+      (void)snprintf(bufp + strlen(bufp), len - strlen(bufp),
+                     "%.2f,%c,", ang, 'T');
+  } else {
+      (void)strlcat(bufp, ",,", len);
+  }
+
+  if ( !isnan(session->gpsdata.environment.wind.apparent.speed) ) {
+      (void)snprintf(bufp + strlen(bufp), len - strlen(bufp),
+                     "%.2f,N,", session->gpsdata.environment.wind.apparent.speed);
+  } else if ( !isnan(session->gpsdata.environment.wind.true_north.speed) ) {
+      (void)snprintf(bufp + strlen(bufp), len - strlen(bufp),
+                     "%.2f,N,", session->gpsdata.environment.wind.true_north.speed);
+  } else {
+      (void)strlcat(bufp, ",,", len);
+  }
+
+  (void)strlcat(bufp, "A", len);
+
+  nmea_add_checksum(bufp);
+}
+
 static void gpsd_binary_vwr_dump(struct gps_device_t *session,
 				     char bufp[], size_t len)
 {
@@ -539,30 +573,6 @@ static void gpsd_binary_dpt_dump(struct gps_device_t *session,
     (void)snprintf(bufp, len, "$GPDBT,%.2f,f,%.2f,M,,",
 		 session->gpsdata.navigation.depth *  METERS_TO_FEET,
 		 session->gpsdata.navigation.depth);
-    nmea_add_checksum(bufp);
-  }
-}
-
-static void gpsd_binary_mwv_dump(struct gps_device_t *session,
-				     char bufp[], size_t len)
-{ 
-  /*
-    $--MWV,x.x,a,x.x,a*hh<CR><LF>
-
-    Field Number:
-
-    1. Wind Angle, 0 to 360 degrees
-    2. Reference, R = Relative, T = True
-    3. Wind Speed
-    4. Wind Speed Units, K/M/N
-    5. Status, A = Data Valid
-    6. Checksum
-  */
-
-  if (!isnan(session->gpsdata.environment.wind.calculated_ground.angle)) {
-    (void)snprintf(bufp, len, "$GPMWV,%.2f,T,%.2f,K,A",
-		 session->gpsdata.environment.wind.calculated_ground.angle,
-		   session->gpsdata.environment.wind.calculated_ground.speed);
     nmea_add_checksum(bufp);
   }
 }
@@ -814,16 +824,26 @@ void nmea_navigation_dump(struct gps_device_t *session,
     }
 }
 
-void nmea_environment_dump(struct gps_device_t *session,
+/* returns the number of potential sentences for the data changed
+*/
+int nmea_environment_dump(struct gps_device_t *session, int num,
 		   /*@out@*/ char bufp[], size_t len)
 {
+    int ret = 1;
+
     bufp[0] = '\0';
     if ((session->gpsdata.set & ENVIRONMENT_SET) != 0) {
       switch(session->gpsdata.environment.set) {
 
       case ENV_WIND_APPARENT_SPEED_PSET:
       case ENV_WIND_APPARENT_ANGLE_PSET:
-	gpsd_binary_vwr_dump(session, bufp + strlen(bufp),
+        ret = 2;
+
+        if(num == 0)
+          gpsd_binary_vwr_dump(session, bufp + strlen(bufp),
+				   len - strlen(bufp));
+        else
+	  gpsd_binary_mwv_dump(session, bufp + strlen(bufp),
 				   len - strlen(bufp));
 	break;
 
@@ -849,6 +869,8 @@ void nmea_environment_dump(struct gps_device_t *session,
 	break;
       };
     }
+
+    return ret;
 }
 
 /*@+compdef +mustdefine@*/

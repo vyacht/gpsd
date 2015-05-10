@@ -851,7 +851,7 @@ libgpsd_sources = [
     "driver_superstar2.c",
     "driver_tsip.c",
     "driver_ubx.c",
-    "driver_vyspi.c",
+    "driver_vyspi.c", "frame.c", "utils.c",
     "driver_zodiac.c",
 ]
 

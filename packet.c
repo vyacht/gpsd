@@ -194,7 +194,7 @@ void character_pushback(struct gps_packet_t *lexer)
 		lexer->char_counter);
 }
 
-static void nextstate(struct gps_packet_t *lexer, unsigned char c)
+void nextstate(struct gps_packet_t *lexer, unsigned char c)
 {
     static int n = 0;
 #ifdef RTCM104V2_ENABLE

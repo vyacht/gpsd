@@ -33,7 +33,9 @@ extern void character_pushback(struct gps_packet_t *lexer);
 extern void packet_discard(struct gps_packet_t *lexer);
 extern void packet_accept(struct gps_packet_t *lexer, int packet_type);
 
-static void character_skip(struct gps_packet_t *lexer)
+void character_skip(struct gps_packet_t *lexer);
+
+void character_skip(struct gps_packet_t *lexer)
 /* shift the input buffer from inbufptr to skip a single character */
 {
 
@@ -145,6 +147,8 @@ static gps_mask_t seatalk_print_command(uint8_t * cmdBuffer, uint8_t size,
     ptr += l2;
   }
   gpsd_report(session->context->debug, LOG_IO,"0x%02X: %s\n", cmdBuffer[0], bu);
+
+  return 0;
 }
 
 static gps_mask_t seatalk_process_depth(uint8_t * cmdBuffer, uint8_t size, 
@@ -163,7 +167,7 @@ static gps_mask_t seatalk_process_depth(uint8_t * cmdBuffer, uint8_t size,
 
   if(size == 5) {
 
-    if(cmdBuffer[1] & 0x0f != 2) {
+    if((cmdBuffer[1] & 0x0f) != 2) {
       printf("process error - wrong encoded data length\n");
     }
 
@@ -187,13 +191,13 @@ static gps_mask_t seatalk_process_depth(uint8_t * cmdBuffer, uint8_t size,
     }
 
   } else {
-    printf("process error - wrong datagram length\n");
+    printf("process error - wrong datagram length %u\n", size);
   }
 
   return NAVIGATION_SET;
 }
 
-static gps_mask_t seatalk_process_wind_angle(uint8_t * cmdBuffer, uint8_t size,
+static gps_mask_t seatalk_process_wind_angle(uint8_t * cmdBuffer, uint8_t size UNUSED,
 					struct gps_device_t *session) {
   /*
     10  01  XX  YY  Apparent Wind Angle: XXYY/2 degrees right of bow
@@ -212,7 +216,7 @@ static gps_mask_t seatalk_process_wind_angle(uint8_t * cmdBuffer, uint8_t size,
   return ENVIRONMENT_SET;
 }
 
-static gps_mask_t seatalk_process_wind_speed(uint8_t * cmdBuffer, uint8_t size,
+static gps_mask_t seatalk_process_wind_speed(uint8_t * cmdBuffer, uint8_t size UNUSED,
 					struct gps_device_t *session) {
   /*
     11  01  XX  0Y  Apparent Wind Speed: (XX & 0x7F) + Y/10 Knots
@@ -264,9 +268,9 @@ static gps_mask_t seatalk_process_speed(uint8_t * cmdBuffer, uint8_t size,
 
     if(cmdBuffer[6] & 0x40) {
       // sensor 1 data is valid
-	// means sensor 2 delivers speed as well, we ignore it as we don't know if its really valid
-	session->gpsdata.navigation.speed_thru_water = s1 / 100.0;
-      if(cmdBuffer[6] & 0x80 == 0x80) {
+      // means sensor 2 delivers speed as well, we ignore it as we don't know if its really valid
+      session->gpsdata.navigation.speed_thru_water = s1 / 100.0;
+      if((cmdBuffer[6] & 0x80) == 0x80) {
 	gpsd_report(session->context->debug, LOG_DATA,
 		    "command %02X: Speed = %f knots from sensor 1 (sensor 2 ignored)\n", cmdBuffer[0], 
 		    session->gpsdata.navigation.speed_thru_water);
@@ -277,7 +281,7 @@ static gps_mask_t seatalk_process_speed(uint8_t * cmdBuffer, uint8_t size,
 		    session->gpsdata.navigation.speed_thru_water);
       }
     } else {
-      if(cmdBuffer[6] & 0x80 == 0x80) {
+      if((cmdBuffer[6] & 0x80) == 0x80) {
 	// means sensor 2 delivers speed but not s1
         session->gpsdata.navigation.speed_thru_water = s2 / 100.0;
 	gpsd_report(session->context->debug, LOG_DATA,
@@ -292,7 +296,7 @@ static gps_mask_t seatalk_process_speed(uint8_t * cmdBuffer, uint8_t size,
   return NAVIGATION_SET;
 }
 
-static gps_mask_t seatalk_process_milage(uint8_t * cmdBuffer, uint8_t size,
+static gps_mask_t seatalk_process_milage(uint8_t * cmdBuffer, uint8_t size UNUSED,
 					struct gps_device_t *session) {
   /*
     21  02  XX  XX  0X  Trip Mileage: XXXXX/100 nautical miles
@@ -301,7 +305,7 @@ static gps_mask_t seatalk_process_milage(uint8_t * cmdBuffer, uint8_t size,
   
   if(cmdBuffer[0] == 0x21) {
     session->gpsdata.navigation.distance_trip = 
-      (((uint32_t)getleu16(cmdBuffer, 2) << 4) | cmdBuffer[4] & 0x0F)/ 100.0;
+      (((uint32_t)getleu16(cmdBuffer, 2) << 4) | (cmdBuffer[4] & 0x0F))/ 100.0;
     session->gpsdata.navigation.set = NAV_DIST_TRIP_PSET;
   } else {
     session->gpsdata.navigation.distance_total = getleu16(cmdBuffer, 2) / 10.0;
@@ -316,7 +320,7 @@ static gps_mask_t seatalk_process_milage(uint8_t * cmdBuffer, uint8_t size,
   return NAVIGATION_SET;
 }
 
-static gps_mask_t seatalk_process_distlog(uint8_t * cmdBuffer, uint8_t size,
+static gps_mask_t seatalk_process_distlog(uint8_t * cmdBuffer, uint8_t size UNUSED,
 					struct gps_device_t *session) {
   /*
     25  Z4  XX  YY  UU  VV AW  Total & Trip Log
@@ -324,7 +328,7 @@ static gps_mask_t seatalk_process_distlog(uint8_t * cmdBuffer, uint8_t size,
                      trip = (UU+VV*256+W*65536)/100 [max=10485.75] nautical miles
   */
   session->gpsdata.navigation.distance_trip = 
-    (cmdBuffer[4] + cmdBuffer[5]*256 + cmdBuffer[6] & 0x0F*65536)/100.0;
+    (cmdBuffer[4] + cmdBuffer[5]*256 + (cmdBuffer[6] & 0x0F)*65536)/100.0;
   session->gpsdata.navigation.set = NAV_DIST_TRIP_PSET;
 
   session->gpsdata.navigation.distance_total = 
@@ -339,7 +343,7 @@ static gps_mask_t seatalk_process_distlog(uint8_t * cmdBuffer, uint8_t size,
   return NAVIGATION_SET;
 }
 
-static gps_mask_t seatalk_process_watertemp(uint8_t * cmdBuffer, uint8_t size,
+static gps_mask_t seatalk_process_watertemp(uint8_t * cmdBuffer, uint8_t size UNUSED,
 					struct gps_device_t *session) {
   /*
     23  Z1  XX  YY  Water temperature (ST50): XX deg Celsius, YY deg Fahrenheit
@@ -350,7 +354,7 @@ static gps_mask_t seatalk_process_watertemp(uint8_t * cmdBuffer, uint8_t size,
                     Corresponding NMEA sentence: MTW
   */
   if(cmdBuffer[0] == 0x23) {
-    if(cmdBuffer[1] & 0xF0 != 0x40) { 
+    if((cmdBuffer[1] & 0xF0) != 0x40) { 
       session->gpsdata.environment.temp[temp_water] = cmdBuffer[2];
       session->gpsdata.environment.set = ENV_TEMP_WATER_PSET;
     }
@@ -1127,13 +1131,14 @@ static gps_mask_t process_seatalk(uint8_t * cmdBuffer, uint8_t size,
 					struct gps_device_t *session) {
   gps_mask_t mask = 0;
 
-  int i = 0;
+  uint8_t i = 0;
 
-  for (i = 0;
-       i < (unsigned)(sizeof(st_process) / sizeof(st_process[0])); ++i) {
+  while(i < (uint8_t)(sizeof(st_process) / sizeof(st_process[0]))) {
     if(st_process[i].cmdId == cmdBuffer[0]) {
       mask = st_process[i].decoder(cmdBuffer, size, session);
+      break;
     }
+    i++;
   }
 
   if ((mask & TIME_SET) != 0) {
@@ -1243,9 +1248,8 @@ static void seatalk_nextstate(struct gps_packet_t *lexer, unsigned char c)
 
       n++;
 
-      if(!cmd & seatalk_is_command(lexer, c, parity)) {
-	gpsd_report(lexer->debug, LOG_RAW + 2, 
-		      "command flag\n");
+      if((!cmd) && seatalk_is_command(lexer, c, parity)) {
+	gpsd_report(lexer->debug, LOG_RAW + 2, "command flag\n");
 	cmd = 1;
       }
 
@@ -1446,16 +1450,17 @@ ssize_t seatalk_packet_get(struct gps_device_t *session)
 	return recvd;
 }
 
-static gps_mask_t seatalk_parse_input(struct gps_device_t *session) {
+gps_mask_t seatalk_parse_input(struct gps_device_t *session) {
 
-  uint8_t *sentence = (char *)session->packet.outbuffer;
-  return process_seatalk(sentence, session->packet.outbuflen, session);
+  uint8_t *sentence = (uint8_t *)session->packet.outbuffer;
+  gps_mask_t mask = 
+    process_seatalk(sentence, session->packet.outbuflen, session);
+  return mask;
 }
 
 static void seatalk_set_serial(struct gps_device_t *session) {
 
   struct termios tty;
-  struct termios tty_old;
 
   memset (&tty, 0, sizeof tty);
 
@@ -1497,7 +1502,7 @@ static void seatalk_set_serial(struct gps_device_t *session) {
   session->ttyset.c_iflag     |=  BRKINT;
 
   session->ttyset.c_iflag     &=  ~IGNPAR;
-  session->ttyset.c_iflag     |=  PARMRK;
+  session->ttyset.c_iflag     |=  PARMRK;  // this is basically the core of detecting the command start
   session->ttyset.c_iflag     |=  INPCK;
   session->ttyset.c_iflag     &=  ~ISTRIP;
 
@@ -1528,7 +1533,6 @@ static void seatalk_driver_init(struct gps_device_t * session) {
 int seatalk_open(struct gps_device_t *session) {
 
   char path[strlen(session->gpsdata.dev.path)], *port;
-  socket_t dsock;
   (void)strlcpy(path, session->gpsdata.dev.path + 5, sizeof(path));
 	
   session->gpsdata.gps_fd = -1;
