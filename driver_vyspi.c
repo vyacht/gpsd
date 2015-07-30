@@ -3595,8 +3595,15 @@ int vyspi_open(struct gps_device_t *session) {
 
       } // if(port)
 
-    }
+      uint8_t cmd[255];
+      uint8_t frm[255];
+      memcpy(cmd, "strt", 4);
+      size_t len = 
+	frm_toHDLC8(frm, 255, FRM_TYPE_CMD, cmd, 4);
 
+      gpsd_serial_write(session, frm, len);
+        
+    }
 
   } else {
 
