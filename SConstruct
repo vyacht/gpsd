@@ -833,6 +833,7 @@ libgpsd_sources = [
     "serial.c",
     "subframe.c",
     "timebase.c",
+    "websocket.c", 
     "drivers.c",
     "driver_ais.c",
     "driver_evermore.c",

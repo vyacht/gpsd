@@ -2009,6 +2009,7 @@ struct devconfig_t {
 
 struct policy_t {
     bool watcher;			/* is watcher mode on? */
+    bool websocket;			/* websocket mode? */
     bool json;				/* requesting JSON? */
     bool nmea;				/* requesting dumping as NMEA? */
     int raw;				/* requesting raw data? */

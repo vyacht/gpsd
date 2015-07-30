@@ -53,6 +53,7 @@
 #if defined(SYSTEMD_ENABLE)
 #include "sd_socket.h"
 #endif
+#include "websocket.h"
 
 /*
  * The name of a tty device from which to pick up whatever the local
@@ -543,6 +544,9 @@ struct subscriber_t
     timestamp_t active;		/* when subscriber last polled for data */
     struct policy_t policy;	/* configurable bits */
     pthread_mutex_t mutex;	/* serialize access to fd */
+
+    enum wsState state;
+    enum wsFrameType frameType;
 };
 
 #ifdef LIMITED_MAX_CLIENTS
@@ -583,6 +587,9 @@ static /*@null@*//*@observer@ */ struct subscriber_t *allocate_client(void)
 	    subscribers[si].policy.nmea    = true;
 	    subscribers[si].policy.watcher = true;
 	    subscribers[si].policy.json    = false;
+	    subscribers[si].policy.websocket = false;
+	    subscribers[si].state = WS_STATE_OPENING;
+    	subscribers[si].frameType = WS_INCOMPLETE_FRAME;
 	    return &subscribers[si];
 	}
     }
@@ -617,13 +624,16 @@ static void detach_client(struct subscriber_t *sub)
     sub->policy.scaled = false;
     sub->policy.timing = false;
     sub->policy.split24 = false;
+    sub->policy.websocket = false;
     sub->policy.devpath[0] = '\0';
+    sub->state = WS_STATE_OPENING;
+    sub->frameType = WS_INCOMPLETE_FRAME;
     sub->fd = UNALLOCATED_FD;
     unlock_subscriber(sub);
     /*@+mustfreeonly@*/
 }
 
-static ssize_t throttled_write(struct subscriber_t *sub, char *buf,
+static ssize_t throttled_write_(struct subscriber_t *sub, char *buf,
 			       size_t len)
 /* write to client -- throttle if it's gone or we're close to buffer overrun */
 {
@@ -632,7 +642,9 @@ static ssize_t throttled_write(struct subscriber_t *sub, char *buf,
     if (context.debug >= LOG_CLIENT) {
 	if (isprint(buf[0]))
 	    gpsd_report(context.debug, LOG_CLIENT,
-			"=> client(%d): %s\n", sub_index(sub), buf);
+			"=> %sclient(%d): %s\n", 
+			sub->policy.websocket?"ws":"",
+			sub_index(sub), buf);
 	else {
 	    char *cp, buf2[MAX_PACKET_LENGTH * 3];
 	    buf2[0] = '\0';
@@ -641,7 +653,9 @@ static ssize_t throttled_write(struct subscriber_t *sub, char *buf,
 			       sizeof(buf2) - strlen(buf2),
 			       "%02x", (unsigned int)(*cp & 0xff));
 	    gpsd_report(context.debug, LOG_CLIENT,
-			"=> client(%d): =%s\n", sub_index(sub),	buf2);
+			"===> %sclient(%d): =%s\n", 
+			sub->policy.websocket?"ws":"",
+			sub_index(sub),	buf2);
 	}
     }
 
@@ -675,6 +689,17 @@ static ssize_t throttled_write(struct subscriber_t *sub, char *buf,
 		    sub_index(sub), strerror(errno));
     detach_client(sub);
     return status;
+}
+
+static ssize_t throttled_write(struct subscriber_t *sub, char *buf,
+			       size_t len) {
+    if(sub->policy.websocket) {
+      char reply[GPS_JSON_RESPONSE_MAX + 1];
+      size_t replylen = GPS_JSON_RESPONSE_MAX;
+      wsMakeFrame(buf, len, reply, &replylen, WS_TEXT_FRAME);
+      return throttled_write_(sub, reply, replylen);
+    } else 
+      return throttled_write_(sub, buf, len);
 }
 
 static void notify_watchers(struct gps_device_t *device,
@@ -1126,6 +1151,97 @@ static void gpsd_device_write(const char *buf, size_t len)
       }
     }
   }
+}
+
+static ssize_t handle_websocket_request(struct subscriber_t *sub,
+			   const char *buf, const char **after,
+			   char *reply, size_t replylen)
+{
+    uint8_t *data = NULL;
+    size_t dataSize = 0;
+    size_t len = 0;
+
+    struct handshake hs;
+    nullHandshake(&hs);
+    
+    gpsd_report(context.debug, LOG_INF, "incomming frame: %s\n", buf);
+
+    if (sub->state == WS_STATE_OPENING) {
+      sub->frameType = wsParseHandshake(buf, 0, &hs);
+    } else {
+      sub->frameType = wsParseInputFrame(buf, 0, &data, &dataSize);
+    }
+        
+    if ((sub->frameType == WS_INCOMPLETE_FRAME) 
+	|| (sub->frameType == WS_ERROR_FRAME)) {
+      if (sub->frameType == WS_INCOMPLETE_FRAME)
+	printf("buffer too small");
+      else
+	printf("error in incoming frame\n");
+            
+      if (sub->state == WS_STATE_OPENING) {
+	len = snprintf(reply, replylen,
+		 "HTTP/1.1 400 Bad Request\r\n"
+		 "%s%s\r\n\r\n",
+		 versionField,
+		 version);
+	sub->frameType = WS_INCOMPLETE_FRAME;
+	return throttled_write(sub, reply, len);
+
+      } else {
+	wsMakeFrame(NULL, 0, reply, &len, WS_CLOSING_FRAME);
+	sub->state = WS_STATE_CLOSING;
+	sub->frameType = WS_INCOMPLETE_FRAME;
+	return throttled_write(sub, reply, len);
+      }
+    }
+        
+    if (sub->state == WS_STATE_OPENING) {
+      assert(sub->frameType == WS_OPENING_FRAME);
+      if (sub->frameType == WS_OPENING_FRAME) {
+	bool raw = false, pseudo = false; 
+	// if resource is right, generate answer handshake and send it
+	if (strcmp(hs.resource, "/raw") == 0) {
+	  raw = true;
+	} else {
+	  len = snprintf((char *)reply, replylen, 
+			      "HTTP/1.1 404 Not Found\r\n\r\n");
+	  throttled_write(sub, reply, len);
+	  return -1;
+	}
+                
+	len = replylen;
+	wsGetHandshakeAnswer(&hs, reply, &len);
+	freeHandshake(&hs);
+	ssize_t status = throttled_write(sub, reply, len);
+	sub->policy.websocket = true;
+	sub->policy.json = true;
+	sub->policy.raw  = raw;
+	sub->state = WS_STATE_NORMAL;
+	sub->frameType = WS_INCOMPLETE_FRAME;
+	gpsd_report(context.debug, LOG_INF, "answering handshake to %sclient\n",
+		    sub->policy.websocket?"ws":"");
+	return status;
+      }
+    } else {
+      if (sub->frameType == WS_CLOSING_FRAME) {
+	sub->policy.websocket = false;
+	gpsd_report(context.debug, LOG_INF, "closing frame\n");
+	if (sub->state == WS_STATE_CLOSING) {
+	  return -1;
+	} else {
+	  len = replylen;
+	  wsMakeFrame(NULL, 0, reply, &len, WS_CLOSING_FRAME);
+	  throttled_write(sub, reply, len);
+	  return -1;
+	}
+      } else if (sub->frameType == WS_TEXT_FRAME) {
+	len = replylen;
+	wsMakeFrame("echo", 6, reply, &len, WS_TEXT_FRAME);
+	sub->frameType = WS_INCOMPLETE_FRAME;
+	return throttled_write(sub, reply, len);
+      }
+    }
 }
 
 static void handle_request(struct subscriber_t *sub,
@@ -1647,13 +1763,13 @@ static void all_reports(struct gps_device_t *device, gps_mask_t changed)
      * Else we may be providing GPS time.
      */
     if ((changed & TIME_SET) == 0) {
-	//gpsd_report(context.debug, LOG_PROG, "NTP: No time this packet\n");
+		gpsd_report(context.debug, LOG_PROG, "NTP: No time this packet\n");
     } else if (isnan(device->newdata.time)) {
-	//gpsd_report(context.debug, LOG_PROG, "NTP: bad new time\n");
+		gpsd_report(context.debug, LOG_PROG, "NTP: bad new time\n");
     } else if (device->newdata.time == device->last_fixtime.real) {
-	//gpsd_report(context.debug, LOG_PROG, "NTP: Not a new time\n");
+		gpsd_report(context.debug, LOG_PROG, "NTP: Not a new time\n");
     } else if (!device->ship_to_ntpd) {
-	//gpsd_report(context.debug, LOG_PROG, "NTP: No precision time report\n");
+		gpsd_report(context.debug, LOG_PROG, "NTP: No precision time report\n");
     } else {
 	/*@-compdef@*/
 	struct timedrift_t td;
@@ -1771,19 +1887,32 @@ static int handle_gpsd_request(struct subscriber_t *sub, const char *buf)
     char reply[GPS_JSON_RESPONSE_MAX + 1];
 
     reply[0] = '\0';
-    if (buf[0] == '?') {
+    if ((strncmp(buf, "GET ", 4) == 0) 
+	|| (sub->policy.websocket == true)) {
+      // switching to web socket mode
+      // handle_websocket_request does its own writes
+      const char *end;
+      gpsd_report(context.debug, LOG_PROG,
+		  "handle web socket request\n");
+      return handle_websocket_request(sub, buf, &end,
+		     reply + strlen(reply),
+		     sizeof(reply) - strlen(reply));
+     
+    } else {
+      if (buf[0] == '?') {
 	const char *end;
 	for (end = buf; *buf != '\0'; buf = end)
-	    if (isspace(*buf))
-		end = buf + 1;
-	    else
-		handle_request(sub, buf, &end,
-			       reply + strlen(reply),
-			       sizeof(reply) - strlen(reply));
-    } else if (buf[0] == '$') {
+	  if (isspace(*buf))
+	    end = buf + 1;
+	  else
+	    handle_request(sub, buf, &end,
+			   reply + strlen(reply),
+			   sizeof(reply) - strlen(reply));
+      } else if (buf[0] == '$') {
 	gpsd_device_write(buf, strlen(buf));
+      } 
+      return (int)throttled_write(sub, reply, strlen(reply));
     }
-    return (int)throttled_write(sub, reply, strlen(reply));
 }
 #endif /* SOCKET_EXPORT_ENABLE */
 
