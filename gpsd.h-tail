@@ -680,7 +680,14 @@ struct gps_device_t {
 #ifdef SEATALK_ENABLE
 	struct {
 	  struct tm date;		/* date part of last sentence time */
-	  double subseconds;
+
+	  /* Ugly hack for junk GPS like Raystar 112/120 only reporting
+	     a timestamp (without ms!) every 10 secs. 
+	     We record system time of the last reported timestamp here
+	     to calculate fix.time from diff between system time and lastts */
+	  timestamp_t lastts;
+	  double offset;                /* offset in seconds */
+
 	  /* This is to cope with the reporting of 
 	     lat and lon in separate sentences */
 	  double lat;

@@ -151,6 +151,24 @@ static gps_mask_t seatalk_print_command(uint8_t * cmdBuffer, uint8_t size,
   return 0;
 }
 
+static gps_mask_t seatalk_update_time(struct gps_device_t *session) {
+
+  gps_mask_t mask = 0;
+
+  /* some ugly time stunts to cope with GPS 112/120 */
+  if (session->driver.seatalk.lastts > 0) {
+    session->driver.seatalk.offset = 
+      timestamp() - session->driver.seatalk.lastts;
+
+    gpsd_report(session->context->debug, LOG_DATA,
+		"seatalk offset= %2f.\n",
+		session->driver.seatalk.offset);
+    mask |= TIME_SET;
+  }
+
+}
+
+
 static gps_mask_t seatalk_process_depth(uint8_t * cmdBuffer, uint8_t size, 
 					struct gps_device_t *session) {
   /*
@@ -412,6 +430,8 @@ static gps_mask_t seatalk_process_lat(uint8_t * bu, uint8_t size,
   session->gpsdata.status = STATUS_FIX;	
   mask |= STATUS_SET;
 
+  mask |= seatalk_update_time(session);
+
   gpsd_report(session->context->debug, LOG_DATA,
 	      "seatalk latitude: %0.4f (%c)\n", 
 	      session->driver.seatalk.lat, (mm & 0x8000)?'S':'N');
@@ -448,6 +468,8 @@ static gps_mask_t seatalk_process_lon(uint8_t * bu, uint8_t size,
   // my understanding of this sentence is that this is fix data
   session->gpsdata.status = STATUS_FIX;	
   mask |= STATUS_SET;
+
+  mask |= seatalk_update_time(session);
 
   gpsd_report(session->context->debug, LOG_DATA,
 	      "seatalk longitude: %0.4f (%c)\n", 
@@ -515,6 +537,14 @@ static gps_mask_t seatalk_process_time(uint8_t * bu, uint8_t size,
     gpsd_report(session->context->debug, LOG_WARN,
 		"can't use time until after a year was supplied.\n");
   else {
+
+    // update when time report was last seen
+    session->driver.seatalk.lastts = timestamp();
+    session->driver.seatalk.offset = 0;
+    gpsd_report(session->context->debug, LOG_DATA,
+		"seatalk setting new last seen report time= %2f.\n",
+		session->driver.seatalk.lastts);
+
     mask = TIME_SET;
   }
 
@@ -535,7 +565,9 @@ static gps_mask_t seatalk_process_date(uint8_t * bu, uint8_t size,
   gps_mask_t mask = 0;
 
   seatalk_merge_ddmmyy(bu[3], bu[1] >> 4, bu[2], session);
-  mask = TIME_SET;
+
+  // makes no sense to set time / date without timestamp
+  // mask = TIME_SET;
 
   gpsd_report(session->context->debug, LOG_DATA,
 	      "seatalk date: %02d-%02d-%02d\n", bu[3], bu[1] >> 4, bu[2]);
@@ -583,6 +615,11 @@ static gps_mask_t seatalk_process_lat_lon_raw(uint8_t * bu, uint8_t size,
       session->newdata.longitude *= -1.0;
   }
   mask |= LATLON_SET;
+
+  /* we do not believe these raw reports are 
+     tied to a GPS fix - thus we do not set the mode here */
+
+  mask |= seatalk_update_time(session);
 
   gpsd_report(session->context->debug, LOG_DATA,
 	      "seatalk raw lat/lon = %0.2f (%c) / %0.2f (%c)\n",
@@ -1144,18 +1181,19 @@ static gps_mask_t process_seatalk(uint8_t * cmdBuffer, uint8_t size,
   if ((mask & TIME_SET) != 0) {
 
     session->newdata.time = gpsd_utc_resolve(session, 
-					     &session->driver.seatalk.date, 
-					     session->driver.seatalk.subseconds);
+					     &session->driver.seatalk.date, 0);
+    session->newdata.time += session->driver.seatalk.offset;
 
     gpsd_report(session->context->debug, LOG_DATA,
-		"time is %2f = %d-%02d-%02dT%02d:%02d:%02.2fZ\n",
+		"time is %2f = %d-%02d-%02dT%02d:%02d:%02dZ offset = %05.2f sec\n",
 		session->newdata.time,
 		1900 + session->driver.seatalk.date.tm_year,
 		session->driver.seatalk.date.tm_mon + 1,
 		session->driver.seatalk.date.tm_mday,
 		session->driver.seatalk.date.tm_hour,
 		session->driver.seatalk.date.tm_min,
-		session->driver.seatalk.date.tm_sec + session->driver.seatalk.subseconds);
+		session->driver.seatalk.date.tm_sec,
+		session->driver.seatalk.offset);
   }
 
   if((mask & LATLON_SET) 
@@ -1527,6 +1565,8 @@ static void seatalk_driver_init(struct gps_device_t * session) {
   session->driver.seatalk.lat_set = 0;
   session->driver.seatalk.lon_set = 0;
 
+  session->driver.seatalk.offset = 0;
+  session->driver.seatalk.lastts = 0;
 }
 
 #ifndef S_SPLINT_S

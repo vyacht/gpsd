@@ -225,7 +225,7 @@ void gpsd_time_init(struct gps_context_t *context, time_t starttime)
     if (context->start_time < GPS_EPOCH)
 	gpsd_report(context->debug, LOG_ERROR,
 		    "system time looks bogus, dates may not be reliable.\n");
-    else {
+    {
 	/* we've forced the UTC timezone, so this is actually UTC */
 	struct tm *now = localtime(&context->start_time);
 	char scr[128];
@@ -234,7 +234,8 @@ void gpsd_time_init(struct gps_context_t *context, time_t starttime)
 	 * I think we can live with that consequence.
 	 */
 	now->tm_year += 1900;
-	context->century = now->tm_year - (now->tm_year % 100);
+	//	context->century = now->tm_year - (now->tm_year % 100);
+	context->century = 2000;
 	(void)unix_to_iso8601((timestamp_t)context->start_time, scr, sizeof(scr));
 	gpsd_report(context->debug, LOG_INF,
 		    "startup at %s (%d)\n",
