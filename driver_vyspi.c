@@ -2863,7 +2863,7 @@ static void vyspi_preparse_serial(struct gps_device_t *session) {
   }
 }
 
-static void vyspi_preparse(struct gps_device_t *session) {
+static void vyspi_preparse_spi(struct gps_device_t *session) {
 
   static char * typeNames [] = {
     "UNKOWN", "NMEA0183", "NMEA2000"
@@ -2899,7 +2899,7 @@ static void vyspi_preparse(struct gps_device_t *session) {
       break;
     }
 
-    if(pkgType == FRM_TYPE_NMEA2000) {
+    if(pkgType == PKG_TYPE_NMEA2000) {
 
       if((size_t)lexer->inbuflen < (size_t)(lexer->inbufptr - lexer->inbuffer) + pkgLen + 8) {
 	gpsd_report(session->context->debug, LOG_WARN, "VYSPI: exit prematurely: %ld + 8 + %d > %lu\n",
@@ -2936,7 +2936,7 @@ static void vyspi_preparse(struct gps_device_t *session) {
 
       break;
 
-    } else if (pkgType == FRM_TYPE_NMEA0183) {
+    } else if (pkgType == PKG_TYPE_NMEA0183) {
       
       if((size_t)lexer->inbuflen < (size_t)(lexer->inbufptr - lexer->inbuffer) + pkgLen) {
 	gpsd_report(session->context->debug, LOG_WARN, "VYSPI: exit prematurely: %ld + %d > %lu\n",
@@ -3024,17 +3024,20 @@ static ssize_t vyspi_get(struct gps_device_t *session)
       return 0;
     }
 
-    // TODO - this is different for SPI!!!!
-    //pkg->inbuflen = status;
-    //pkg->inbufptr = pkg->inbuffer;
-
-    pkg->inbuflen += status;
-    //pkg->inbufptr = pkg->inbuffer;
-
+    if(session->gpsdata.dev.isSerial) {
+      pkg->inbuflen += status;
+    } else {
+      // is SPI
+      pkg->inbuflen = status;
+      pkg->inbufptr = pkg->inbuffer;
+    }
   }
 
-  // TODO SEE TWO LINES ABOVE!!!!
-  vyspi_preparse_serial(session);
+  if(session->gpsdata.dev.isSerial) {
+    vyspi_preparse_serial(session);
+  } else {
+    vyspi_preparse_spi(session);
+  }
 
 
   if (pkg->outbuflen > 0) {
@@ -3079,7 +3082,7 @@ static ssize_t vyspi_get(struct gps_device_t *session)
 }
 
 /*@-mustfreeonly@*/
-static gps_mask_t vyspi_parse_input(struct gps_device_t *session)
+static gps_mask_t vyspi_parse_serial_input(struct gps_device_t *session)
 {    
   gps_mask_t mask = 0;
   struct gps_packet_t * lexer = &session->packet;
@@ -3169,6 +3172,123 @@ static gps_mask_t vyspi_parse_input(struct gps_device_t *session)
   return mask;
 }
 /*@+mustfreeonly@*/
+
+static gps_mask_t vyspi_parse_spi_input(struct gps_device_t *session)
+{    
+  gps_mask_t mask = 0;
+  struct gps_packet_t * pkg = &session->packet;
+
+  PGN *work = NULL;
+
+  static char * typeNames [] = {
+    "UNKOWN", "NMEA0183", "NMEA2000"
+  };
+
+  uint8_t packet_len = pkg->outbuflen;
+  uint8_t * buf = pkg->outbuffer;
+
+  uint8_t len = 0;
+
+  gpsd_report(session->context->debug, LOG_ERROR, 
+	      "VYSPI: parse_input called with packet len = %d\n", packet_len);
+
+  // one extra for reading both, len and type/origin
+  while(len + 1 < packet_len) {
+
+    uint8_t pkgType = (uint8_t)buf[len] & 0x0F;
+    uint8_t pkgOrg  = (uint8_t)((buf[len] & 0xF0) >> 5);
+    uint8_t pkgLen =  (uint8_t)buf[len + 1] & 0xFF;
+
+    gpsd_report(session->context->debug, LOG_DATA, "VYSPI: ptype= %s, org= %d, len= %d\n", 
+		((pkgType > PKG_TYPE_NMEA2000) && (pkgType < PKG_TYPE_NMEA0183)) 
+		? typeNames[0] : typeNames[pkgType], 
+		pkgOrg, pkgLen);
+
+    // skip 2 byte header now
+    len += 2;
+ 
+    if((pkgLen <= 0) || (packet_len <= len)) break;
+
+    if(pkgType == PKG_TYPE_NMEA2000) {
+
+      if(len + pkgLen + 8 > packet_len) {
+	gpsd_report(session->context->debug, LOG_WARN, "VYSPI: exit prematurely: %d + 8 + %d > %d\n",
+		    len, pkgLen, packet_len);
+	break;
+      }
+
+      session->driver.vyspi.last_pgn = getleu32(buf, len);
+      uint32_t pkgid = getleu32(buf, len + 4);
+
+      gpsd_report(session->context->debug, LOG_DATA, 
+		  "VYSPI: PGN = %u, pid= %u, org= %u, len= %u\n", 
+		   session->driver.vyspi.last_pgn, pkgid, pkgOrg, pkgLen);
+
+      work = vyspi_find_pgn( session->driver.vyspi.last_pgn );
+
+      len += 8;
+
+      if (work != NULL) {
+	mask |= (work->func)(&session->packet.outbuffer[len], 
+			     (int)pkgLen, work, session);
+      } else {
+	gpsd_report(session->context->debug, LOG_ERROR, 
+		    "VYSPI: no work PGN found for pgn = %u\n", 
+		    session->driver.vyspi.last_pgn);
+      }
+
+      // length is packet length + 8 bytes pgn/pid
+      len += pkgLen;
+
+    } else if (pkgType == PKG_TYPE_NMEA0183) {
+      
+      if(len + pkgLen >= packet_len) 
+	break;
+
+      gps_mask_t st = 0;
+
+      gpsd_report(session->context->debug, LOG_DATA, "VYSPI: org= %d, len= %d\n", 
+		  pkgOrg, pkgLen);
+
+      char sentence[NMEA_MAX + 1];
+
+      memset(sentence, 0, sizeof(sentence));
+      memcpy(sentence, (char *)&session->packet.outbuffer[len], pkgLen);
+
+      if (sentence[strlen(sentence)-1] != '\n')
+	gpsd_report(session->context->debug, LOG_IO, "<= GPS: %s\n", sentence);
+      else
+	gpsd_report(session->context->debug, LOG_IO, "<= GPS: %s", sentence);
+
+      if ((st= nmea_parse(sentence, session)) == 0) {
+	gpsd_report(session->context->debug, LOG_WARN, "unknown sentence: \"%s\"\n",	sentence);
+      } 
+
+      mask |= st;
+	
+      // length is packet length
+      len += pkgLen;
+
+    } else {
+
+      gpsd_report(session->context->debug, LOG_ERROR, "UNKOWN: len= %d\n", 
+		  pkgLen);	  
+
+      break;
+    }
+  }
+
+  return mask;
+}
+/*@+mustfreeonly@*/
+
+static gps_mask_t vyspi_parse_input(struct gps_device_t *session) {
+  if(session->gpsdata.dev.isSerial) {
+    return vyspi_parse_serial_input(session);
+  } else {
+    return vyspi_parse_spi_input(session);
+  }
+}
 
 /*@+nullassign@*/
 static void vyspi_set_serial(struct gps_device_t *session) {
@@ -3360,7 +3480,8 @@ ssize_t vyspi_write(struct gps_device_t *session,
 /* pass low-level data to devices straight through */
 {
   gpsd_report(session->context->debug, LOG_INF, 
-	      "vyspi_write: %s (%s)\n", buf, session->gpsdata.dev.path);
+	      "vyspi_write: %s (%s) ports= %d\n", 
+	buf, session->gpsdata.dev.path, session->gpsdata.dev.vy_port_count);
 
   uint8_t frm[255];
   uint8_t i = 0;
@@ -3412,14 +3533,14 @@ int vyspi_open(struct gps_device_t *session) {
     gpsd_report(session->context->debug, LOG_INF, 
 		"Assuming SPI or serial device %s.\n", path);
     
-    if ((session->gpsdata.gps_fd =
-	 open(path, O_RDWR | O_NOCTTY)) == -1) {
+    if ((dsock = open(path, O_RDWR | O_NOCTTY)) == -1) {
       gpsd_report(session->context->debug, LOG_ERROR,
 		  "read-only device open failed: %s\n",
 		  strerror(errno));
       return -1;
     }
 
+    session->gpsdata.gps_fd = dsock;
     gpsd_report(session->context->debug, LOG_INF, 
 		"Device %s opened with sock = %d.\n", path, dsock);
 
@@ -3428,12 +3549,16 @@ int vyspi_open(struct gps_device_t *session) {
 
       // assuming SPI
       if(session->gpsdata.gps_fd) {
-      // usefull to send a reset to the device
+	// usefull to send a reset to the device
 	ioctl(dsock, VYSPI_RESET, NULL);
       }
+      session->gpsdata.dev.isSerial = 0;
+      gpsd_report(session->context->debug, LOG_INF, 
+		  "Opened %s as SPI device.\n", path);
 
     } else {
 
+      session->gpsdata.dev.isSerial = 1;
       vyspi_set_serial(session);
 
       /* fetch additional port parameter to configure uC using classical URL:
@@ -3468,7 +3593,7 @@ int vyspi_open(struct gps_device_t *session) {
 
 	}
 
-      }
+      } // if(port)
 
     }
 

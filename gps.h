@@ -1991,6 +1991,7 @@ struct devconfig_t {
     /* host port = 0, port 1 and port 2 */
     struct vy_port_t vy_portlist[MAX_VY_PORT];
     int       vy_port_count;
+    int    isSerial;
 
     int flags;
 #define SEEN_GPS 	0x01
