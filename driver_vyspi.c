@@ -2938,7 +2938,7 @@ static void vyspi_preparse_spi(struct gps_device_t *session) {
 
     } else if (pkgType == PKG_TYPE_NMEA0183) {
       
-      if((size_t)lexer->inbuflen < (size_t)(lexer->inbufptr - lexer->inbuffer) + pkgLen) {
+      if(lexer->inbuflen < lexer->inbufptr - lexer->inbuffer + pkgLen) {
 	gpsd_report(session->context->debug, LOG_WARN, "VYSPI: exit prematurely: %ld + %d > %lu\n",
 		    (lexer->inbufptr - lexer->inbuffer), pkgLen, packetlen);
 	// discard 
