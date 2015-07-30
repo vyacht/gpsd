@@ -2147,6 +2147,9 @@ struct gps_data_t {
     /* should be moved to privdata someday */
     char tag[MAXTAGLEN+1];	/* tag of last sentence processed */
 
+    struct navigation_t navigation;
+    struct environment_t environment;
+
     /* pack things never reported together to reduce structure size */
 #define UNION_SET	(RTCM2_SET|RTCM3_SET|SUBFRAME_SET|AIS_SET|ATTITUDE_SET|GST_SET|VERSION_SET|DEVICELIST_SET|LOGMESSAGE_SET|ERROR_SET|TIMEDRIFT_SET)
     union {
@@ -2156,8 +2159,6 @@ struct gps_data_t {
 	struct subframe_t subframe;
 	struct ais_t ais;
 	struct attitude_t attitude;
-        struct navigation_t navigation;
-        struct environment_t environment;
 	struct rawdata_t raw;
 	struct gst_t gst;
 	/* "artificial" structures for various protocol responses */
