@@ -354,6 +354,8 @@ void nextstate(struct gps_packet_t *lexer, unsigned char c)
 	else if (c == 'C')
 	    lexer->state = NMEA_LEADER_END;
 #endif /* OCEANSERVER_ENABLE */
+	else if (isalpha(c))
+	    lexer->state = ANY_LEAD_1;
 	else
 	    lexer->state = GROUND_STATE;
 	break;
@@ -581,6 +583,13 @@ void nextstate(struct gps_packet_t *lexer, unsigned char c)
 	else
 	    lexer->state = GROUND_STATE;
 	break;
+    case ANY_LEAD_1:
+	if (isalpha(c))
+	    lexer->state = NMEA_LEADER_END;
+	else
+	    lexer->state = GROUND_STATE;
+	break;
+
 #ifdef TRIPMATE_ENABLE
     case ASTRAL_1:
 	if (c == 'S') {
