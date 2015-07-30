@@ -605,15 +605,18 @@ static gps_mask_t seatalk_process_lat_lon_raw(uint8_t * bu, uint8_t size,
   gps_mask_t mask = 0;
 
   /*@-type@*//* splint has a bug here */
-  session->newdata.latitude        = bu[2] + (bu[3] * 256 + bu[4])/100000.0/0.6;
-  session->newdata.longitude       = bu[5] + (bu[6] * 256 + bu[7])/100000.0/0.6;
+  session->driver.seatalk.lat        = bu[2] + (bu[3] * 256 + bu[4])/100000.0/0.6;
+  session->driver.seatalk.lon       = bu[5] + (bu[6] * 256 + bu[7])/100000.0/0.6;
   /*@+type@*/
   if( (bu[1] >> 4) & 0x01 ) {
-      session->newdata.latitude *= -1.0;
+      session->driver.seatalk.lat *= -1.0;
   }
   if( ((bu[1] >> 4) & 0x01) == 0 ) {
-      session->newdata.longitude *= -1.0;
+      session->driver.seatalk.lon *= -1.0;
   }
+
+  session->driver.seatalk.lat_set = 1;
+  session->driver.seatalk.lon_set = 1;
   mask |= LATLON_SET;
 
   /* we do not believe these raw reports are 
@@ -623,8 +626,8 @@ static gps_mask_t seatalk_process_lat_lon_raw(uint8_t * bu, uint8_t size,
 
   gpsd_report(session->context->debug, LOG_DATA,
 	      "seatalk raw lat/lon = %0.2f (%c) / %0.2f (%c)\n",
-	      session->newdata.latitude , (bu[1] >> 4) & 0x01 ? 'S' : 'N', 
-	      session->newdata.longitude, (bu[1] >> 4) & 0x01 ? 'E' : 'W');
+	      session->driver.seatalk.lat , (bu[1] >> 4) & 0x01 ? 'S' : 'N', 
+	      session->driver.seatalk.lon, (bu[1] >> 4) & 0x01 ? 'E' : 'W');
   seatalk_print_command(bu, size, session);
 
   return mask;
@@ -1203,6 +1206,9 @@ static gps_mask_t process_seatalk(uint8_t * cmdBuffer, uint8_t size,
     /* only go out with LATLON if both are set */
     session->newdata.latitude = session->driver.seatalk.lat;
     session->newdata.longitude = session->driver.seatalk.lon;
+
+    session->driver.seatalk.lat_set = 0;
+    session->driver.seatalk.lon_set = 0;
 
   } else {
 
