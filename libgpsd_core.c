@@ -477,6 +477,7 @@ int gpsd_open(struct gps_device_t *session)
     /* or could be UDP */
     } else if (strncmp(session->gpsdata.dev.path, "udp://", 6) == 0) {
 	char server[strlen(session->gpsdata.dev.path)+1], *port;
+	char * host = NULL;
 	socket_t dsock;
 	(void)strlcpy(server, session->gpsdata.dev.path + 6, sizeof(server));
 	INVALIDATE_SOCKET(session->gpsdata.gps_fd);
@@ -487,10 +488,14 @@ int gpsd_open(struct gps_device_t *session)
 	    return -1;
 	}
 	*port++ = '\0';
+	if(!strlen(server) || (strcmp("*", server) == 0)) 
+	  host = NULL;
+	else 
+	  host = server;
 	gpsd_report(session->context->debug, LOG_INF,
-		    "opening UDP feed at %s, port %s.\n", server,
+		    "opening UDP feed at %s, port %s.\n", NULL==host?"*":host,
 		    port);
-	if ((dsock = netlib_connectsock(AF_UNSPEC, server, port, "udp")) < 0) {
+	if ((dsock = netlib_connectsock(AF_UNSPEC, host, port, "udp")) < 0) {
 	    gpsd_report(session->context->debug, LOG_ERROR,
 			"UDP device open error %s.\n",
 			netlib_errstr(dsock));
