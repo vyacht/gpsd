@@ -3486,6 +3486,9 @@ ssize_t vyspi_write(struct gps_device_t *session,
   uint8_t frm[255];
   uint8_t i = 0;
 
+  if(len == 0)
+    return 0;
+
   for (i = 0; i < session->gpsdata.dev.vy_port_count; i++) {
 
     size_t frmlen = 
@@ -3494,7 +3497,7 @@ ssize_t vyspi_write(struct gps_device_t *session,
     gpsd_serial_write(session, frm, frmlen);
   }
 
-  return gpsd_serial_write(session, (const char *)buf, len);
+  return len;
 }
 
 #ifndef S_SPLINT_S
