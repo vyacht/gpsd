@@ -35,8 +35,7 @@ extern "C" {
 #include <string.h>
 #include <stdio.h> /* sscanf */
 #include <ctype.h> /* isdigit */
-//#include <stddef.h> /* size_t */
-#include "aw-sha1.h"
+
 #ifdef __AVR__
     #include <avr/pgmspace.h>
 #else
@@ -121,7 +120,7 @@ struct handshake {
      * @param outLength Length of out frame buffer. Return length of out frame
      * @param frameType [WS_TEXT_FRAME] frame type to build
      */
-    void wsMakeFrame(const uint8_t *data, size_t dataLength,
+    void wsMakeFrame(const char *data, size_t dataLength,
                      uint8_t *outFrame, size_t *outLength, enum wsFrameType frameType);
 
     /**

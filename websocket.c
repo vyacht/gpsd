@@ -23,6 +23,7 @@
 
 #include "websocket.h"
 #include "bsd_base64.h"
+#include "aw-sha1.h"
 
 static char rn[] PROGMEM = "\r\n";
 
@@ -283,7 +284,7 @@ void wsGetHandshakeAnswer(const struct handshake *hs, uint8_t *outFrame,
     *outLength = written;
 }
 
-void wsMakeFrame(const uint8_t *data, size_t dataLength,
+void wsMakeFrame(const char *data, size_t dataLength,
                  uint8_t *outFrame, size_t *outLength, enum wsFrameType frameType)
 {
   if(frameType != WS_CLOSING_FRAME) 
