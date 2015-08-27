@@ -160,8 +160,8 @@ static gps_mask_t seatalk_update_time(struct gps_device_t *session) {
     session->driver.seatalk.offset = 
       timestamp() - session->driver.seatalk.lastts;
 
-    gpsd_report(session->context->debug, LOG_DATA,
-		"seatalk offset= %2f.\n",
+    gpsd_external_report(session->context->debug, LOG_DATA,
+		"seatalk update time with offset= %2f.\n",
 		session->driver.seatalk.offset);
     mask |= TIME_SET;
   }
@@ -534,21 +534,21 @@ static gps_mask_t seatalk_process_time(uint8_t * bu, uint8_t size,
 
   seatalk_merge_hhmmss(bu[3], mm, ss, session);
   if (session->driver.seatalk.date.tm_year == 0)
-    gpsd_report(session->context->debug, LOG_WARN,
+    gpsd_external_report(session->context->debug, LOG_WARN,
 		"can't use time until after a year was supplied.\n");
   else {
 
     // update when time report was last seen
     session->driver.seatalk.lastts = timestamp();
     session->driver.seatalk.offset = 0;
-    gpsd_report(session->context->debug, LOG_DATA,
+    gpsd_external_report(session->context->debug, LOG_DATA,
 		"seatalk setting new last seen report time= %2f.\n",
 		session->driver.seatalk.lastts);
 
     mask = TIME_SET;
   }
 
-  gpsd_report(session->context->debug, LOG_DATA,
+  gpsd_external_report(session->context->debug, LOG_DATA,
 	      "seatalk time: %02d:%02d:%02d\n", bu[3], mm, ss);
   seatalk_print_command(bu, size, session);
 
@@ -1187,16 +1187,16 @@ static gps_mask_t process_seatalk(uint8_t * cmdBuffer, uint8_t size,
 					     &session->driver.seatalk.date, 0);
     session->newdata.time += session->driver.seatalk.offset;
 
-    gpsd_report(session->context->debug, LOG_DATA,
-		"time is %2f = %d-%02d-%02dT%02d:%02d:%02dZ offset = %05.2f sec\n",
-		session->newdata.time,
-		1900 + session->driver.seatalk.date.tm_year,
-		session->driver.seatalk.date.tm_mon + 1,
-		session->driver.seatalk.date.tm_mday,
-		session->driver.seatalk.date.tm_hour,
-		session->driver.seatalk.date.tm_min,
-		session->driver.seatalk.date.tm_sec,
-		session->driver.seatalk.offset);
+    gpsd_external_report(session->context->debug, LOG_DATA,
+			 "time is %2f = %d-%02d-%02dT%02d:%02d:%02dZ offset = %05.2f sec\n",
+			 session->newdata.time,
+			 1900 + session->driver.seatalk.date.tm_year,
+			 session->driver.seatalk.date.tm_mon + 1,
+			 session->driver.seatalk.date.tm_mday,
+			 session->driver.seatalk.date.tm_hour,
+			 session->driver.seatalk.date.tm_min,
+			 session->driver.seatalk.date.tm_sec,
+			 session->driver.seatalk.offset);
   }
 
   if((mask & LATLON_SET) 
@@ -1427,13 +1427,13 @@ ssize_t seatalk_packet_get(struct gps_device_t *session)
 	    return -1;
 	}
     } else {
-	if (lexer->debug >= LOG_RAW+1) {
+	if (lexer->debug >= LOG_IO) {
 	    char scratchbuf[MAX_PACKET_LENGTH*2+1];
-	    gpsd_report(lexer->debug, LOG_RAW + 1,
-			"Read %zd chars to buffer offset %zd (total %zd): %s\n",
-			recvd, lexer->inbuflen, lexer->inbuflen + recvd,
-			gpsd_packetdump(scratchbuf, sizeof(scratchbuf),
-			    (char *)lexer->inbuffer + lexer->inbuflen, (size_t) recvd));
+	    gpsd_external_report(lexer->debug, LOG_IO,
+				 "Read %zd chars to buffer offset %zd (total %zd): %s\n",
+				 recvd, lexer->inbuflen, lexer->inbuflen + recvd,
+				 gpsd_packetdump(scratchbuf, sizeof(scratchbuf),
+						 (char *)lexer->inbuffer + lexer->inbuflen, (size_t) recvd));
 	}
 	lexer->inbuflen += recvd;
     }

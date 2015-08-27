@@ -651,18 +651,19 @@ static void detach_client(struct subscriber_t *sub)
     /*@+mustfreeonly@*/
 }
 
-static ssize_t throttled_write_(struct subscriber_t *sub, char *buf,
+static ssize_t throttled_write_(struct subscriber_t *sub, const char *buf,
 			       size_t len)
 /* write to client -- throttle if it's gone or we're close to buffer overrun */
 {
     ssize_t status;
 
-    if (context.debug >= LOG_CLIENT) {
+    if (context.debug >= LOG_RAW) {
 	if (isprint(buf[0]))
 	    gpsd_report(context.debug, LOG_CLIENT,
 			"=> %sclient(%d): %s\n", 
 			sub->policy.websocket?"ws":"",
-			sub_index(sub), buf);
+			sub_index(sub), 
+			buf);
 	else {
 	    char *cp, buf2[MAX_PACKET_LENGTH * 3];
 	    buf2[0] = '\0';
@@ -671,9 +672,10 @@ static ssize_t throttled_write_(struct subscriber_t *sub, char *buf,
 			       sizeof(buf2) - strlen(buf2),
 			       "%02x", (unsigned int)(*cp & 0xff));
 	    gpsd_report(context.debug, LOG_CLIENT,
-			"===> %sclient(%d): =%s\n", 
+			"===> %sclient(%d): %s\n", 
 			sub->policy.websocket?"ws":"",
-			sub_index(sub),	buf2);
+			sub_index(sub),	
+			buf2);
 	}
     }
 
@@ -1704,7 +1706,7 @@ static void pseudonmea_report(gps_mask_t changed,
 			  struct gps_device_t *device)
 /* report pseudo-NMEA in appropriate circumstances */
 {
-    gpsd_report(context.debug, LOG_INF,
+    gpsd_report(context.debug, LOG_DATA,
 	      "<= PSEUDONMEA %s\n",
 	      device->gpsdata.dev.path);
 
@@ -1714,7 +1716,7 @@ static void pseudonmea_report(gps_mask_t changed,
 
 	if ((changed & REPORT_IS) != 0) {
 	    nmea_tpv_dump(device, buf, sizeof(buf));
-	    gpsd_report(context.debug, LOG_IO, 
+	    gpsd_external_report(context.debug, LOG_DATA, 
 			"<= GPS (binary tpv) %s: %s\n",
 			device->gpsdata.dev.path, buf);
 	    pseudonmea_write(changed, buf, strlen(buf), device);
@@ -1722,7 +1724,7 @@ static void pseudonmea_report(gps_mask_t changed,
 
 	if ((changed & SATELLITE_SET) != 0) {
 	    nmea_sky_dump(device, buf, sizeof(buf));
-	    gpsd_report(context.debug, LOG_IO,
+	    gpsd_external_report(context.debug, LOG_DATA,
 			"<= GPS (binary sky) %s: %s\n",
 			device->gpsdata.dev.path, buf);
 	    pseudonmea_write(changed, buf, strlen(buf), device);
@@ -1730,7 +1732,7 @@ static void pseudonmea_report(gps_mask_t changed,
 
 	if ((changed & SUBFRAME_SET) != 0) {
 	    nmea_subframe_dump(device, buf, sizeof(buf));
-	    gpsd_report(context.debug, LOG_IO,
+	    gpsd_external_report(context.debug, LOG_DATA,
 			"<= GPS (binary subframe) %s: %s\n",
 			device->gpsdata.dev.path, buf);
 	    pseudonmea_write(changed, buf, strlen(buf), device);
@@ -1738,7 +1740,7 @@ static void pseudonmea_report(gps_mask_t changed,
 #ifdef AIVDM_ENABLE
 	if ((changed & AIS_SET) != 0) {
 	    nmea_ais_dump(device, buf, sizeof(buf));
-	    gpsd_report(context.debug, LOG_IO,
+	    gpsd_external_report(context.debug, LOG_DATA,
 			"<= AIS (binary ais) %s: %s\n",
 			device->gpsdata.dev.path, buf);
 	    pseudonmea_write(changed, buf, strlen(buf), device);
@@ -1746,14 +1748,14 @@ static void pseudonmea_report(gps_mask_t changed,
 #endif /* AIVDM_ENABLE */
 	if ((changed & ENVIRONMENT_SET) != 0) {
             int num = nmea_environment_dump(device, 0, buf, sizeof(buf));
-	    gpsd_report(context.debug, LOG_IO,
+	    gpsd_external_report(context.debug, LOG_DATA,
 			"<= GPS (binary environment) %s: %s\n",
 			device->gpsdata.dev.path, buf);
 	    pseudonmea_write(changed, buf, strlen(buf), device);
 
             if(num > 1) {
               nmea_environment_dump(device, 1, buf, sizeof(buf));
-	      gpsd_report(context.debug, LOG_IO,
+	      gpsd_external_report(context.debug, LOG_DATA,
                         "<= GPS (binary environment) %s: %s\n",
                         device->gpsdata.dev.path, buf);
               pseudonmea_write(changed, buf, strlen(buf), device);
@@ -1761,7 +1763,7 @@ static void pseudonmea_report(gps_mask_t changed,
 	}
 	if ((changed & NAVIGATION_SET) != 0) {
 	    nmea_navigation_dump(device, buf, sizeof(buf));
-	    gpsd_report(context.debug, LOG_IO,
+	    gpsd_external_report(context.debug, LOG_DATA,
 			"<= GPS (binary navigation) %s: %s\n",
 			device->gpsdata.dev.path, buf);
 	    pseudonmea_write(changed, buf, strlen(buf), device);

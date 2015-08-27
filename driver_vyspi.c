@@ -3093,7 +3093,7 @@ static gps_mask_t vyspi_parse_serial_input(struct gps_device_t *session)
     "UNKOWN", "NMEA0183", "NMEA2000"
   };
 
-  gpsd_report(session->context->debug, LOG_INF, 
+  gpsd_report(session->context->debug, LOG_RAW, 
 	      "VYSPI: parse_input called with packet len = %lu\n", 
 	      lexer->outbuflen);
 
@@ -3108,7 +3108,8 @@ static gps_mask_t vyspi_parse_serial_input(struct gps_device_t *session)
   if(lexer->frm_type == FRM_TYPE_NMEA2000) {
 
     if(4 > lexer->outbuflen) { 
-      gpsd_report(session->context->debug, LOG_WARN, "VYSPI: exit prematurely: 4 > %lu\n",
+      gpsd_report(session->context->debug, LOG_WARN, 
+		  "VYSPI: exit prematurely: 4 > %lu\n",
 		  lexer->outbuflen);
       return 0;
     }

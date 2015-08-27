@@ -2114,13 +2114,13 @@ ssize_t packet_get(int fd, struct gps_packet_t *lexer)
 	    return -1;
 	}
     } else {
-	if (lexer->debug >= LOG_RAW+1) {
+	if (lexer->debug >= LOG_IO) {
 	    char scratchbuf[MAX_PACKET_LENGTH*2+1];
-	    gpsd_report(lexer->debug, LOG_RAW + 1,
+	    gpsd_external_report(lexer->debug, LOG_IO,
 			"Read %zd chars to buffer offset %zd (total %zd): %s\n",
 			recvd, lexer->inbuflen, lexer->inbuflen + recvd,
 			gpsd_packetdump(scratchbuf, sizeof(scratchbuf),
-			    (char *)lexer->inbufptr, (size_t) recvd));
+						 (char *)lexer->inbuffer + lexer->inbuflen, (size_t) recvd));
 	}
 	lexer->inbuflen += recvd;
     }
