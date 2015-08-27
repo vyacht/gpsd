@@ -1925,11 +1925,7 @@ static void all_reports(struct gps_device_t *device, gps_mask_t changed)
 		    gpsd_report(context.debug, LOG_PROG,
 				"time to report a fix\n");
 
-		if (sub->policy.nmea)
-		    pseudonmea_report(changed, device);
-
-		if (sub->policy.json)
-		{
+		if (sub->policy.json) {
 		    char buf[GPS_JSON_RESPONSE_MAX * 4];
 
 		    if ((changed & AIS_SET) != 0)
