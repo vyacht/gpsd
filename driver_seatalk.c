@@ -101,7 +101,7 @@ static int getParity(unsigned int n) {
     return parity;
 }
 
-static void seatalk_merge_ddmmyy(uint8_t yy, uint8_t mon, uint8_t mday, struct gps_device_t *session)
+static void seatalk_merge_yymmdd(uint8_t yy, uint8_t mon, uint8_t mday, struct gps_device_t *session)
 /* sentence supplied ddmmyy, but no century part */
 {
     int year;
@@ -113,15 +113,15 @@ static void seatalk_merge_ddmmyy(uint8_t yy, uint8_t mon, uint8_t mday, struct g
 
     if ( (1 > mon ) || (12 < mon ) ) {
 	gpsd_report(session->context->debug, LOG_WARN,
-		    "merge_ddmmyy(%d, %d, %d), malformed month\n",  
+		    "seatalk_merge_yymmdd(%d, %d, %d), malformed month\n",  
 		    yy, mon, mday);
     } else if ( (1 > mday ) || (31 < mday ) ) {
 	gpsd_report(session->context->debug, LOG_WARN,
-		    "merge_ddmmyy(%d, %d, %d), malformed day\n", 
+		    "seatalk_merge_yymmdd(%d, %d, %d), malformed day\n", 
 		    yy, mon, mday);
     } else {
 	gpsd_report(session->context->debug, LOG_DATA,
-		    "seatalk_merge_ddmmyy(%d, %d, %d) sets year %d\n", 
+		    "seatalk_merge_yymmdd(%d, %d, %d) sets year %d\n", 
 		    yy, mon, mday, year);
 	session->driver.seatalk.date.tm_year = year - 1900;
 	session->driver.seatalk.date.tm_mon = mon - 1;
@@ -579,7 +579,7 @@ static gps_mask_t seatalk_process_date(uint8_t * bu, uint8_t size,
 */
   gps_mask_t mask = 0;
 
-  seatalk_merge_ddmmyy(bu[3], bu[1] >> 4, bu[2], session);
+  seatalk_merge_yymmdd(bu[3], bu[1] >> 4, bu[2], session);
 
   // makes no sense to set time / date without timestamp
   // mask = TIME_SET;
