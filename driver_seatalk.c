@@ -1575,9 +1575,17 @@ static void seatalk_set_serial(struct gps_device_t *session) {
   session->ttyset.c_iflag     &=  ~IGNPAR;
   session->ttyset.c_iflag     |=  PARMRK;  // this is basically the core of detecting the command start
   session->ttyset.c_iflag     |=  INPCK;
+
   session->ttyset.c_iflag     &=  ~ISTRIP;
 
-  session->ttyset.c_lflag     &=  ~ICANON;       // non canonical, we want every char directly
+  // non canonical, we want every char directly, no signals
+  session->ttyset.c_lflag     &=  ~(ICANON | ECHO | ECHOE | ISIG);        
+
+  // no conversions or ignoring any cr or nl or conversion between them
+  session->ttyset.c_iflag     &=  ~(INLCR | IGNCR | ICRNL | IUCLC | IXANY | IXON | IMAXBEL);    
+  session->ttyset.c_oflag     &=  ~(OCRNL | OFDEL | OFILL | OLCUC | ONLCR | ONLRET | ONOCR);
+
+  session->ttyset.c_lflag     &=  ~(OPOST | XCASE);        
 
   // Flush Port, then applies attributes 
   tcflush( session->gpsdata.gps_fd, TCIFLUSH );
