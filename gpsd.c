@@ -308,24 +308,7 @@ static socket_t filesock(char *filename)
 }
 #endif /* CONTROL_SOCKET_ENABLE */
 
-/*
- * This hackery is intended to support SBCs that are resource-limited
- * and only need to support one or a few devices each.  It avoids the
- * space overhead of allocating thousands of unused device structures.
- * This array fills from the bottom, so as an extreme case you could
- * reduce LIMITED_MAX_DEVICES to 1.
- */
-#ifdef LIMITED_MAX_DEVICES
-#define MAXDEVICES	LIMITED_MAX_DEVICES
-#else
-/* we used to make this FD_SETSIZE, but that cost 14MB of wasted core! */
-#define MAXDEVICES	4
-#endif
 
-#define sub_index(s) (int)((s) - subscribers)
-#define allocated_device(devp)	 ((devp)->gpsdata.dev.path[0] != '\0')
-#define free_device(devp)	 (devp)->gpsdata.dev.path[0] = '\0'
-#define initialized_device(devp) ((devp)->context != NULL)
 
 static struct gps_device_t devices[MAXDEVICES];
 
@@ -1699,7 +1682,9 @@ static void pseudonmea_write(gps_mask_t changed,
 	}
       }
     }
-    gpsd_device_write(buf, len);
+    if (changed & DATA_IS) {
+	gpsd_device_write(buf, len);
+    }
 }
 
 static void pseudonmea_report(gps_mask_t changed,

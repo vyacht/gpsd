@@ -2142,7 +2142,8 @@ struct gps_data_t {
 
     struct devconfig_t dev;	/* device that shipped last update */
 
-    struct policy_t policy;	/* our listening policy */
+    struct policy_t policy;	/* our listening policy 
+                                   TODO: seems to be mere for status reporting in libgps_core */
 
     /* should be moved to privdata someday */
     char tag[MAXTAGLEN+1];	/* tag of last sentence processed */

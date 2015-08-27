@@ -444,6 +444,26 @@ struct ntrip_stream_t
     int bitrate;
 };
 
+/*
+ * This hackery is intended to support SBCs that are resource-limited
+ * and only need to support one or a few devices each.  It avoids the
+ * space overhead of allocating thousands of unused device structures.
+ * This array fills from the bottom, so as an extreme case you could
+ * reduce LIMITED_MAX_DEVICES to 1.
+ */
+#ifdef LIMITED_MAX_DEVICES
+#define MAXDEVICES	LIMITED_MAX_DEVICES
+#else
+/* we used to make this FD_SETSIZE, but that cost 14MB of wasted core! */
+#define MAXDEVICES	4
+#endif
+
+#define sub_index(s) (int)((s) - subscribers)
+#define allocated_device(devp)	 ((devp)->gpsdata.dev.path[0] != '\0')
+#define free_device(devp)	 (devp)->gpsdata.dev.path[0] = '\0'
+#define initialized_device(devp) ((devp)->context != NULL)
+
+
 struct gps_device_t {
 /* session object, encapsulates all global state */
     struct gps_data_t gpsdata;
@@ -784,6 +804,11 @@ extern const struct gps_type_t **gpsd_drivers;
 /* gpsd library internal prototypes */
 extern gps_mask_t generic_parse_input(struct gps_device_t *);
 extern ssize_t generic_get(struct gps_device_t *);
+
+extern void character_discard(struct gps_packet_t *lexer);
+extern void character_pushback(struct gps_packet_t *lexer);
+extern void packet_discard(struct gps_packet_t *lexer);
+extern void packet_accept(struct gps_packet_t *lexer, int packet_type);
 
 extern gps_mask_t nmea_parse(char *, struct gps_device_t *);
 extern ssize_t nmea_write(struct gps_device_t *, char *, size_t);

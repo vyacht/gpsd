@@ -42,10 +42,7 @@ typedef struct st_phrase {
 /* fixed length array - position is number of seatalk sentence */
 uint8_t st_fixed_lengths[255];
 
-extern void character_discard(struct gps_packet_t *lexer);
-extern void character_pushback(struct gps_packet_t *lexer);
-extern void packet_discard(struct gps_packet_t *lexer);
-extern void packet_accept(struct gps_packet_t *lexer, int packet_type);
+gps_mask_t seatalk_parse_input(struct gps_device_t *session);
 
 void character_skip(struct gps_packet_t *lexer);
 
