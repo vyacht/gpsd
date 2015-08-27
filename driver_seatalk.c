@@ -180,6 +180,7 @@ static gps_mask_t seatalk_update_time(struct gps_device_t *session) {
     mask |= TIME_SET;
   }
 
+  return mask;
 }
 
 
@@ -639,9 +640,11 @@ static gps_mask_t seatalk_process_lat_lon_raw(uint8_t * bu, uint8_t size,
   mask |= seatalk_update_time(session);
 
   gpsd_report(session->context->debug, LOG_DATA,
-	      "seatalk raw lat/lon = %0.2f (%c) / %0.2f (%c)\n",
+	      "seatalk raw lat/lon = %0.2f (%c) / %0.2f (%c) (%s)\n",
 	      session->driver.seatalk.lat , (bu[1] >> 4) & 0x01 ? 'S' : 'N', 
-	      session->driver.seatalk.lon, (bu[1] >> 4) & 0x01 ? 'E' : 'W');
+	      session->driver.seatalk.lon, (bu[1] >> 4) & 0x01 ? 'E' : 'W',
+	      gps_maskdump(mask));
+
   seatalk_print_command(bu, size, session);
 
   return mask;
