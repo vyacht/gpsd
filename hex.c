@@ -14,13 +14,28 @@ const char /*@ observer @*/ *gpsd_packetdump(char *scbuf, size_t scbuflen,
 {
     char *cp;
     bool printable = true;
+    size_t i, j = 0;
 
     assert(binbuf != NULL);
-    for (cp = binbuf; cp < binbuf + binbuflen; cp++)
+    for (cp = binbuf; cp < binbuf + binbuflen; cp++) {
 	if (!isprint(*cp) && !isspace(*cp))
 	    printable = false;
-    if (printable)
-	return binbuf;
+    }
+    if (printable) {
+      size_t len =
+	(size_t) ((binbuflen >
+		   MAX_PACKET_LENGTH) ? MAX_PACKET_LENGTH : binbuflen);
+
+      if (NULL == binbuf || 0 == binbuflen)
+	return "";
+
+      for (i = 0; i < len && i < scbuflen - 2; i++) {
+	scbuf[j++] = binbuf[i];
+      }
+      /*@ +shiftimplementation @*/
+      scbuf[j] = '\0';
+      return scbuf;
+    }
     else
 	return gpsd_hexdump(scbuf, scbuflen, binbuf, binbuflen);
 }
