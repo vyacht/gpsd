@@ -28,6 +28,20 @@
 #include "driver_seatalk.h"
 #include "bits.h"
 
+typedef gps_mask_t(* st_decoder)(uint8_t * cmdBuffer, uint8_t size, struct gps_device_t *session);
+
+typedef struct st_phrase {
+  uint8_t cmdId;
+  uint8_t fixed_length;  /* if we know the length for sure 
+			    we are having it here for 
+			    better error handling in parse phase, 0x80 is unknown */
+  st_decoder decoder;
+  const char * name;
+} st_phrase;
+
+/* fixed length array - position is number of seatalk sentence */
+uint8_t st_fixed_lengths[255];
+
 extern void character_discard(struct gps_packet_t *lexer);
 extern void character_pushback(struct gps_packet_t *lexer);
 extern void packet_discard(struct gps_packet_t *lexer);
@@ -155,7 +169,7 @@ static gps_mask_t seatalk_update_time(struct gps_device_t *session) {
 
   gps_mask_t mask = 0;
 
-  /* some ugly time stunts to cope with GPS 112/120 */
+  /* some ugly time stunts to cope with GPS 112/120/125 only reporting time every 10secs */
   if (session->driver.seatalk.lastts > 0) {
     session->driver.seatalk.offset = 
       timestamp() - session->driver.seatalk.lastts;
@@ -1086,13 +1100,6 @@ static int seatalk_is_command(struct gps_packet_t *lexer, uint8_t c, int parerr)
 
 /*@-usereleased@*/
 
-typedef gps_mask_t(* st_decoder)(uint8_t * cmdBuffer, uint8_t size, struct gps_device_t *session);
-
-typedef struct st_phrase {
-  uint8_t cmdId;
-  st_decoder decoder;
-  const char * name;
-} st_phrase;
 
 static const char msg_00[] = {"Depth below transducer"};
 static const char msg_10[] = {"Apparent Wind Angle"};
@@ -1132,37 +1139,37 @@ static const char msg_FF[] = {"Unkown sentence"};
 static const char msg_error [] = {"**error**"};
 
 static struct st_phrase st_process[] = {
-  {0x00, seatalk_process_depth,        &msg_00[0]},	
-  {0x10, seatalk_process_wind_angle,   &msg_10[0]},
-  {0x11, seatalk_process_wind_speed,   &msg_11[0]},
-  {0x20, seatalk_process_speed,        &msg_20[0]},
-  {0x21, seatalk_process_milage,       &msg_21[0]},
-  {0x22, seatalk_process_milage,       &msg_22[0]},
-  {0x23, seatalk_process_watertemp,    &msg_23[0]},
-  {0x25, seatalk_process_distlog,      &msg_25[0]},
-  {0x26, seatalk_process_speed,        &msg_20[0]},
-  {0x27, seatalk_process_watertemp,    &msg_23[0]},
-  {0x36, seatalk_process_MOB_cancel,   &msg_36[0]},
-  {0x50, seatalk_process_lat,          &msg_50[0]},
-  {0x51, seatalk_process_lon,          &msg_51[0]},
-  {0x52, seatalk_process_sog,          &msg_52[0]},
-  {0x53, seatalk_process_cog,          &msg_53[0]},
-  {0x54, seatalk_process_time,         &msg_54[0]},
-  {0x56, seatalk_process_date,         &msg_56[0]},
-  {0x57, seatalk_process_noofsats,     &msg_57[0]},
-  {0x58, seatalk_process_lat_lon_raw,  &msg_58[0]},
-  {0x59, seatalk_process_count_down,   &msg_59[0]},
-  {0x6E, seatalk_process_MOB,          &msg_6E[0]},
-  {0x82, seatalk_process_target_wp,    &msg_82[0]},
-  {0x84, seatalk_process_compass_hdg,  &msg_84[0]},
-  {0x85, seatalk_process_nav_to_wp,                   &msg_85[0]},
-  {0x89, seatalk_process_compass_hdg_st40,            &msg_89[0]},
-  {0x99, seatalk_process_compass_variation_st40,      &msg_99[0]},
-  {0x9c, seatalk_process_hdg_rudder_pos,              &msg_9C[0]},
-  {0x9e, seatalk_process_wp_definition,               &msg_9E[0]},
-  {0xa1, seatalk_process_dest_wp,                     &msg_A1[0]},
-  {0xa2, seatalk_process_arrival,                     &msg_A2[0]},
-  {0xa5, seatalk_process_gps_dgps,                    &msg_A5[0]}
+  {0x00,  0x02, seatalk_process_depth,        &msg_00[0]},	
+  {0x10,  0x01, seatalk_process_wind_angle,   &msg_10[0]},
+  {0x11,  0x01, seatalk_process_wind_speed,   &msg_11[0]},
+  {0x20,  0x01, seatalk_process_speed,        &msg_20[0]},
+  {0x21,  0x02, seatalk_process_milage,       &msg_21[0]},
+  {0x22,  0x02, seatalk_process_milage,       &msg_22[0]},
+  {0x23,  0x01, seatalk_process_watertemp,    &msg_23[0]},
+  {0x25,  0x04, seatalk_process_distlog,      &msg_25[0]},
+  {0x26,  0x04, seatalk_process_speed,        &msg_20[0]},
+  {0x27,  0x01, seatalk_process_watertemp,    &msg_23[0]},
+  {0x36,  0x00, seatalk_process_MOB_cancel,   &msg_36[0]},
+  {0x50,  0x02, seatalk_process_lat,          &msg_50[0]},
+  {0x51,  0x02, seatalk_process_lon,          &msg_51[0]},
+  {0x52,  0x01, seatalk_process_sog,          &msg_52[0]},
+  {0x53,  0x00, seatalk_process_cog,          &msg_53[0]},
+  {0x54,  0x01, seatalk_process_time,         &msg_54[0]},
+  {0x56,  0x01, seatalk_process_date,         &msg_56[0]},
+  {0x57,  0x00, seatalk_process_noofsats,     &msg_57[0]},
+  {0x58,  0x05, seatalk_process_lat_lon_raw,  &msg_58[0]},
+  {0x59,  0x02, seatalk_process_count_down,   &msg_59[0]},
+  {0x6E,  0x07, seatalk_process_MOB,          &msg_6E[0]},
+  {0x82,  0x05, seatalk_process_target_wp,    &msg_82[0]},
+  {0x84,  0x06, seatalk_process_compass_hdg,  &msg_84[0]},
+  {0x85,  0x06, seatalk_process_nav_to_wp,                   &msg_85[0]},
+  {0x89,  0x02, seatalk_process_compass_hdg_st40,            &msg_89[0]},
+  {0x99,  0x00, seatalk_process_compass_variation_st40,      &msg_99[0]},
+  {0x9c,  0x01, seatalk_process_hdg_rudder_pos,              &msg_9C[0]},
+  {0x9e,  0x0C, seatalk_process_wp_definition,               &msg_9E[0]},
+  {0xa1,  0x0D, seatalk_process_dest_wp,                     &msg_A1[0]},
+  {0xa2,  0x04, seatalk_process_arrival,                     &msg_A2[0]},
+  {0xa5,  0x80, seatalk_process_gps_dgps,                    &msg_A5[0]}
 };
 
 /*@+usereleased@*/
@@ -1305,6 +1312,13 @@ static void seatalk_nextstate(struct gps_packet_t *lexer, unsigned char c)
       case SEATALK_RECOGNIZED:
 	if(cmd) {
 	  lexer->state = SEATALK_COMMAND;
+	  lexer->length = 0x80;
+	  if((st_fixed_lengths[c] & 0x80) == 0) {
+	    lexer->length = st_fixed_lengths[c];
+	    gpsd_report(lexer->debug, LOG_RAW + 2,
+			"%08ld: fixed length assigned based on table: %lu\n",
+			lexer->char_counter, lexer->length);
+	  }
 	} else {
 	  lexer->state = GROUND_STATE;
 	}
@@ -1315,6 +1329,16 @@ static void seatalk_nextstate(struct gps_packet_t *lexer, unsigned char c)
 	  lexer->state = SEATALK_LENGTH;
 	  // thats how the length is defined: 
 	  // total datagram length = len-field + 1 as of this position
+	  if((lexer->length & 0x80) == 0) {
+	    // fixed length based on lookup table
+	    if(lexer->length != (c & 0x0f)) {
+	      gpsd_report(lexer->debug, LOG_RAW + 2,
+			  "%08ld: wrong fixed length found: %lu != %lu\n",
+			  lexer->char_counter, lexer->length, c & 0x0f);
+	      lexer->state = GROUND_STATE;
+	      break;
+	    }
+	  }
 	  lexer->length = c & 0x0f; 
 	  gpsd_report(lexer->debug, LOG_RAW + 2,
 		      "%08ld: length found: %lu\n",
@@ -1566,6 +1590,9 @@ static void seatalk_set_serial(struct gps_device_t *session) {
 
 static void seatalk_driver_init(struct gps_device_t * session) {
 
+  uint8_t cmd;
+  uint8_t i = 0;
+
   session->driver.seatalk.lon = NAN;
   session->driver.seatalk.lat = NAN;
   session->driver.seatalk.lat_set = 0;
@@ -1573,6 +1600,15 @@ static void seatalk_driver_init(struct gps_device_t * session) {
 
   session->driver.seatalk.offset = 0;
   session->driver.seatalk.lastts = 0;
+
+  memset(st_fixed_lengths, 0x80, 255);
+
+  while(i < (uint8_t)(sizeof(st_process) / sizeof(st_process[0]))) {
+    cmd = st_process[i].cmdId;
+    st_fixed_lengths[cmd] = st_process[i].fixed_length;
+    i++;
+  }
+
 }
 
 #ifndef S_SPLINT_S
