@@ -770,57 +770,44 @@ void nmea_navigation_dump(struct gps_device_t *session,
 {
     bufp[0] = '\0';
     if ((session->gpsdata.set & NAVIGATION_SET) != 0) {
-      switch(session->gpsdata.navigation.set) {
-      case NAV_STW_PSET:
+
+      if((session->gpsdata.navigation.set & NAV_STW_PSET) != 0) 
 	gpsd_binary_vhw_dump(session, bufp + strlen(bufp),
 					  len - strlen(bufp));
-	break;
 
-      case NAV_SOG_PSET:
-      case NAV_COG_PSET:
+      if(((session->gpsdata.navigation.set & NAV_SOG_PSET) != 0) 
+	 || ((session->gpsdata.navigation.set & NAV_COG_PSET) != 0))
 	gpsd_binary_vtg_dump(session, bufp + strlen(bufp),
-					   len - strlen(bufp));
-	break;
+			       len - strlen(bufp));
 
-      case NAV_DIST_TOT_PSET:
-      case NAV_DIST_TRIP_PSET:
+      if(((session->gpsdata.navigation.set & NAV_DIST_TOT_PSET) != 0) 
+	 || ((session->gpsdata.navigation.set & NAV_DIST_TRIP_PSET) != 0))
 	gpsd_binary_distance_traveled_dump(session, bufp + strlen(bufp),
 					   len - strlen(bufp));
-	break;
 
-      case NAV_DPT_PSET:
+      if((session->gpsdata.navigation.set & NAV_DPT_PSET) != 0) 
 	gpsd_binary_dpt_dump(session, bufp + strlen(bufp),
-				   len - strlen(bufp));
-	break;
+			     len - strlen(bufp));
 
-      case NAV_HDG_MAGN_PSET:
+      if((session->gpsdata.navigation.set & NAV_HDG_MAGN_PSET) != 0) 
 	gpsd_binary_hdg_dump(session, bufp + strlen(bufp),
-				   len - strlen(bufp));
-	break;
+			     len - strlen(bufp));
 
-      case NAV_HDG_TRUE_PSET:
+      if((session->gpsdata.navigation.set & NAV_HDG_TRUE_PSET) != 0) 
 	gpsd_binary_vhw_dump(session, bufp + strlen(bufp),
-				   len - strlen(bufp));
-	break;
+			     len - strlen(bufp));
 
-      case NAV_ROT_PSET:
+      if((session->gpsdata.navigation.set & NAV_ROT_PSET) != 0) 
 	gpsd_binary_rot_dump(session, bufp + strlen(bufp),
-				   len - strlen(bufp));
-	break;
+			     len - strlen(bufp));
 
-      case NAV_XTE_PSET:
+      if((session->gpsdata.navigation.set & NAV_XTE_PSET) != 0) 
 	gpsd_binary_xte_dump(session, bufp + strlen(bufp),
-				   len - strlen(bufp));
-	break;
+			     len - strlen(bufp));
 
-      case NAV_RUDDER_ANGLE_PSET:
+      if((session->gpsdata.navigation.set & NAV_RUDDER_ANGLE_PSET) != 0) 
 	gpsd_binary_rsa_dump(session, bufp + strlen(bufp),
-				   len - strlen(bufp));
-	break;
-
-      default:
-	break;
-      };
+			     len - strlen(bufp));
     }
 }
 
