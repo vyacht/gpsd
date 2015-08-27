@@ -1406,7 +1406,7 @@ static void seatalk_packet_parse(struct gps_packet_t * lexer)
 	
 	if ((lexer->state & 0xF0) == GROUND_STATE) {
 
-	    character_discard(lexer);
+	    packet_discard(lexer);
 
 	} else if(lexer->state & PARITY_SET) {
 
