@@ -5,15 +5,15 @@ A GPS simulator.
 
 This is proof-of-concept code, not production ready; some functions are stubs.
 """
-import sys, math, random, exceptions
-import gps, gpslib
+import sys, math, random, exceptions, time
+import gps
 
 # First, the mathematics.  We simulate a moving viewpoint on the Earth
 # and a satellite with specified orbital elements in the sky.
 
 class ksv:
     "Kinematic state vector."
-    def __init__(self, time=0, lat=0, lon=0, alt=0, course=0,
+    def __init__(self, time=0, lat=0, lon=0, alt=0, course=0, dist=0,
                  speed=0, climb=0, h_acc=0, v_acc=0):
         self.time = time	# Seconds from epoch
         self.lat = lat		# Decimal degrees
@@ -24,15 +24,17 @@ class ksv:
         self.climb = climb	# Meters per second
         self.h_acc = h_acc	# Meters per second per second
         self.v_acc = v_acc	# Meters per second per second
+	self.distance = dist
     def next(self, quantum=1):
+        
         "State after quantum."
-        self.time += quantum
-        avspeed = (2*self.speed + self.h_acc*quantum)/2
-        avclimb = (2*self.climb + self.v_acc*quantum)/2
-        self.alt += avclimb * quantum
-        self.speed += self.h_acc * quantum
-        self.climb += self.v_acc * quantum
-        distance = avspeed * quantum
+        #self.time += quantum
+        #avspeed = (2*self.speed + self.h_acc*quantum)/2
+        #avclimb = (2*self.climb + self.v_acc*quantum)/2
+        #self.alt += avclimb * quantum
+        #self.speed += self.h_acc * quantum
+        #self.climb += self.v_acc * quantum
+        #distance = avspeed * quantum
         # Formula from <http://williams.best.vwh.net/avform.htm#Rhumb>
         # Initial point cannot be a pole, but GPS doesn't work at high.
         # latitudes anyway so it would be OK to fail there.
@@ -40,17 +42,33 @@ class ksv:
         # to have a slight inaccuracy rising towards the poles.
         # The if/then avoids 0/0 indeterminacies on E-W courses.
         tc = gps.Deg2Rad(self.course)
-        lat = gps.Deg2Rad(self.lat)
-        lon = gps.Deg2Rad(self.lon)
-        lat += distance * math.cos(tc)
-        dphi = math.log(tan(lat/2+math.pi/4)/math.tan(self.lat/2+math.pi/4))
-        if abs(lat-self.lat) < sqrt(1e-15):
-            q = cos(self.lat)
+	#print "lat, lon: " + str(self.lat) + ", " + str(self.lon)
+
+        lat1R = gps.Deg2Rad(self.lat)
+        lon1R = gps.Deg2Rad(self.lon)
+
+	#print "lat, lon: " + str(lat1R) + ", " + str(lon1R)
+
+	distance = self.distance
+	#print "dist: " + str(gps.Rad2Deg(distance))
+
+        latR = lat1R + distance * math.cos(tc)
+	#print "lat, lon: " + str(latR) + ", " + str(lon1R)
+
+        if abs(latR) > math.pi/2.0:
+	    print "error d too large. You can't go this far along this rhumb line!"
+        if abs(latR-lat1R) < math.sqrt(1e-15):
+            q = math.cos(lat1R)
         else:
-            q = (lat-self.lat)/dphi
-        dlon = -distance * sin(tc) / q
-        self.lon = gp.Rad2Deg(math.mod(self.lon + dlon + pi, 2 * math.pi) - math.pi)
-        self.lat = gp.Rad2Deg(lat)
+	    t1 = math.tan(latR/2.0+math.pi/4.0)
+	    t2 = math.tan(lat1R/2.0+math.pi/4.0)
+	    #print "t1, t2: " + str(t1) + ", " + str(t2)
+
+            dphi = math.log(t1/t2)
+            q = (latR-lat1R)/dphi
+        dlon = -distance * math.sin(tc) / q
+        self.lon = gps.Rad2Deg(math.fmod(lon1R + dlon + math.pi, 2.0 * math.pi) - math.pi)
+        self.lat = gps.Rad2Deg(latR)
 
 # Satellite orbital elements are available at:
 # <http://www.ngs.noaa.gov/orbits/>
@@ -83,23 +101,32 @@ class gpssim:
     active_PRNs = range(1, 24+1) + [134,] 
     def __init__(self, gpstype):
         self.ksv = ksv()
+
+        self.ksv.lat = gps.Rad2Deg(0.592539)
+        self.ksv.lon = gps.Rad2Deg(2.066470)
+
+	self.ksv.alt = 250
+	self.ksv.speed  = 0.629650
+	self.ksv.distance = gps.Deg2Rad(3.5 / 60.0)
+	self.ksv.course = 79.3
         self.ephemeris = {}
         # This sets up satellites at random.  Not really what we want.
-        for PRN in simulator.active_PRNs:
+        for PRN in self.active_PRNs:
             for (prn, satellite) in self.ephemeris.items():
                 self.skyview[prn] = (random.randint(-60, +61),
                                      random.randint(0, 359))
         self.have_ephemeris = False
         self.channels = {}
-        self.outfmt = outfmt
+        self.output = None
         self.status = gps.STATUS_NO_FIX
         self.mode = gps.MODE_NO_FIX
         self.validity = "V"
         self.satellites_used = 0
         self.filename = None
         self.lineno = 0
-    def parse_tdl(self, line):
-        "Interpret one TDL directive."
+	self.gpstype = gpstype
+    def execute(self, line):
+        print "Interpret one TDL directive."
         line = line.strip()
         if "#" in line:
             line = line[:line.find("#")]
@@ -147,12 +174,13 @@ class gpssim:
         # FIX-ME: add syntax for ephemeris elements
         self.lineno += 1
     def filter(self, input, output):
-        "Make this a filter for file-like objects."
-        self.filename = input.name
-        self.lineno = 1
+        print "Make this a filter for file-like objects."
+        #self.filename = input.name
+        #self.lineno = 1
         self.output = output
-        for line in input:
-            self.execute(line)
+        #for line in sys.stdin:
+        #    print line
+        #    self.execute(line)
     def go(self, seconds):
         "Run the simulation for a specified number of seconds."
         for i in range(seconds):
@@ -185,6 +213,8 @@ class NMEA:
             sum ^= ord(c)
         str += "*%02X\r\n" % sum
         return str
+    def dmtodeg(self, angle):
+	return 0
     def degtodm(self, angle):
         "Decimal degrees to GPS-style, degrees first followed by minutes."
         (fraction, integer) = math.modf(angle)
@@ -206,7 +236,8 @@ class NMEA:
         if sim.mode == gps.MODE_3D:
             gga += "%.1f,M" % self.ksv.lat
         gga += ","
-        gga += "%.3f,M," % gpslib.wg84_separation(sim.ksv.lat, sim.ksv.lon)
+        gga += ",,"
+        #gga += "%.3f,M," % gpslib.wg84_separation(sim.ksv.lat, sim.ksv.lon)
         # Magnetic variation goes here
         # gga += "%3.2f,M," % mag_var
         gga += ",,"
@@ -239,7 +270,7 @@ class NMEA:
             sim.validity,
             self.degtodm(abs(sim.ksv.lat)), "SN"[sim.ksv.lat > 0],
             self.degtodm(abs(sim.ksv.lon)), "WE"[sim.ksv.lon > 0],
-            sim.course * MPS_TO_KNOTS,
+            sim.ksv.course * MPS_TO_KNOTS,
             tm.tm_mday,
             tm.tm_mon,
             tm.tm_year % 100)
@@ -280,7 +311,11 @@ class NMEA:
 
 if __name__ == "__main__":
     try:
-        gpssim(NMEA).filter(sys.stdin, sys.stdout)
+	nm = NMEA()
+	gs = gpssim(nm)
+	gs.filter(sys.stdin, sys.stdout)
+        gs.go(10)
+
     except gpssimException, e:
         print >>sys.stderr, e
 
