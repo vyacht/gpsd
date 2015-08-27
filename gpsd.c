@@ -547,6 +547,7 @@ struct subscriber_t
     enum wsFrameType frameType;
 };
 
+#define LIMITED_MAX_CLIENTS 16
 #ifdef LIMITED_MAX_CLIENTS
 #define MAXSUBSCRIBERS LIMITED_MAX_CLIENTS
 #else
@@ -2467,6 +2468,9 @@ int main(int argc, char *argv[])
 			    argv[i]);
 	    }
 	}
+
+    gpsd_report(context.debug, LOG_INF, 
+		"gpsd with max %d subscribers\n", MAXSUBSCRIBERS);
 
     while (0 == signalled) {
 #ifdef EFDS
