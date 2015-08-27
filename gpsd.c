@@ -158,6 +158,8 @@ static int sd_socket_count = 0;
 #endif
 #endif
 
+static int max_subscriber_loglevel = 0;
+static void set_max_subscriber_loglevel(void);
 
 static volatile sig_atomic_t signalled;
 
@@ -172,18 +174,31 @@ ssize_t gpsd_write(struct gps_device_t *session,
 		   const size_t len)
 /* pass low-level data to devices straight through */
 {
-    return gpsd_serial_write(session, buf, len);
+	return gpsd_serial_write(session, buf, len);
+}
+
+void gpsd_external_report(const int debuglevel, const int errlevel,
+		 const char *fmt, ...)
+{
+    if((debuglevel < errlevel) && (max_subscriber_loglevel < errlevel))
+      return;
+
+    va_list ap;
+    va_start(ap, fmt);
+    gpsd_labeled_report(debuglevel, max_subscriber_loglevel, errlevel, "gpsd:", fmt, ap);
+    va_end(ap);
 }
 
 void gpsd_report(const int debuglevel, const int errlevel,
 		 const char *fmt, ...)
 {
-    va_list ap;
+    if(debuglevel < errlevel)
+      return;
 
+    va_list ap;
     va_start(ap, fmt);
-    gpsd_labeled_report(debuglevel, errlevel, "gpsd:", fmt, ap);
+    gpsd_labeled_report(debuglevel, 0, errlevel, "gpsd:", fmt, ap);
     va_end(ap);
-			
 }
 
 static void typelist(void)
@@ -588,6 +603,7 @@ static /*@null@*//*@observer@ */ struct subscriber_t *allocate_client(void)
 	    subscribers[si].policy.watcher = true;
 	    subscribers[si].policy.json    = false;
 	    subscribers[si].policy.websocket = false;
+	    subscribers[si].policy.loglevel = 0;
 	    subscribers[si].state = WS_STATE_OPENING;
     	subscribers[si].frameType = WS_INCOMPLETE_FRAME;
 	    return &subscribers[si];
@@ -625,11 +641,13 @@ static void detach_client(struct subscriber_t *sub)
     sub->policy.timing = false;
     sub->policy.split24 = false;
     sub->policy.websocket = false;
+    sub->policy.loglevel = 0;
     sub->policy.devpath[0] = '\0';
     sub->state = WS_STATE_OPENING;
     sub->frameType = WS_INCOMPLETE_FRAME;
     sub->fd = UNALLOCATED_FD;
     unlock_subscriber(sub);
+    set_max_subscriber_loglevel();
     /*@+mustfreeonly@*/
 }
 
@@ -691,7 +709,7 @@ static ssize_t throttled_write_(struct subscriber_t *sub, char *buf,
     return status;
 }
 
-static ssize_t throttled_write(struct subscriber_t *sub, char *buf,
+ssize_t throttled_write(struct subscriber_t *sub, const char *buf,
 			       size_t len) {
     if(sub->policy.websocket) {
       char reply[GPS_JSON_RESPONSE_MAX + 1];
@@ -700,6 +718,38 @@ static ssize_t throttled_write(struct subscriber_t *sub, char *buf,
       return throttled_write_(sub, reply, replylen);
     } else 
       return throttled_write_(sub, buf, len);
+}
+
+static void set_max_subscriber_loglevel() {
+
+  int dl = 0;
+
+  struct subscriber_t *sub;
+  for (sub = subscribers; sub < subscribers + MAXSUBSCRIBERS; sub++) {
+    /*@-nullderef@*/
+    if (sub == NULL || sub->active == 0)
+      continue;
+    
+    if(dl < sub->policy.loglevel)
+      dl = sub->policy.loglevel;
+  }
+
+  max_subscriber_loglevel = dl;
+}
+
+
+void gpsd_throttled_report(const int errlevel, const char * buf) {
+
+  struct subscriber_t *sub;
+  for (sub = subscribers; sub < subscribers + MAXSUBSCRIBERS; sub++) {
+    /*@-nullderef@*/
+    if (sub == NULL || sub->active == 0)
+      continue;
+    
+    if(errlevel <= sub->policy.loglevel) {
+      (void)throttled_write(sub, buf, strlen(buf));
+    }
+  }
 }
 
 static void notify_watchers(struct gps_device_t *device,
@@ -806,6 +856,7 @@ bool gpsd_add_device(const char *device_name, bool flag_nowait)
 #ifdef NTPSHM_ENABLE
 	    ntpshm_session_init(devp);
 #endif /* NTPSHM_ENABLE */
+
 	    gpsd_report(context.debug, LOG_INF,
 			"stashing device %s at slot %d\n",
 			device_name, (int)(devp - devices));
@@ -1154,8 +1205,8 @@ static void gpsd_device_write(const char *buf, size_t len)
 }
 
 static ssize_t handle_websocket_request(struct subscriber_t *sub,
-			   const char *buf, const char **after,
-			   char *reply, size_t replylen)
+					const char *buf, 
+					char *reply, size_t replylen)
 {
     uint8_t *data = NULL;
     size_t dataSize = 0;
@@ -1199,10 +1250,31 @@ static ssize_t handle_websocket_request(struct subscriber_t *sub,
     if (sub->state == WS_STATE_OPENING) {
       assert(sub->frameType == WS_OPENING_FRAME);
       if (sub->frameType == WS_OPENING_FRAME) {
-	bool raw = false, pseudo = false; 
+
+	bool raw  = 0;
+	bool nmea = false;
+	int debug = 0;
+
 	// if resource is right, generate answer handshake and send it
+	gpsd_report(context.debug, LOG_INF, 
+		    "incoming resource request %s\n",
+		    hs.resource); 
 	if (strcmp(hs.resource, "/raw") == 0) {
-	  raw = true;
+	  raw = 1;
+	  nmea = true;
+	} else if (strncmp(hs.resource, "/debug", 6) == 0) {
+
+	  debug = 5;
+	  if(strlen(hs.resource) >= 14) {
+	    if(strncmp(hs.resource + 6, "?level=", 7) == 0) {
+	      debug = atoi(hs.resource + 13);
+	      gpsd_report(context.debug, LOG_INF, 
+			  "incoming resource request with loglevel %d\n",
+			  debug); 
+	    }
+	  }
+
+
 	} else {
 	  len = snprintf((char *)reply, replylen, 
 			      "HTTP/1.1 404 Not Found\r\n\r\n");
@@ -1213,14 +1285,21 @@ static ssize_t handle_websocket_request(struct subscriber_t *sub,
 	len = replylen;
 	wsGetHandshakeAnswer(&hs, reply, &len);
 	freeHandshake(&hs);
+
 	ssize_t status = throttled_write(sub, reply, len);
+
 	sub->policy.websocket = true;
-	sub->policy.json = true;
-	sub->policy.raw  = raw;
+	sub->policy.json      = false;
+	sub->policy.nmea      = nmea;
+	sub->policy.watcher   = true;
+	sub->policy.raw       = raw;
+	sub->policy.loglevel  = debug;
+	set_max_subscriber_loglevel();
+
 	sub->state = WS_STATE_NORMAL;
 	sub->frameType = WS_INCOMPLETE_FRAME;
 	gpsd_report(context.debug, LOG_INF, "answering handshake to %sclient\n",
-		    sub->policy.websocket?"ws":"");
+		sub->policy.websocket?"ws":""); 
 	return status;
       }
     } else {
@@ -1231,7 +1310,7 @@ static ssize_t handle_websocket_request(struct subscriber_t *sub,
 	  return -1;
 	} else {
 	  len = replylen;
-	  wsMakeFrame(NULL, 0, reply, &len, WS_CLOSING_FRAME);
+	  wsMakeFrame((const char *)NULL, 0, reply, &len, WS_CLOSING_FRAME);
 	  throttled_write(sub, reply, len);
 	  return -1;
 	}
@@ -1241,7 +1320,12 @@ static ssize_t handle_websocket_request(struct subscriber_t *sub,
 	sub->frameType = WS_INCOMPLETE_FRAME;
 	return throttled_write(sub, reply, len);
       }
+
+      // we should never get here
+      return -1;
     }
+
+    return -1;
 }
 
 static void handle_request(struct subscriber_t *sub,
@@ -1891,12 +1975,11 @@ static int handle_gpsd_request(struct subscriber_t *sub, const char *buf)
 	|| (sub->policy.websocket == true)) {
       // switching to web socket mode
       // handle_websocket_request does its own writes
-      const char *end;
       gpsd_report(context.debug, LOG_PROG,
 		  "handle web socket request\n");
-      return handle_websocket_request(sub, buf, &end,
-		     reply + strlen(reply),
-		     sizeof(reply) - strlen(reply));
+      return handle_websocket_request(sub, buf,
+				      reply + strlen(reply),
+				      sizeof(reply) - strlen(reply));
      
     } else {
       if (buf[0] == '?') {
@@ -2258,6 +2341,7 @@ int main(int argc, char *argv[])
 		    "shared-segment creation succeeded,\n");
 #endif /* SHM_EXPORT_ENABLE */
 
+
     /*
      * We open devices specified on the command line *before* dropping
      * privileges in case one of them is a serial device with PPS support
@@ -2456,7 +2540,7 @@ int main(int argc, char *argv[])
 				    "Error: SETSOCKOPT SO_LINGER\n");
 			(void)close(ssock);
 		    } else {
-			char announce[GPS_JSON_RESPONSE_MAX];
+			// char announce[GPS_JSON_RESPONSE_MAX];
 			FD_SET(ssock, &all_fds);
 			adjust_max_fd(ssock, true);
 			client->fd = ssock;
@@ -2574,7 +2658,10 @@ int main(int argc, char *argv[])
 			    sub_index(sub));
 		if ((buflen =
 		     (int)recv(sub->fd, buf, sizeof(buf) - 1, 0)) <= 0) {
-		    detach_client(sub);
+		  gpsd_report(context.debug, LOG_ERR,
+			      "recv from client(%d) returned %d: %s\n",
+			      sub_index(sub), buflen, strerror(errno));
+		  detach_client(sub);
 		} else {
 		    if (buf[buflen - 1] != '\n')
 			buf[buflen++] = '\n';

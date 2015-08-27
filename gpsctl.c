@@ -44,15 +44,18 @@ ssize_t gpsd_write(struct gps_device_t *session,
  */
 #define REDIRECT_SNIFF	15
 
+void gpsd_throttled_report(const int errlevel, const char * buf) {}
 void gpsd_report(const int debuglevel, const int errlevel,
 		 const char *fmt, ...)
 {
     va_list ap;
 
     va_start(ap, fmt);
-    gpsd_labeled_report(debuglevel, errlevel, "gpsctl:", fmt, ap);
+    gpsd_labeled_report(debuglevel, 0, errlevel, "gpsctl:", fmt, ap);
     va_end(ap);
-			
+}
+void gpsd_external_report(const int debuglevel, const int errlevel,
+			  const char *fmt, ...) {
 }
 
 static void settle(struct gps_device_t *session)

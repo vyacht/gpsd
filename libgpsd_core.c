@@ -82,12 +82,12 @@ const char *gpsd_prettydump(struct gps_device_t *session)
 }
 
 
-void gpsd_labeled_report(const int debuglevel, const int errlevel,
+void gpsd_labeled_report(const int debuglevel, const int sublevel, const int errlevel,
 			 const char *label, const char *fmt, va_list ap)
 /* assemble command in printf(3) style, use stderr or syslog */
 {
 #ifndef SQUELCH_ENABLE
-    if (errlevel <= debuglevel) {
+  if ((errlevel <= debuglevel) || (errlevel <= sublevel)) {
 	char buf[BUFSIZ], buf2[BUFSIZ];
 	char *err_str;
 
@@ -139,9 +139,13 @@ void gpsd_labeled_report(const int debuglevel, const int errlevel,
 	    syslog((errlevel == 0) ? LOG_ERR : LOG_NOTICE, "%s", buf2);
 	else
 	    (void)fputs(buf2, stderr);
+
 #if defined(PPS_ENABLE)
 	gpsd_release_reporting_lock();
 #endif /* PPS_ENABLE */
+
+	if(errlevel <= sublevel)
+	  gpsd_throttled_report(errlevel, buf2);
     }
 #endif /* !SQUELCH_ENABLE */
 }

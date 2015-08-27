@@ -588,6 +588,7 @@ static void packet_log(const char *fmt, ...)
 }
 #endif /* PPS_ENABLE */
 
+void gpsd_throttled_report(const int errlevel, const char * buf) {}
 void gpsd_report(const int debuglevel, const int errlevel, const char *fmt, ...)
 /* our version of the logger */
 {
@@ -637,6 +638,9 @@ void gpsd_report(const int debuglevel, const int errlevel, const char *fmt, ...)
 	packet_vlog(buf, sizeof(buf), fmt, ap);
 	va_end(ap);
     }
+}
+void gpsd_external_report(const int debuglevel, const int errlevel,
+			  const char *fmt, ...) {
 }
 
 ssize_t gpsd_write(struct gps_device_t *session,
