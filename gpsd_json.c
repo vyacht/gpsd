@@ -385,6 +385,53 @@ void json_device_dump(const struct gps_device_t *device,
 	(void)strlcat(reply, "\",", replylen);
     }
     /*@+mustfreefresh@*/
+
+    /*
+     * See if we have some ports to report out
+     */ 
+    if(device->gpsdata.dev.port_count > 0) {
+        
+        (void)strlcat(reply, "\"ports\":", replylen);
+        (void)strlcat(reply, "[", replylen);
+        uint8_t p = 0;
+        for(p = 0; p < device->gpsdata.dev.port_count; p++) {
+            
+            (void)strlcat(reply, "{", replylen);
+            
+            (void)strlcat(reply, "\"name\":", replylen);
+            (void)strlcat(reply, device->gpsdata.dev.portlist[p].name, replylen);
+            
+            (void)strlcat(reply, ",\"type\":", replylen);
+            (void)strlcat(reply, device->gpsdata.dev.portlist[p].type_str, replylen);
+            
+            (void)snprintf(reply + strlen(reply), replylen - strlen(reply),
+                           ",\"speed\":\"%d\"",  device->gpsdata.dev.portlist[p].speed);
+            
+            (void)snprintf(reply + strlen(reply), replylen - strlen(reply),
+                           ",\"no\":\"%d\"",  device->gpsdata.dev.portlist[p].no);
+          
+            if(device->gpsdata.dev.portlist[p].forward[0][0] != '\0') {
+                
+                uint8_t f = 0;
+                (void)strlcat(reply, ", \"forwards\":[", replylen);
+                (void)strlcat(reply, device->gpsdata.dev.portlist[p].forward[0], replylen);
+                
+                for(f = 1; f < 4; f++) {
+                    if(device->gpsdata.dev.portlist[p].forward[f][0] != '\0') {
+                        (void)strlcat(reply, ", ", replylen);
+                        (void)strlcat(reply, device->gpsdata.dev.portlist[p].forward[f], replylen);
+                    }
+                }
+                (void)strlcat(reply, "]", replylen);
+            }
+            
+            (void)strlcat(reply, "}", replylen);
+            
+        }
+        
+        (void)strlcat(reply, "]", replylen);
+        (void)strlcat(reply, ",", replylen);
+    }
     /*
      * There's an assumption here: Anything that we type service_sensor is
      * a serial device with the usual control parameters.

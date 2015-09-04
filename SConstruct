@@ -161,7 +161,7 @@ boolopts = (
     ("shared",        True,  "build shared libraries, not static"),
     ("implicit_link", imloads,"implicit linkage is supported in shared libs"),
     ("python",        True,  "build Python support and modules."),
-    ("debug",         True, "include debug information in build"),
+    ("debug",         False, "include debug information in build"),
     ("profiling",     False, "build with profiling enabled"),
     ("coveraging",    False, "build with code coveraging enabled"),
     ("strip",         True,  "build with stripping of binaries enabled"),
@@ -465,6 +465,7 @@ def GetLoadPath(context):
 
 if env.GetOption("clean") or env.GetOption("help"):
     dbus_libs = []
+    uci_libs = []
     rtlibs = []
     usblibs = []
     bluezlibs = []
@@ -562,6 +563,8 @@ else:
         confdefs.append("/* #undef HAVE_LIBUSB */\n")
         usblibs = []
         env["usb"] = False
+
+    uci_libs = ["-luci"]
 
     if config.CheckLib('librt'):
         confdefs.append("#define HAVE_LIBRT 1\n")
@@ -994,7 +997,7 @@ gpsdlibs = ["-lgpsd"] + usblibs + bluezlibs + gpslibs
 
 # Source groups
 
-gpsd_sources = ['gpsd.c','ntpshm.c','shmexport.c','dbusexport.c']
+gpsd_sources = ['gpsd.c','ntpshm.c','shmexport.c','dbusexport.c','config.c']
 
 if env['systemd']:
     gpsd_sources.append("sd_socket.c")
@@ -1016,7 +1019,7 @@ gpsmon_sources = [
 gpsd_env = env.Clone()
 
 gpsd = gpsd_env.Program('gpsd', gpsd_sources,
-                        parse_flags = gpsdlibs + dbus_libs)
+                        parse_flags = gpsdlibs + dbus_libs + uci_libs)
 env.Depends(gpsd, [compiled_gpsdlib, compiled_gpslib])
 
 gpsdecode = env.Program('gpsdecode', ['gpsdecode.c'], parse_flags=gpsdlibs)

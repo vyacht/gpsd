@@ -1155,7 +1155,7 @@ static void json_devicelist_dump(char *reply, size_t replylen)
 	}
 
     if (reply[strlen(reply) - 1] == ',')
-	reply[strlen(reply) - 1] = '\0';
+        reply[strlen(reply) - 1] = '\0';
     (void)strlcat(reply, "]}\r\n", replylen);
 }
 #endif /* SOCKET_EXPORT_ENABLE */
@@ -1166,28 +1166,135 @@ static void rstrip(char *str)
     char *strend;
     strend = str + strlen(str) - 1;
     while (isspace(*strend)) {
-	*strend = '\0';
-	--strend;
+        *strend = '\0';
+        --strend;
     }
 }
 
-static void gpsd_device_write(const char *buf, size_t len)
-{
-  struct gps_device_t *devp;
+/*
+ *  Forward rules
+ *
+ *  Most of this is for backwards compatibility were we only forwarded
+ *  pseudo (translated) sentences to NMEA out.
+ *
+ *  1. Unkown devices (NULL) such as from wifi will be forwarded
+ *     (we'll invent rules for that later on)
+ *
+ *  2. Legacy source devices (without port policies) will be forwarded
+ *     if they are translated (backwards compatible)
+ *
+ *  3. VYSPI sources and destinations will be forwarded
+ *     (VYSPI as source covered by 2. already)
+ *
+ *  4. At this stage of this filter chain only NMEA source devices should be left:
+ *     reject all destination devices that don't have port policies
+ *     (again backwards compatibility where we only forwarded translated/pseudo sentences)
+ *
+ *  5. check actual forward policies
+ */ 
+static int gpsd_device_forward(struct gps_device_t * srcdev,
+							   struct gps_device_t * destdev) {
+    // 1.
+	if(!srcdev)
+		return 1;
 
-  for (devp = devices; devp < devices + MAXDEVICES; devp++) {
-    if (allocated_device(devp)) {
-      const struct gps_type_t *dt = devp->device_type;
-      (void)awaken(devp);
-      if((dt != NULL) && (dt->packet_type == NMEA_PACKET)) {
-	(void)gpsd_write(devp, buf, (size_t)len);
-	gpsd_report(context.debug, LOG_INF, "gpsd_write: %s (%s)\n", buf, devp->gpsdata.dev.path);
-      }
-      if((dt != NULL) && (dt->packet_type == VYSPI_PACKET)) {
-	(void)vyspi_write(devp, buf, (size_t)len);
-      }
+    // 2.
+    if(srcdev->gpsdata.dev.port_count == 0)
+        if(srcdev->device_type->packet_type != NMEA_PACKET) 
+            return 1;
+    
+    // 3.
+    if((srcdev->device_type->packet_type == VYSPI_PACKET)
+       || (destdev->device_type->packet_type == VYSPI_PACKET)) {
+        return 1;
     }
-  }
+
+    if(destdev->gpsdata.dev.port_count == 0)
+        return 0;
+
+    // don't need to go through loop below if there are no policies
+    if(srcdev->gpsdata.dev.port_count == 0)
+        return 0;
+    
+    uint8_t d = 0;
+	while(d < MAXDEVICES) {
+		if(destdev && strcmp(srcdev->gpsdata.dev.portlist[0].forward[d],
+							 destdev->gpsdata.dev.portlist[0].name) == 0)
+			return 1;
+        d++;
+	}
+
+	return 0;
+}
+
+/*
+ *  Reject rules
+ *
+ *  This includes also backwards compatibility for cases where didn't have
+ *  reject and accept policies at all.
+ * 
+ *  1. Don't reject write to output if there is no rule (backwards compatibility)
+ *  2. Reject only to a certain device if all its ports have output rejected
+ *     In the the case of 2 or more ports the device driver itself (VYSPI) needs to decide.
+ */
+static int gpsd_device_rejects(struct gps_device_t * devp) {
+
+    uint8_t n = 0;
+    uint8_t rejects = 0;
+
+    if(devp->gpsdata.dev.port_count == 0)
+        return 0;
+    
+    for(n = 0; n < devp->gpsdata.dev.port_count; n++) {
+        if(devp->gpsdata.dev.portlist[n].output == device_policy_reject) {
+            rejects++;
+        }
+    }
+
+    if(rejects == devp->gpsdata.dev.port_count) {
+        return 1;
+    }
+
+    return 0;
+}
+
+static void gpsd_device_write(struct gps_device_t * srcdev,
+							  const char *buf, size_t len) {
+    
+	struct gps_device_t *devp;
+	for (devp = devices; devp < devices + MAXDEVICES; devp++) {
+	  
+		if (allocated_device(devp)) {
+
+			if(gpsd_device_rejects(devp)) {
+                gpsd_report(context.debug, LOG_RAW, 
+                            "gpsd_write to device %s rejected\n", devp->gpsdata.dev.path);
+                continue;
+            }
+			
+			gpsd_report(context.debug, LOG_RAW, 
+						"gpsd_write to device %s accepted\n", devp->gpsdata.dev.path);
+            
+			const struct gps_type_t *dt = devp->device_type;
+			if(dt == NULL) continue;
+
+			if(gpsd_device_forward(srcdev, devp)) {
+                
+                if(dt->packet_type == VYSPI_PACKET) {
+                    
+                    (void)vyspi_write(devp, buf, (size_t)len);
+                    
+                } else if(dt->packet_type == NMEA_PACKET) {
+                    
+					(void)gpsd_write(devp, buf, (size_t)len);
+					gpsd_report(context.debug, LOG_INF, 
+								"gpsd_write: %s (%s > %s)\n", buf,
+								srcdev->gpsdata.dev.path, devp->gpsdata.dev.path);
+                    
+				} 
+			}
+		}
+	}
 }
 
 static ssize_t handle_websocket_request(struct subscriber_t *sub,
@@ -1301,12 +1408,12 @@ static ssize_t handle_websocket_request(struct subscriber_t *sub,
 	  return -1;
 	}
       } else if (sub->frameType == WS_TEXT_FRAME) {
-	len = replylen;
-	wsMakeFrame("echo", 6, reply, &len, WS_TEXT_FRAME);
-	sub->frameType = WS_INCOMPLETE_FRAME;
-	return throttled_write(sub, reply, len);
+          len = replylen;
+          wsMakeFrame("echo", 6, reply, &len, WS_TEXT_FRAME);
+          sub->frameType = WS_INCOMPLETE_FRAME;
+          return throttled_write(sub, reply, len);
       }
-
+      
       // we should never get here
       return -1;
     }
@@ -1605,31 +1712,24 @@ static void handle_request(struct subscriber_t *sub,
     /*@+compdef@*/
 }
 
-static void raw_report(struct subscriber_t *sub, struct gps_device_t *device)
-/* report a raw packet to a subscriber */
-{
-    /* *INDENT-OFF* */
-    /*
-     * NMEA and other textual sentences are simply
-     * copied to all clients that are in raw or nmea
-     * mode.
-     */
+static void raw_report_write(struct subscriber_t *sub, struct gps_device_t *device) {
+	
     if (TEXTUAL_PACKET_TYPE(device->packet.type)
-	&& (sub->policy.raw > 0 || sub->policy.nmea)) {
-	(void)throttled_write(sub,
-			      (char *)device->packet.outbuffer,
-			      device->packet.outbuflen);
-	return;
+		&& (sub->policy.raw > 0 || sub->policy.nmea)) {
+		(void)throttled_write(sub,
+							  (char *)device->packet.outbuffer,
+							  device->packet.outbuflen);
+		return;
     }
 
     
     if ((VYSPI_PACKET == device->packet.type) 
-	&& (FRM_TYPE_NMEA0183 == device->packet.frm_type)
-	&& (sub->policy.raw > 0 || sub->policy.nmea)) {
-	(void)throttled_write(sub,
-			      (char *)device->packet.outbuffer,
-			      device->packet.outbuflen);
-	return;
+		&& (FRM_TYPE_NMEA0183 == device->packet.frm_type)
+		&& (sub->policy.raw > 0 || sub->policy.nmea)) {
+		(void)throttled_write(sub,
+							  (char *)device->packet.outbuffer,
+							  device->packet.outbuflen);
+		return;
     }
     
 
@@ -1668,23 +1768,51 @@ static void raw_report(struct subscriber_t *sub, struct gps_device_t *device)
 #endif /* BINARY_ENABLE */
 }
 
+static void raw_report(struct gps_device_t *device)
+/* report a raw packet to a subscriber */
+{
+    struct subscriber_t *sub;
+	
+    /* *INDENT-OFF* */
+    /*
+     * NMEA and other textual sentences are simply
+     * copied to all clients that are in raw or nmea
+     * mode.
+     */
+    /* update all subscribers associated with this device */
+    for (sub = subscribers; sub < subscribers + MAXSUBSCRIBERS; sub++) {
+		/*@-nullderef@*/
+		if (sub == NULL || sub->active == 0 || !subscribed(sub, device))
+			continue;
+
+		raw_report_write(sub, device);
+	}
+	
+    if (TEXTUAL_PACKET_TYPE(device->packet.type)) {
+		(void)gpsd_device_write(device,
+								(char *)device->packet.outbuffer,
+								device->packet.outbuflen);
+		return;
+    }
+}
+
 static void pseudonmea_write(gps_mask_t changed,
-			     char *buf, size_t len, 
-			     struct gps_device_t *device) {
+                             char *buf, size_t len, 
+                             struct gps_device_t *device) {
     struct subscriber_t *sub;
     /* update all subscribers associated with this device */
     for (sub = subscribers; sub < subscribers + MAXSUBSCRIBERS; sub++) {
-      /*@-nullderef@*/
-      if (sub == NULL || sub->active == 0 || !subscribed(sub, device))
-	continue;
-      if (sub->policy.watcher && sub->policy.nmea) {
-	if (changed & DATA_IS) {
-	  (void)throttled_write(sub, buf, len);
-	}
-      }
+        /*@-nullderef@*/
+        if (sub == NULL || sub->active == 0 || !subscribed(sub, device))
+            continue;
+        if (sub->policy.watcher && sub->policy.nmea) {
+            if (changed & DATA_IS) {
+                (void)throttled_write(sub, buf, len);
+            }
+        }
     }
     if (changed & DATA_IS) {
-	gpsd_device_write(buf, len);
+		gpsd_device_write(device, buf, len);
     }
 }
 
@@ -1889,6 +2017,9 @@ static void all_reports(struct gps_device_t *device, gps_mask_t changed)
     /* report pseudonmea packages to devices and users subscribed */
     pseudonmea_report(changed, device);
 
+	/* report raw packets to users subscribed to those */
+	raw_report(device);
+	
 #ifdef SOCKET_EXPORT_ENABLE
     /* update all subscribers associated with this device */
     for (sub = subscribers; sub < subscribers + MAXSUBSCRIBERS; sub++) {
@@ -1898,6 +2029,9 @@ static void all_reports(struct gps_device_t *device, gps_mask_t changed)
 
 #ifdef PASSTHROUGH_ENABLE
 	/* this is for passing through JSON packets */
+	/* not even the slightest clue why it was reporting here 
+	   though "changed & PASSTHROUGH" is 0
+	   - comment out since it kills websockets with binary junk
 	if ((changed & PASSTHROUGH_IS) != 0) {
 	    (void)strlcat((char *)device->packet.outbuffer,
 			  "\r\n",
@@ -1907,10 +2041,8 @@ static void all_reports(struct gps_device_t *device, gps_mask_t changed)
 				  device->packet.outbuflen+2);
 	    continue;
 	}
+	*/
 #endif /* PASSTHROUGH_ENABLE */
-
-	/* report raw packets to users subscribed to those */
-	raw_report(sub, device);
 
 	/* some listeners may be in watcher mode */
 	if (sub->policy.watcher) {
@@ -1976,7 +2108,7 @@ static int handle_gpsd_request(struct subscriber_t *sub, const char *buf)
 			   reply + strlen(reply),
 			   sizeof(reply) - strlen(reply));
       } else if (buf[0] == '$') {
-	gpsd_device_write(buf, strlen(buf));
+		  gpsd_device_write(NULL, buf, strlen(buf));
       } 
       return (int)throttled_write(sub, reply, strlen(reply));
     }
@@ -2340,6 +2472,18 @@ int main(int argc, char *argv[])
 	}
     }
 
+	/*
+	 * Read additional configuration information here:
+	 * forward rules, interface accept/reject rules, etc.
+	 */ 
+	config_parse(devices);
+
+    char jsonbuf[GPS_JSON_RESPONSE_MAX + 1];
+    json_devicelist_dump(jsonbuf, GPS_JSON_RESPONSE_MAX);
+	gpsd_report(context.debug, LOG_INF,
+                "%s\n", jsonbuf);
+    
+    
     /* drop privileges */
     if (0 == getuid()) {
 	struct passwd *pw;

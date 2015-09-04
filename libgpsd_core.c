@@ -337,10 +337,36 @@ void gpsd_environment_clear(struct environment_t * env) {
 
 }
 
+void gpsd_init_ports(struct gps_device_t *session) {
+
+    uint8_t n = 0;
+    session->gpsdata.dev.port_count = 0;
+
+    for(n = 0; n < MAX_VY_PORT; n++) {
+
+        struct device_port_t * p = &session->gpsdata.dev.portlist[n];
+        
+        strcpy(p->name, "");
+        strcpy(p->type_str, "nmea0183");
+        
+        p->input = device_policy_accept;
+        p->output = device_policy_reject;
+        p->speed = 4800;
+        p->type = PORT_TYPE_NMEA0183;
+
+        for(n = 0; n < MAXDEVICES; n++) {
+            strcpy(p->forward[n], "");
+        }
+        
+    }
+}
+
 void gpsd_init(struct gps_device_t *session, struct gps_context_t *context,
 	       const char *device)
 /* initialize GPS polling */
 {
+	uint8_t n = 0;
+	
     /*@ -mayaliasunique @*/
     if (device != NULL)
 	(void)strlcpy(session->gpsdata.dev.path, device,
@@ -362,7 +388,11 @@ void gpsd_init(struct gps_device_t *session, struct gps_context_t *context,
     gps_clear_dop(&session->gpsdata.dop);
     session->gpsdata.epe = NAN;
     session->mag_var = NAN;
+
     session->gpsdata.dev.cycle = session->gpsdata.dev.mincycle = 1;
+
+    gpsd_init_ports(session);
+
     gpsd_environment_clear(&session->gpsdata.environment);
     gpsd_navigation_clear(&session->gpsdata.navigation);
 #ifdef TIMING_ENABLE

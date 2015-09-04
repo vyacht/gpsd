@@ -1976,21 +1976,34 @@ typedef enum {PORT_SPEED_4800 = 4800,
 	      PORT_SPEED_115200 = 115200} port_speed_t;
 
 
-struct vy_port_t {
-  char type_str[PATH_MAX];
-  int no;
-  port_speed_t speed;
-  port_type_t type;
+#define MAX_VY_PORT 3
+#define DEVICE_SHORTNAME_MAX 24
+    
+typedef enum {
+  device_policy_accept = 0,
+  device_policy_reject = 1
+} device_policy_t;
+
+struct device_port_t {
+    char type_str[PATH_MAX];
+    char name[DEVICE_SHORTNAME_MAX];            /* optional short name for this device */
+    
+    int no;
+    port_speed_t speed;
+    port_type_t type;
+    device_policy_t input;              /* device configured as input */
+    device_policy_t output;             /* device configured to accept output */
+    char forward[4][DEVICE_SHORTNAME_MAX];         /* list of device shortnames to forward to */
 };
 
-#define MAX_VY_PORT 3
-
 struct devconfig_t {
+   
     char path[GPS_PATH_MAX];
 
     /* host port = 0, port 1 and port 2 */
-    struct vy_port_t vy_portlist[MAX_VY_PORT];
-    int       vy_port_count;
+    struct device_port_t portlist[MAX_VY_PORT];
+    int    port_count;
+
     int    isSerial;
 
     int flags;

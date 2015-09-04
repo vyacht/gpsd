@@ -3366,103 +3366,71 @@ static void vyspi_set_serial(struct gps_device_t *session) {
 
 }
 
-static int vy_json_portlist_read(struct devconfig_t * dev, char * portstr)
-{
-    const struct json_attr_t json_attrs_port[] = {
-        {"type",       t_string,     STRUCTOBJECT(struct vy_port_t, type_str),
-	 .len = sizeof(dev->vy_portlist[0].type_str)},
-        {"port",  t_integer,       STRUCTOBJECT(struct vy_port_t, no)},
-        {"speed",  t_integer,       STRUCTOBJECT(struct vy_port_t, speed)},
-        {NULL},
-    };
-    const struct json_attr_t json_attrs_ports[] = {
-        {"ports", t_array, STRUCTARRAY(dev->vy_portlist,
-                                         json_attrs_port,
-                                         &dev->vy_port_count)},
-        {NULL},
-    };
-    int status;
-
-    memset(&dev->vy_portlist, '\0', sizeof(dev->vy_portlist));
-    status = json_read_object(portstr, json_attrs_ports, NULL);
-    if (status != 0) {
-        return status;
-    }
-    return 0;
-}
-
 int vy_port_list_read(struct gps_device_t *session, struct devconfig_t * dev, char * portstr) {
 
-  int i, j, status = 0;
-  int port_speed_matched = 0;
+    int i, j, status = 0;
+    int port_speed_matched = 0;
 
-  status = vy_json_portlist_read(dev, portstr);
+    for(i = 0; i < dev->port_count; i++) {
 
-  for(i = 0; i < dev->vy_port_count; i++) {
+        struct device_port_t * port = &dev->portlist[i];
 
-    if(strcmp(dev->vy_portlist[i].type_str, "nmea2000") == 0) {
-      continue;
+        if(strcmp(port->type_str, "nmea2000") == 0) {
+            continue;
+        }
+
+        if(strcmp(port->type_str, "seatalk") == 0) {
+
+            port->type = PORT_TYPE_SEATALK;
+
+        } else if(strcmp(dev->portlist[i].type_str, "nmea0183") == 0) {
+
+            port->type = PORT_TYPE_NMEA0183;
+
+        } else {
+
+            gpsd_report(session->context->debug, LOG_ERROR, 
+                        "Unkown or illegal port type '%s'\n", port->type_str);
+            return -1;
+        }
+
+        if(port->type == PORT_TYPE_SEATALK) {
+            if((port->speed != 0) && (port->speed != 4800)) {
+                gpsd_report(session->context->debug, LOG_WARN, 
+                            "Ignoring odd port speed for seatalk!\n");
+            }
+        } else if(port->type == PORT_TYPE_NMEA0183) {
+
+            for(j = 0; j < NITEMS(vy_port_speeds); j++) {
+                if(port->speed == vy_port_speeds[j]) {
+                    port_speed_matched = 1;
+                    break;
+                }
+            }
+
+            if(!port_speed_matched) {
+                gpsd_report(session->context->debug, LOG_ERROR, 
+                            "NMEA0183 requires legal port speed %d!\n", port->speed);
+                return -1;
+            }
+        }
+
+        gpsd_report(session->context->debug, LOG_INF, 
+                    "port %d: %s @ %d baud\n",
+                    port->no, 
+                    port->type_str, 
+                    port->type == PORT_TYPE_SEATALK?4800:port->speed);
     }
-
-    if(strcmp(dev->vy_portlist[i].type_str, "seatalk") == 0) {
-
-      dev->vy_portlist[i].type = PORT_TYPE_SEATALK;
-
-    } else if(strcmp(dev->vy_portlist[i].type_str, "nmea0183") == 0) {
-
-      dev->vy_portlist[i].type = PORT_TYPE_NMEA0183;
-
-    } else {
-
-      gpsd_report(session->context->debug, LOG_ERROR, 
-		  "Unkown or illegal port type '%s'\n", dev->vy_portlist[i].type_str);
-      return -1;
-    }
-
-    if((dev->vy_portlist[i].no < 1) || (dev->vy_portlist[i].no > 2)) {
-      gpsd_report(session->context->debug, LOG_ERROR, 
-		  "No valid port number found for %s\n", dev->path);
-      return -1;
-    }
-
-
-    if(dev->vy_portlist[i].type == PORT_TYPE_SEATALK) {
-      if((dev->vy_portlist[i].speed != 0) && (dev->vy_portlist[i].speed != 4800)) {
-	gpsd_report(session->context->debug, LOG_WARN, 
-		    "Ignoring odd port speed for seatalk!\n");
-      }
-    } else if(dev->vy_portlist[i].type == PORT_TYPE_NMEA0183) {
-
-      for(j = 0; j < NITEMS(vy_port_speeds); j++) {
-	if(dev->vy_portlist[i].speed == vy_port_speeds[j]) {
-	  port_speed_matched = 1;
-	  break;
-	}
-      }
-
-      if(!port_speed_matched) {
-	gpsd_report(session->context->debug, LOG_ERROR, 
-		    "NMEA0183 requires legal port speed %d!\n", dev->vy_portlist[i].speed);
-	return -1;
-      }
-    }
-
-    gpsd_report(session->context->debug, LOG_INF, 
-		"port %d: %s @ %d baud\n",
-		dev->vy_portlist[i].no, 
-		dev->vy_portlist[i].type_str, 
-		dev->vy_portlist[i].type == PORT_TYPE_SEATALK?4800:dev->vy_portlist[i].speed);
-  }
 
     if (status != 0) {
         puts(json_error_string(status));
-	return -1;
+        return -1;
     }
 
     return 0;
 }
 
-int vy_port2cmd(struct vy_port_t * vy, uint8_t *cmd) {
+int vy_port2cmd(struct device_port_t * vy, uint8_t *cmd) {
 
   memcpy(cmd, "stty", 4);
 
@@ -3480,23 +3448,20 @@ ssize_t vyspi_write(struct gps_device_t *session,
 		   const size_t len)
 /* pass low-level data to devices straight through */
 {
-  gpsd_report(session->context->debug, LOG_INF, 
-	      "vyspi_write: %s (%s) ports= %d\n", 
-	buf, session->gpsdata.dev.path, session->gpsdata.dev.vy_port_count);
+    gpsd_report(session->context->debug, LOG_INF, 
+                "vyspi_write: %s (%s) ports= %d\n", 
+                buf, session->gpsdata.dev.path, session->gpsdata.dev.port_count);
 
-  uint8_t frm[255];
-  uint8_t i = 0;
+    uint8_t frm[255];
+    uint8_t i = 0;
 
-  if(len == 0)
-    return 0;
+    if(len == 0)
+        return 0;
 
-  for (i = 0; i < session->gpsdata.dev.vy_port_count; i++) {
-
-    size_t frmlen = 
+  size_t frmlen = 
       frm_toHDLC8(frm, 255, FRM_TYPE_NMEA0183, buf, len);
 
-    gpsd_serial_write(session, frm, frmlen);
-  }
+  gpsd_serial_write(session, frm, frmlen);
 
   return len;
 }
@@ -3581,9 +3546,9 @@ int vyspi_open(struct gps_device_t *session) {
 	  uint8_t frm[255];
 	  uint8_t i = 0;
 
-	  for (i = 0; i < session->gpsdata.dev.vy_port_count; i++) {
+	  for (i = 0; i < session->gpsdata.dev.port_count; i++) {
 
-	    vy_port2cmd(&session->gpsdata.dev.vy_portlist[i], cmd);
+	    vy_port2cmd(&session->gpsdata.dev.portlist[i], cmd);
 
 	    size_t len = 
 	      frm_toHDLC8(frm, 255, FRM_TYPE_CMD, cmd, 10);
@@ -3591,7 +3556,7 @@ int vyspi_open(struct gps_device_t *session) {
 	    gpsd_serial_write(session, frm, len);
 	    gpsd_report(session->context->debug, LOG_INF, 
 			"setting port configuration for port '%d'.\n", 
-			session->gpsdata.dev.vy_portlist[i].no);
+			session->gpsdata.dev.portlist[i].no);
 
 	  }
 
