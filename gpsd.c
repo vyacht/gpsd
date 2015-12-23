@@ -667,7 +667,8 @@ static /*@null@*//*@observer@ */ struct subscriber_t *allocate_client(void)
 	    subscribers[si].policy.nmea      = true;
 	    subscribers[si].policy.watcher   = true;
 	    subscribers[si].policy.json      = false;
-	    subscribers[si].policy.websocket = false;
+	    subscribers[si].policy.signalk   = false;
+	    subscribers[si].policy.protocol  = tcp;
 	    subscribers[si].policy.loglevel  = LOG_ERROR - 1;
 
 	    subscribers[si].state = WS_STATE_OPENING;
@@ -701,20 +702,37 @@ static void detach_client(struct subscriber_t *sub)
     sub->active         = (timestamp_t)0;
     sub->policy.watcher = false;
     sub->policy.json    = false;
+    sub->policy.signalk = false;
     sub->policy.nmea    = false;
     sub->policy.raw     = 0;
     sub->policy.scaled  = false;
     sub->policy.timing  = false;
     sub->policy.split24 = false;
-    sub->policy.websocket = false;
+    sub->policy.protocol = tcp;
     sub->policy.loglevel = LOG_ERROR - 1;
     sub->policy.devpath[0] = '\0';
+
+    // websocket & http specific
     sub->state = WS_STATE_OPENING;
     sub->frameType = WS_INCOMPLETE_FRAME;
+
     sub->fd = UNALLOCATED_FD;
     unlock_subscriber(sub);
     set_max_subscriber_loglevel();
     /*@+mustfreeonly@*/
+}
+
+static bool isWebsocket(struct subscriber_t *sub) {
+    return (sub->policy.protocol == websocket);
+}
+
+static const char * getProtocolName(struct subscriber_t *sub) {
+	char *protocol_table[] = {
+        "tcp", "ws", "http"
+	};
+    if((sub->policy.protocol > 0) && (sub->policy.protocol <= http)) 
+        return protocol_table[sub->policy.protocol];
+    return "";
 }
 
 static ssize_t throttled_write_(struct subscriber_t *sub, const char *buf,
@@ -727,7 +745,7 @@ static ssize_t throttled_write_(struct subscriber_t *sub, const char *buf,
         if (isprint(buf[0]))
             gpsd_report(context.debug, LOG_CLIENT,
                         "=> %sclient(%d): %s\n", 
-                        sub->policy.websocket?"ws":"",
+                        getProtocolName(sub),
                         sub_index(sub), 
                         buf);
         else {
@@ -739,7 +757,7 @@ static ssize_t throttled_write_(struct subscriber_t *sub, const char *buf,
                                "%02x", (unsigned int)(*cp & 0xff));
             gpsd_report(context.debug, LOG_CLIENT,
                         "===> %sclient(%d): %s\n", 
-                        sub->policy.websocket?"ws":"",
+                        getProtocolName(sub),
                         sub_index(sub),	
                         buf2);
         }
@@ -779,7 +797,7 @@ static ssize_t throttled_write_(struct subscriber_t *sub, const char *buf,
 
 ssize_t throttled_write(struct subscriber_t *sub, const char *buf,
 			       size_t len) {
-    if(sub->policy.websocket) {
+    if(isWebsocket(sub)) {
       char reply[GPS_JSON_RESPONSE_MAX + 1];
       size_t replylen = GPS_JSON_RESPONSE_MAX;
       wsMakeFrame(buf, len, reply, &replylen, WS_TEXT_FRAME);
@@ -1417,18 +1435,39 @@ static ssize_t handle_websocket_request(struct subscriber_t *sub,
     
 //    gpsd_report(context.debug, LOG_INF, "incomming frame: %s\n", buf);
 
-    if (sub->state == WS_STATE_OPENING) {
-      sub->frameType = wsParseHandshake(buf, 0, &hs);
+    if ((sub->state == WS_STATE_OPENING)) {
+        gpsd_report(context.debug, LOG_INF, 
+                    "Handling a HTTP handshake.\n"); 
+        sub->frameType = wsParseHandshake(buf, 0, &hs);
+        if(sub->frameType == WS_PREFLIGHTED_FRAME) {
+
+            len = snprintf(reply, replylen,
+                           "HTTP/1.1 204 No Content\r\n"
+                           "X-Powered-By: Express\r\n"
+                           "Access-Control-Allow-Origin: *\r\n"
+                           "Access-Control-Allow-Methods: GET,HEAD,PUT,PATCH,POST,DELETE\r\n"
+                           "Access-Control-Allow-Headers: content-type\r\n"
+                           "Date: Fri, 06 Nov 2015 08:52:03 GMT\r\n"
+                           "Connection: keep-alive\r\n\r\n");
+
+            gpsd_report(context.debug, LOG_INF, 
+                        "returning OPTIONS: %s\n", reply); 
+            return throttled_write(sub, reply, len);
+        }
     } else {
-      sub->frameType = wsParseInputFrame(buf, 0, &data, &dataSize);
+        sub->frameType = wsParseInputFrame(buf, 0, &data, &dataSize);
+        gpsd_report(context.debug, LOG_INF, 
+                    "incoming frame with %s\n", data); 
     }
         
     if ((sub->frameType == WS_INCOMPLETE_FRAME) 
-	|| (sub->frameType == WS_ERROR_FRAME)) {
-      if (sub->frameType == WS_INCOMPLETE_FRAME)
-	printf("buffer too small");
-      else
-	printf("error in incoming frame\n");
+        || (sub->frameType == WS_ERROR_FRAME)) {
+        if (sub->frameType == WS_INCOMPLETE_FRAME)
+            gpsd_report(context.debug, LOG_ERROR, 
+                        "Buffer too small\n"); 
+        else
+            gpsd_report(context.debug, LOG_ERROR, 
+                        "Error in incoming frame\n"); 
             
         if (sub->state == WS_STATE_OPENING) {
             len = snprintf(reply, replylen,
@@ -1448,21 +1487,25 @@ static ssize_t handle_websocket_request(struct subscriber_t *sub,
     }
         
     if (sub->state == WS_STATE_OPENING) {
-      assert(sub->frameType == WS_OPENING_FRAME);
-      if (sub->frameType == WS_OPENING_FRAME) {
+        assert((sub->frameType == WS_OPENING_FRAME) 
+               || (sub->frameType == WS_GET_FRAME));
+        if ((sub->frameType == WS_OPENING_FRAME) 
+            || (sub->frameType == WS_GET_FRAME)) {
 
-	bool raw  = 0;
-	bool nmea = false;
-	int debug = 0;
+            bool raw  = 0;
+            bool nmea = false;
+            bool signalk = false;
+            int debug = 0;
 
-	// if resource is right, generate answer handshake and send it
-	gpsd_report(context.debug, LOG_INF, 
-		    "incoming resource request %s\n",
-		    hs.resource); 
-	if (strcmp(hs.resource, "/raw") == 0) {
-	  raw = 1;
-	  nmea = true;
-	} else if (strncmp(hs.resource, "/debug", 6) == 0) {
+            // if resource is right, generate answer handshake and send it
+            if (strncmp(hs.resource, "/signalk", 8) == 0) {
+                gpsd_report(context.debug, LOG_INF, 
+                            "incoming resource request with %s\n", hs.resource); 
+                signalk = true;
+            } else if (strcmp(hs.resource, "/raw") == 0) {
+                raw = 1;
+                nmea = true;
+            } else if (strncmp(hs.resource, "/debug", 6) == 0) {
 
                 debug = 5;
                 if(strlen(hs.resource) >= 14) {
@@ -1475,36 +1518,84 @@ static ssize_t handle_websocket_request(struct subscriber_t *sub,
                 }
 
 
-	} else {
-	  len = snprintf((char *)reply, replylen, 
-			      "HTTP/1.1 404 Not Found\r\n\r\n");
-	  throttled_write(sub, reply, len);
-	  return -1;
-	}
+            } else {
+                gpsd_report(context.debug, LOG_INF, 
+                            "404 Not Found: %s\n", hs.resource); 
+                len = snprintf((char *)reply, replylen, 
+                               "HTTP/1.1 404 Not Found\r\n\r\n");
+                throttled_write(sub, reply, len);
+                return -1;
+            }
+
+            /* TODO: a new sub is in nmea == true and 
+               raw writes to sub might interfer with http protocol
+               - investigate: introduce grace period for each new connection
+                              if within a short time window after connect no 
+                              HTTP specific headers are send by client its safer
+                              to assume raw TCP client
+                             
+                              problem: if client sends nothing we'll never wake up on poll/select
+                              timeouts for select/poll maybe? or wakeup poll?
+
+               
+               TODO: define a clear sub->sub state for http protocol
+
+               TODO: distingusih between signalk full and update, 
+               currently even a single GET might lead to updates being send 
+               - or restrict updates to web sockets in report_signalk?
+               - investigate: how is GET method defined wrt close after receiving result?
+
+               TODO: assuming that GET requests usually open a new connection 
+               for each call despite keep-alive, browser will keep still connections alive
+               we can thus quickly run out of connections if server doens't close them
+            */
+
+            sub->policy.json      = false;
+            sub->policy.signalk   = signalk;
+            sub->policy.nmea      = nmea;
+            sub->policy.watcher   = true;
+            sub->policy.raw       = raw;
+            sub->policy.loglevel  = debug;
+            set_max_subscriber_loglevel();
+
+            if(sub->frameType == WS_GET_FRAME) {
+                char content[BUFSIZ]; size_t contentlen = BUFSIZ;
+                signalk_full_dump(sub, content, contentlen);
+                len = snprintf(reply, replylen,
+                               "HTTP/1.1 200 OK\r\n"
+                               "Content-Length: %d\r\n"
+                               "Connection: keep-alive\r\n"
+                               "Access-Control-Allow-Origin: *\r\n"
+                               "Content-Type: application/json\r\n\r\n%s",
+                               strlen(content), content);
+                gpsd_report(context.debug, LOG_INF, 
+                            "returning GET: %s\n", reply); 
                 
-	len = replylen;
-	wsGetHandshakeAnswer(&hs, reply, &len);
-	freeHandshake(&hs);
+                sub->policy.protocol  = http;
 
-	ssize_t status = throttled_write(sub, reply, len);
+                return throttled_write(sub, reply, len);
+            }
 
-	sub->policy.websocket = true;
-	sub->policy.json      = false;
-	sub->policy.nmea      = nmea;
-	sub->policy.watcher   = true;
-	sub->policy.raw       = raw;
-	sub->policy.loglevel  = debug;
-	set_max_subscriber_loglevel();
+                
+            len = replylen;
+            wsGetHandshakeAnswer(&hs, reply, &len);
+            freeHandshake(&hs);
 
-	sub->state = WS_STATE_NORMAL;
-	sub->frameType = WS_INCOMPLETE_FRAME;
-	gpsd_report(context.debug, LOG_INF, "answering handshake to %sclient\n",
-		sub->policy.websocket?"ws":""); 
-	return status;
-      }
+            // careful: this needs to be send as tcp - not as a ws frame!
+            ssize_t status = throttled_write(sub, reply, len);
+
+            sub->policy.protocol  = websocket;
+
+            sub->state = WS_STATE_NORMAL;
+            sub->frameType = WS_INCOMPLETE_FRAME;
+            gpsd_report(context.debug, LOG_INF, 
+                        "answering handshake to %sclient: %s\n",
+                        "ws", reply); 
+            return status;
+        }
     } else {
         if (sub->frameType == WS_CLOSING_FRAME) {
-            sub->policy.websocket = false;
+            sub->policy.protocol = tcp;
             gpsd_report(context.debug, LOG_INF, "closing frame\n");
             if (sub->state == WS_STATE_CLOSING) {
                 return -1;
@@ -2003,6 +2094,45 @@ static void pseudonmea_report(gps_mask_t changed,
 }
 #endif /* SOCKET_EXPORT_ENABLE */
 
+static void signalk_report(gps_mask_t changed,
+			  struct gps_device_t *device)
+/* report pseudo-NMEA in appropriate circumstances */
+{
+    if (!(changed & DATA_IS)) {
+        return;
+    }
+
+	char buf[MAX_PACKET_LENGTH * 3 + 2];
+    struct subscriber_t *sub;
+    gps_mask_t reported = 0;
+
+    if (changed & DATA_IS) {
+        reported = signalk_update_dump(device, buf, sizeof(buf));
+    }
+
+    // nothing to report
+    if(!reported)
+        return;
+
+    /* update all subscribers associated with this device 
+       we are not sending to http protocol which requires explicit GET requests 
+     */
+    for (sub = subscribers; sub < subscribers + MAXSUBSCRIBERS; sub++) {
+        /*@-nullderef@*/
+        if (sub == NULL || sub->active == 0 || !subscribed(sub, device))
+            continue;
+        if (sub->policy.watcher && sub->policy.signalk 
+            && sub->policy.protocol != http) {
+            if (changed & DATA_IS) {
+                gpsd_external_report(context.debug, LOG_INF,
+                                     "signalk update: %s\n",
+                                     buf);
+                (void)throttled_write(sub, buf, strlen(buf));
+            }
+        }
+    }
+}
+
 static void all_reports(struct gps_device_t *device, gps_mask_t changed)
 /* report on the corrent packet from a specified device */
 {
@@ -2134,6 +2264,9 @@ static void all_reports(struct gps_device_t *device, gps_mask_t changed)
     /* report pseudonmea packages to devices and users subscribed */
     pseudonmea_report(changed, device);
 
+    /* report out updates to signalk subscribers */
+    signalk_report(changed, device);
+
 	/* report raw packets to users subscribed to those */
 	raw_report(device);
 	
@@ -2204,8 +2337,8 @@ static int handle_gpsd_request(struct subscriber_t *sub, const char *buf)
     char reply[GPS_JSON_RESPONSE_MAX + 1];
 
     reply[0] = '\0';
-    if ((strncmp(buf, "GET ", 4) == 0)
-        || (sub->policy.websocket == true)) {
+    if (((strncmp(buf, "GET ", 4) == 0) || (strncmp(buf, "OPTIONS ", 8) == 0))
+        || isWebsocket(sub)) {
         // switching to web socket mode
         // handle_websocket_request does its own writes
         gpsd_report(context.debug, LOG_PROG,

@@ -38,6 +38,17 @@ extern "C" {
 
 #define MAX_URI_LENGTH 2048
 
+/*
+ * OPTIONS /signalk/api/v2/vessels/self HTTP/1.1
+ *   Host: localhost:2947
+ *   User-Agent: Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:31.0) Gecko/20100101 Firefox/31.0
+ *   Accept: text/html,application/xhtml+xml,application/xml
+ *   Accept-Language: en-US,en;q=0.5\x0d\x0aAccept-Encoding: gzip, deflate\x0d\x0a
+ *   Origin: http://localhost\x0d\x0a
+ *   Access-Control-Request-Method: GET\x0d\x0a
+ *   Access-Control-Request-Headers: content-type\x0d\x0a
+ *   Connection: keep-alive\x0d\x0a\x0d\x0a
+ */
 static const char WS_HEADER_CONNECTION[] = "Connection: ";
 static const char WS_HEADER_UPGRADE[]    = "Upgrade: ";
 
@@ -58,7 +69,9 @@ enum wsFrameType {
     WS_PING_FRAME        = 0x09,
     WS_PONG_FRAME        = 0x0A,
     WS_OPENING_FRAME     = 0xF3,
-    WS_CLOSING_FRAME     = 0x08
+    WS_GET_FRAME         = 0xF4,
+    WS_CLOSING_FRAME     = 0x08,
+    WS_PREFLIGHTED_FRAME = 0x0B
 };
     
 enum wsState {

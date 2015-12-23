@@ -67,9 +67,22 @@ static char* getUptoLinefeed(const char *startFrom)
     return writeTo;
 }
 
+/*
+ * OPTIONS /signalk/api/v2/vessels/self HTTP/1.1
+ *   Host: localhost:2947
+ *   User-Agent: Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:31.0) Gecko/20100101 Firefox/31.0
+ *   Accept: text/html,application/xhtml+xml,application/xml
+ *   Accept-Language: en-US,en;q=0.5\x0d\x0aAccept-Encoding: gzip, deflate\x0d\x0a
+ *   Origin: http://localhost\x0d\x0a
+ *   Access-Control-Request-Method: GET\x0d\x0a
+ *   Access-Control-Request-Headers: content-type\x0d\x0a
+ *   Connection: keep-alive\x0d\x0a\x0d\x0a
+ */
 enum wsFrameType wsParseHandshake(const uint8_t *inputFrame, size_t inputLength,
                                   struct handshake *hs)
 {
+    enum wsFrameType tmpFT = WS_ERROR_FRAME;
+
     const char *inputPtr = (const char *)inputFrame;
     char *endPtr = (char *)inputFrame;
     while(*endPtr != '\0') {
@@ -79,8 +92,13 @@ enum wsFrameType wsParseHandshake(const uint8_t *inputFrame, size_t inputLength,
     if (!strstr((const char *)inputFrame, "\r\n\r\n"))
         return WS_INCOMPLETE_FRAME;
 	
-    if (memcmp(inputFrame, "GET ", 4) != 0)
+    if(memcmp(inputFrame, "GET ", 4) == 0)
+        tmpFT = WS_OPENING_FRAME;
+    else if(memcmp(inputFrame, "OPTIONS ", 8) == 0)
+        tmpFT = WS_PREFLIGHTED_FRAME;
+    else 
         return WS_ERROR_FRAME;
+
     // measure resource size
     char *first = strchr((const char *)inputFrame, ' ');
     if (!first)
@@ -89,9 +107,8 @@ enum wsFrameType wsParseHandshake(const uint8_t *inputFrame, size_t inputLength,
     char *second = strchr(first, ' ');
     if (!second) 
         return WS_ERROR_FRAME;
-    if(second - first + 1 > MAX_URI_LENGTH) {
+    if(second - first + 1 > MAX_URI_LENGTH)
         return WS_ERROR_FRAME;
-    }
 
     if(sscanf(first, "%s HTTP/1.1\r\n", hs->resource) != 1)
         return WS_ERROR_FRAME;
@@ -177,12 +194,15 @@ enum wsFrameType wsParseHandshake(const uint8_t *inputFrame, size_t inputLength,
         printf("version mismatch!\n");
 
     // we have read all data, so check them
-    if (!hs->host || !hs->key || !connectionFlag || !upgradeFlag || versionMismatch)
-    {
-        hs->frameType = WS_ERROR_FRAME;
-    } else {
-        hs->frameType = WS_OPENING_FRAME;
-    }
+    if(tmpFT == WS_OPENING_FRAME) {
+        if(!hs->host || !hs->key || !connectionFlag || !upgradeFlag || versionMismatch)  {
+            hs->frameType = WS_GET_FRAME;
+        } else {
+            hs->frameType = WS_OPENING_FRAME;
+        }
+    } else if(tmpFT == WS_PREFLIGHTED_FRAME) {
+            hs->frameType = WS_PREFLIGHTED_FRAME;
+    } 
     
     return hs->frameType;
 }

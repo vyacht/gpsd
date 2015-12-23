@@ -837,6 +837,7 @@ libgpsd_sources = [
     "pseudonmea.c",
     "pseudoais.c",
     "serial.c",
+    "signalk.c",
     "subframe.c",
     "timebase.c",
     "websocket.c", 

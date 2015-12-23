@@ -2021,10 +2021,18 @@ struct devconfig_t {
     int driver_mode;    		/* is driver in native mode or not? */
 };
 
+enum protocol_t {
+    tcp       = 0,
+    websocket = 1,
+    http      = 2
+}; 
+
 struct policy_t {
+    enum protocol_t protocol;	/* normal, websocket or http mode? */
+
     bool watcher;			/* is watcher mode on? */
-    bool websocket;			/* websocket mode? */
     bool json;				/* requesting JSON? */
+    bool signalk;			/* requesting signalk? */
     bool nmea;				/* requesting dumping as NMEA? */
     int raw;				/* requesting raw data? */
     bool scaled;			/* requesting report scaling? */

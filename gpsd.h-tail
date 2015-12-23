@@ -910,6 +910,9 @@ extern void nmea_navigation_dump(struct gps_device_t *session,  /*@out@*/char[],
 extern int nmea_environment_dump(struct gps_device_t *session, int num, /*@out@*/char[], size_t);
 extern unsigned int ais_binary_encode(struct ais_t *ais, /*@out@*/unsigned char *bits, int flag);
 
+extern gps_mask_t signalk_update_dump(const struct gps_device_t *, 
+                                /*@out@*/char[], size_t);
+
 extern void ntpshm_context_init(struct gps_context_t *);
 extern void ntpshm_session_init(struct gps_device_t *);
 extern int ntpshm_put(struct gps_device_t *, int, struct timedrift_t *);
