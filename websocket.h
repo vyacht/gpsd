@@ -49,6 +49,8 @@ extern "C" {
     #define memcpy_P memcpy
 #endif
 
+#define MAX_URI_LENGTH 2048
+
 #ifndef TRUE
     #define TRUE 1
 #endif
@@ -91,8 +93,8 @@ struct handshake {
     char *host;
     char *origin;
     char *key;
-    char *resource;
     char *protocol;
+    char resource[MAX_URI_LENGTH];
     enum wsFrameType frameType;
 };
 

@@ -31,9 +31,9 @@ void nullHandshake(struct handshake *hs)
 {
     hs->host = NULL;
     hs->origin = NULL;
-    hs->resource = NULL;
     hs->key = NULL;
     hs->protocol = NULL;
+    strcpy(hs->resource, "");
     hs->frameType = WS_EMPTY_FRAME;
 }
 
@@ -44,9 +44,6 @@ void freeHandshake(struct handshake *hs)
     }
     if (hs->origin) {
         free(hs->origin);
-    }
-    if (hs->resource) {
-        free(hs->resource);
     }
     if (hs->key) {
         free(hs->key);
@@ -92,10 +89,6 @@ enum wsFrameType wsParseHandshake(const uint8_t *inputFrame, size_t inputLength,
     char *second = strchr(first, ' ');
     if (!second)
         return WS_ERROR_FRAME;
-
-    if (hs->resource) {
-        free(hs->resource);
-        hs->resource = NULL;
     }
     hs->resource = (char *)malloc(second - first + 1); // +1 is for \x00 symbol
     assert(hs->resource);
