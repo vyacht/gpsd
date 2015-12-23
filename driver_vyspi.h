@@ -11,6 +11,7 @@
 #if defined(VYSPI_ENABLE)
 
 int vyspi_open(struct gps_device_t *session);
+int vyspi_init(struct gps_device_t *session);
 
 #endif /* of defined(VYSPI_ENABLE) */
 
