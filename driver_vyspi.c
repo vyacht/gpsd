@@ -57,6 +57,8 @@ extern gps_mask_t seatalk_parse_input(struct gps_device_t *session);
 // from driver_seatalk.c
 extern void character_skip(struct gps_packet_t *lexer);
 
+int vy_port_list_read(struct gps_device_t *session, struct devconfig_t * dev);
+
 typedef struct PGN
     {
     unsigned int  pgn;
@@ -3366,7 +3368,7 @@ static void vyspi_set_serial(struct gps_device_t *session) {
 
 }
 
-int vy_port_list_read(struct gps_device_t *session, struct devconfig_t * dev, char * portstr) {
+int vy_port_list_read(struct gps_device_t *session, struct devconfig_t * dev) {
 
     int i, j, status = 0;
     int port_speed_matched = 0;
@@ -3453,20 +3455,57 @@ ssize_t vyspi_write(struct gps_device_t *session,
                 buf, session->gpsdata.dev.path, session->gpsdata.dev.port_count);
 
     uint8_t frm[255];
-    uint8_t i = 0;
-
     if(len == 0)
         return 0;
 
-  size_t frmlen = 
-      frm_toHDLC8(frm, 255, FRM_TYPE_NMEA0183, buf, len);
+    size_t frmlen = 
+        frm_toHDLC8(frm, 255, FRM_TYPE_NMEA0183, buf, len);
 
-  gpsd_serial_write(session, frm, frmlen);
+    gpsd_serial_write(session, frm, frmlen);
 
-  return len;
+    return len;
 }
 
 #ifndef S_SPLINT_S
+
+int vyspi_init(struct gps_device_t *session) {
+  
+
+    if(vy_port_list_read(session, &session->gpsdata.dev) != 0) {
+        
+        gpsd_report(session->context->debug, LOG_ERROR, 
+                    "Error reading port configuration. Assuming defaults.\n");
+        return 1;
+    }        
+
+    uint8_t cmd[255];
+    uint8_t frm[255];
+    uint8_t i = 0;
+    size_t len = 0;
+
+    for (i = 0; i < session->gpsdata.dev.port_count; i++) {
+
+        vy_port2cmd(&session->gpsdata.dev.portlist[i], cmd);
+
+        gpsd_report(session->context->debug, LOG_INF, 
+                    "setting port configuration for port '%d'.\n", 
+                    session->gpsdata.dev.portlist[i].no);
+        
+        len = frm_toHDLC8(frm, 255, FRM_TYPE_CMD, cmd, 10);
+        gpsd_serial_write(session, frm, len);
+
+    }
+
+    // send start command to stm32
+
+    gpsd_report(session->context->debug, LOG_INF, 
+                "Sending start command.\n");
+    memcpy(cmd, "strt", 4);
+    len = frm_toHDLC8(frm, 255, FRM_TYPE_CMD, cmd, 4);
+    gpsd_serial_write(session, frm, len);
+
+    return 0;        
+}
 
 /*
   opens either a 
@@ -3527,52 +3566,15 @@ int vyspi_open(struct gps_device_t *session) {
 
     } else {
 
+        gpsd_report(session->context->debug, LOG_INF, 
+                    "opening serial feed at %s.\n", path);
       session->gpsdata.dev.isSerial = 1;
       vyspi_set_serial(session);
 
       /* fetch additional port parameter to configure uC using classical URL:
-	 ?{"ports":{[...]}*/
-
-      if(port) {
-	gpsd_report(session->context->debug, LOG_INF, 
-		    "opening serial feed at %s, port %s.\n", path, port);
-
-	if(vy_port_list_read(session, &session->gpsdata.dev, port) != 0) {
-	  gpsd_report(session->context->debug, LOG_ERROR, 
-		      "error reading port configuration '%s'. Assuming defaults.\n", port);
-	} else {
-
-	  uint8_t cmd[255];
-	  uint8_t frm[255];
-	  uint8_t i = 0;
-
-	  for (i = 0; i < session->gpsdata.dev.port_count; i++) {
-
-	    vy_port2cmd(&session->gpsdata.dev.portlist[i], cmd);
-
-	    size_t len = 
-	      frm_toHDLC8(frm, 255, FRM_TYPE_CMD, cmd, 10);
-
-	    gpsd_serial_write(session, frm, len);
-	    gpsd_report(session->context->debug, LOG_INF, 
-			"setting port configuration for port '%d'.\n", 
-			session->gpsdata.dev.portlist[i].no);
-
-	  }
-
-	}
-
-      } // if(port)
-
-      uint8_t cmd[255];
-      uint8_t frm[255];
-      memcpy(cmd, "strt", 4);
-      size_t len = 
-	frm_toHDLC8(frm, 255, FRM_TYPE_CMD, cmd, 4);
-
-      gpsd_serial_write(session, frm, len);
-        
+         ?{"ports":{[...]}*/
     }
+
 
   } else {
 

@@ -50,6 +50,8 @@
 #include "revision.h"
 #include "frame.h"
 
+#include "driver_vyspi.h"
+
 #if defined(SYSTEMD_ENABLE)
 #include "sd_socket.h"
 #endif
@@ -2476,7 +2478,20 @@ int main(int argc, char *argv[])
 	 * Read additional configuration information here:
 	 * forward rules, interface accept/reject rules, etc.
 	 */ 
-	config_parse(devices);
+	config_parse(interfaces, devices);
+
+    for (device = devices; device < devices + MAXDEVICES; device++) {
+        
+	    if (!allocated_device(device))
+            continue;
+        
+        if((device->device_type) && (device->device_type->packet_type == VYSPI_PACKET)) {
+            vyspi_init(device);
+        }
+    }
+
+	gpsd_report(context.debug, LOG_INF,
+                "Device init done.\n");
 
     char jsonbuf[GPS_JSON_RESPONSE_MAX + 1];
     json_devicelist_dump(jsonbuf, GPS_JSON_RESPONSE_MAX);
