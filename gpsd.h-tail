@@ -1057,7 +1057,7 @@ void gpsd_report(const int, const int, const char *, ...);
 void gpsd_external_report(const int, const int, const char *, ...);
 #endif
 
-int config_parse(struct gps_device_t *devp);
+int config_parse(struct interface_t *, struct gps_device_t *);
 
 #ifdef S_SPLINT_S
 extern struct protoent *getprotobyname(const char *);

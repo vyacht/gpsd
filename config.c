@@ -2,13 +2,33 @@
 #include <string.h>
 #include <uci.h>
 #include <stdlib.h>
+#include <unistd.h>  /* file check with access */
 
 #include "gpsd_config.h"
 #include "gpsd.h"
 
+/* for getifaddr */
+#include <netdb.h>
+#include <ifaddrs.h>
+#include <netinet/in.h>
+#include <net/if.h>            /* IFF_LOOPBACK */
+
+/* inet_ntoa */
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
+
+#include <errno.h>
+
+#ifndef FORCE_GLOBAL_ENABLE
+static bool listen_global = true;
+#endif /* FORCE_GLOBAL_ENABLE */
+
 static struct uci_context *uci_ctx;
 static int uci_debuglevel = 0;
 struct uci_package * config_init(void);
+
+#define DEFAULT_UDP_BROADCAST_PORT 2000
 
 static void
 config_uci_debuglevel(struct gps_device_t * devices) {
@@ -161,12 +181,161 @@ config_parse_interface_option(struct device_port_t * port, const char * name, st
 
 }
 
+struct interface_t * 
+config_next_free_interface(struct interface_t * ints) {
+
+    struct interface_t * it;
+    for (it = ints; it < ints + MAXINTERFACES; it++) {
+        if(it->name[0] == '\0') {
+            return it;
+        }
+    }
+    return NULL;
+}
+
+
+/* 
+ * parse an udp/tcp specific interface
+ * 
+ * at this point in time only port option is supported
+ */
+static void
+config_parse_proto_interface(struct interface_t * intf,
+					   struct uci_section *s, const char * name) {
+
+	gpsd_report(uci_debuglevel, LOG_INF, 
+				"parsing protocol interface section %s\n", name); 
+
+    strncpy(intf->name, name, DEVICE_SHORTNAME_MAX);
+
+    intf->port = DEFAULT_UDP_BROADCAST_PORT;
+
+	// parse and assign all options
+	struct uci_element *e;
+	uci_foreach_element(&s->options, e) {
+
+		struct uci_option *o = uci_to_option(e);
+
+        if (!o || o->type != UCI_TYPE_STRING)
+            continue;
+
+        if(strcmp(e->name, "proto") == 0) {
+
+            gpsd_report(uci_debuglevel, LOG_INF, 
+                        "proto: %s\n", o->v.string);
+            strncpy(intf->proto, o->v.string, 16);
+
+        } else if(strcmp(e->name, "port") == 0) {
+
+            gpsd_report(uci_debuglevel, LOG_INF, 
+                        "port: %s\n", o->v.string);
+
+            int port = atol(o->v.string);
+            intf->port = port;
+
+        } else if(strcmp(e->name, "ipaddr") == 0) {
+
+            gpsd_report(uci_debuglevel, LOG_INF, 
+                        "ipaddr: %s\n", o->v.string);
+
+            intf->ipaddr.sin_addr.s_addr = inet_addr(o->v.string);
+        }
+    }
+}
+
+static int config_ifaddrs(struct interface_t * intfs,
+                          struct uci_section *section, const char * name) {
+
+    /* collect all interfaces */
+    struct ifaddrs *ifaddr, *ifa;
+    int family, s;
+    char host[NI_MAXHOST];
+
+    if (getifaddrs(&ifaddr) == -1) {
+        gpsd_report(uci_debuglevel, LOG_ERROR, 
+                    "failed to open getifaddrs (%d)\n", errno);
+        return -1;
+    }
+
+    /* Walk through linked list, maintaining head pointer so we
+       can free list later */
+    
+    for (ifa = ifaddr; ifa != NULL; ifa = ifa->ifa_next) {
+        if (ifa->ifa_addr == NULL)
+            continue;
+
+        family = ifa->ifa_addr->sa_family;
+
+        if (ifa->ifa_flags & IFF_LOOPBACK) {
+            if (listen_global)
+                continue;
+        }
+        else {
+            if (!listen_global)
+                continue;
+        }
+
+        if (family == AF_INET || family == AF_INET6) {
+
+            s = getnameinfo(ifa->ifa_addr,
+                            (family == AF_INET) ? sizeof(struct sockaddr_in) :
+                            sizeof(struct sockaddr_in6),
+                            host, NI_MAXHOST, NULL, 0, NI_NUMERICHOST);
+
+            if (s != 0) {
+                gpsd_report(uci_debuglevel, LOG_ERROR, 
+                            "failed to getnameinfo() (%s)\n", gai_strerror(s));
+                return -1;
+            }
+
+            if(family == AF_INET) {
+                char straddr[INET_ADDRSTRLEN];
+                strcpy(straddr, inet_ntoa(((struct sockaddr_in*)ifa->ifa_dstaddr)->sin_addr));
+                gpsd_report(uci_debuglevel, LOG_INF, 
+                            "adding udp host %s on %s with broadcast %s\n",
+                            host,
+                            inet_ntoa(((struct sockaddr_in*)ifa->ifa_addr)->sin_addr),
+                            straddr);
+
+                struct interface_t * it = NULL;
+                it = config_next_free_interface(intfs);
+                if(it) {
+
+                    config_parse_proto_interface(it, section, name);
+
+                    it->bcast.sin_addr.s_addr = 
+                        ((struct sockaddr_in*)ifa->ifa_dstaddr)->sin_addr.s_addr;
+                    it->bcast.sin_port = htons(it->port);
+                    it->bcast.sin_family = (sa_family_t) AF_INET;
+
+                    it->ipaddr.sin_addr.s_addr = 
+                        ((struct sockaddr_in*)ifa->ifa_addr)->sin_addr.s_addr;
+                }
+            }
+
+            if(family == AF_INET6) {
+                char straddr[INET6_ADDRSTRLEN];
+                struct sockaddr_in6 * addr = ((struct sockaddr_in6*)ifa->ifa_addr);
+                inet_ntop(AF_INET6, &addr->sin6_addr, straddr, sizeof(straddr));
+
+                gpsd_report(uci_debuglevel, LOG_INF, 
+                            "ignoring IPV6 host %s with broadcast %s\n",
+                            host,
+                            straddr);
+            }
+        }
+    }
+
+    freeifaddrs(ifaddr);
+    return 0;
+}
+
 /*
   parse an interface section
   
  */
 static void
-config_parse_interface(struct gps_device_t *devices,
+config_parse_interface(struct interface_t * ints, struct gps_device_t *devices,
 					   struct uci_section *s, const char * name) {
 
     int16_t portno  = -1;
@@ -177,8 +346,44 @@ config_parse_interface(struct gps_device_t *devices,
 	const char *devname = NULL;
 	devname = uci_lookup_option_string(uci_ctx, s, "device");
 
-	if (!devname)
-		return;
+	if (!devname) {
+        /*
+         * no device option found, so this is either a udp interface or wrong
+         */
+        const char *proto = 
+            uci_lookup_option_string(uci_ctx, s, "proto");
+
+        if(!proto) {
+            gpsd_report(uci_debuglevel, LOG_INF, 
+                        "no protocol found in interface section %s\n", name); 
+            return;
+        }
+
+
+        const char *ipaddr = 
+            uci_lookup_option_string(uci_ctx, s, "ipaddr");
+
+        if(!ipaddr) {
+
+            /* no ipaddr found means that we are using all ip addresses
+               found */
+            config_ifaddrs(ints, s, name);
+
+        } else {
+
+            // UNTESTED - at least only little tested
+            struct interface_t * it = NULL;
+            it = config_next_free_interface(ints);
+            if(it)
+                config_parse_proto_interface(it, s, name);
+
+            it->bcast.sin_addr.s_addr = 
+                it->ipaddr.sin_addr.s_addr;
+            it->bcast.sin_port = htons(it->port);
+            it->bcast.sin_family = (sa_family_t) AF_INET;
+        }
+        return;
+    }
     
 	const char *portnos = NULL;
 	portnos = uci_lookup_option_string(uci_ctx, s, "port");
@@ -323,13 +528,15 @@ config_parse_forward(struct gps_device_t *devices, struct uci_section *s) {
 struct uci_package *
 config_init() {
 
-  struct uci_context *ctx;
-  struct uci_package *p;
+    struct uci_context *ctx;
+    struct uci_package *p;
 
-  ctx = uci_alloc_context ();
+    ctx = uci_alloc_context ();
   
-  // uci_set_confdir(ctx, "./systemd");
-  // uci_set_savedir(ctx, "./systemd");
+    /* for testing only */
+    if( access("./systemd/gpsd", F_OK ) != -1 ) {
+        uci_set_confdir(ctx, "./systemd");
+    }
   
     if (uci_load(ctx, "gpsd", &p)) {
         gpsd_report(uci_debuglevel, LOG_ERROR, 
@@ -368,18 +575,18 @@ config forward
 	option dest port1
  */
 
-int config_parse(struct gps_device_t *devices) {
+int config_parse(struct interface_t * interfaces, struct gps_device_t *devices) {
 	
 	struct uci_package *uci_network;
 	struct uci_element *e;
 	uint8_t n = 0;
 	
-	config_uci_debuglevel(devices);
-	
 	uci_network = config_init();
 
 	if(!uci_network) return 1;
   
+	config_uci_debuglevel(devices);
+    
 	// walk through all interface sections
 	uci_foreach_element(&uci_network->sections, e) {
 		
@@ -387,7 +594,7 @@ int config_parse(struct gps_device_t *devices) {
 
 		// treat the port sections first
 		if ((n < MAXDEVICES) && !strcmp(s->type, "interface")) {
-			config_parse_interface(devices, s, e->name);
+			config_parse_interface(interfaces, devices, s, e->name);
 		}
 		
 	}

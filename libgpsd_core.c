@@ -531,8 +531,8 @@ int gpsd_open(struct gps_device_t *session)
 		    port);
 	if ((dsock = netlib_connectsock(AF_UNSPEC, host, port, "udp")) < 0) {
 	    gpsd_report(session->context->debug, LOG_ERROR,
-			"UDP device open error %s.\n",
-			netlib_errstr(dsock));
+			"UDP device open error %s %s.\n",
+                    netlib_errstr(dsock), strerror(errno));
 	    return -1;
 	} else
 	    gpsd_report(session->context->debug, LOG_SPIN,

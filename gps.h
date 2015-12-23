@@ -29,6 +29,7 @@ extern "C" {
 #ifndef S_SPLINT_S
 #include <pthread.h>	/* pacifies OpenBSD's compiler */
 #endif
+#include <netinet/in.h> /* sockaddr_in */
 
 /*
  * 4.1 - Base version for initial JSON protocol (Dec 2009, release 2.90)
@@ -2033,6 +2034,26 @@ struct policy_t {
     int loglevel;			/* requested log level of messages */
     char devpath[GPS_PATH_MAX];		/* specific device to watch */
     char remote[GPS_PATH_MAX];		/* ...if this was passthrough */
+};
+
+/*
+ * describes interfaces such as a UDP broadcast port
+ */
+#define MAXINTERFACES  4
+
+/*
+ * interfaces are unique by addr and name
+ * multiple interfaces maybe created by a 
+ *   single interface configuration section 
+ *   e.g. there is no addr giving, then all available addr will create an interface
+ */
+struct interface_t {
+    char name[DEVICE_SHORTNAME_MAX];            /* optional short name for this device/interface */
+    int sock;
+    int port;
+    char proto[16];
+    struct sockaddr_in ipaddr;
+    struct sockaddr_in bcast;
 };
 
 struct timedrift_t {

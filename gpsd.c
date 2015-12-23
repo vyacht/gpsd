@@ -42,6 +42,12 @@
 #include <unistd.h>
 #endif /* S_SPLINT_S */
 
+/* for getifaddr */
+#include <netdb.h>
+#include <ifaddrs.h>
+#include <netinet/in.h>
+#include <net/if.h>            /* IFF_LOOPBACK */
+
 #include "gpsd_config.h"
 
 #include "gpsd.h"
@@ -347,7 +353,7 @@ static void adjust_max_fd(int fd, bool on)
 #define IPTOS_LOWDELAY 0x10
 #endif
 
-static socket_t passivesock_af(int af, char *service, char *tcp_or_udp, int qlen)
+static socket_t passivesock_af(int af, char *service, char *tcp_or_udp, char * bcast, int qlen)
 /* bind a passive command socket for the daemon */
 {
     volatile socket_t s;
@@ -364,6 +370,7 @@ static socket_t passivesock_af(int af, char *service, char *tcp_or_udp, int qlen
     int type, proto, one = 1;
     in_port_t port;
     char *af_str = "";
+    int yes = 1;
     const int dscp = IPTOS_LOWDELAY; /* Prioritize packet */
     INVALIDATE_SOCKET(s);
     if ((pse = getservbyname(service, tcp_or_udp)))
@@ -394,10 +401,14 @@ static socket_t passivesock_af(int af, char *service, char *tcp_or_udp, int qlen
 #ifndef FORCE_GLOBAL_ENABLE
         if (!listen_global)
             sat.sa_in.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
-        else
+        else {
 #endif /* FORCE_GLOBAL_ENABLE */
-	    sat.sa_in.sin_addr.s_addr = htonl(INADDR_ANY);
-	sat.sa_in.sin_port = htons(port);
+            if(bcast) 
+                sat.sa_in.sin_addr.s_addr = inet_addr(bcast);
+            else
+                sat.sa_in.sin_addr.s_addr = htonl(INADDR_ANY);
+        }
+        sat.sa_in.sin_port = htons(port);
 #endif /* S_SPLINT_S */
 
         af_str = "IPv4";
@@ -409,6 +420,10 @@ static socket_t passivesock_af(int af, char *service, char *tcp_or_udp, int qlen
             if (setsockopt(s, IPPROTO_IP, IP_TOS, &dscp, sizeof(dscp)) == -1)
                 gpsd_report(context.debug, LOG_WARN,
                             "Warning: SETSOCKOPT TOS failed\n");
+        }
+        if (s < 0 ) {
+                gpsd_report(context.debug, LOG_ERROR,
+                            "opening socket failed %s\n", strerror(errno));
         }
         /*@+unrecog@*/
 
@@ -423,10 +438,19 @@ static socket_t passivesock_af(int af, char *service, char *tcp_or_udp, int qlen
 #ifndef FORCE_GLOBAL_ENABLE
         if (!listen_global)
             sat.sa_in6.sin6_addr = in6addr_loopback;
-        else
+        else {
 #endif /* FORCE_GLOBAL_ENABLE */
-	    sat.sa_in6.sin6_addr = in6addr_any;
-	sat.sa_in6.sin6_port = htons(port);
+            if(bcast) {
+                if (inet_ntop(AF_INET6, &sat.sa_in6.sin6_addr, bcast, INET6_ADDRSTRLEN) == NULL) {
+                    gpsd_report(context.debug, LOG_ERROR,
+                                "Error: IPV6 address resolution failed.\n");
+                    return -1;
+                }
+            }
+            else
+                sat.sa_in6.sin6_addr = in6addr_any;
+        }
+        sat.sa_in6.sin6_port = htons(port);
 
         /*
          * Traditionally BSD uses "communication domains", named by
@@ -498,6 +522,12 @@ static socket_t passivesock_af(int af, char *service, char *tcp_or_udp, int qlen
         return -1;
     }
 
+    if(bcast && (setsockopt(s, SOL_SOCKET, SO_BROADCAST, &yes, sizeof(int))) < 0) {
+        gpsd_report(context.debug, LOG_ERROR, "can't broadcast on port %s\n", service);
+        (void)close(s);
+        return -1;
+    }
+
     gpsd_report(context.debug, LOG_SPIN, "passivesock_af() -> %d\n", s);
     return s;
     /*@ +mustfreefresh -matchanyintegral @*/
@@ -523,10 +553,10 @@ static int passivesocks(char *service, char *tcp_or_udp,
 #endif
 
     if (AF_UNSPEC == af || (AF_INET == af))
-        socks[0] = passivesock_af(AF_INET, service, tcp_or_udp, qlen);
+        socks[0] = passivesock_af(AF_INET, service, tcp_or_udp, NULL, qlen);
 
     if (AF_UNSPEC == af || (AF_INET6 == af))
-        socks[1] = passivesock_af(AF_INET6, service, tcp_or_udp, qlen);
+        socks[1] = passivesock_af(AF_INET6, service, tcp_or_udp, NULL, qlen);
 
     for (i = 0; i < AFCOUNT; i++)
 	if (socks[i] < 0)
@@ -537,6 +567,55 @@ static int passivesocks(char *service, char *tcp_or_udp,
     return numsocks;
 }
 /* *INDENT-ON* */
+
+static struct interface_t interfaces[MAXINTERFACES];
+
+/*
+ * Opens the udp socks that are being written to. 
+ * (as opposed to UDB device type reading sockets)
+ *
+ * Currently only: UDP broadcast, all ipv4 interfaces if global, 
+ * no ipv6, even if that would make more sense on ip4 bridged interfaces
+ */
+
+static int udpsocks(void)
+{
+    int yes = 1, status = 0;
+    socket_t sock;
+
+    struct interface_t * it = NULL;
+    for (it = interfaces; it < interfaces + MAXINTERFACES; it++) {
+        if((it->name[0] != '\0') 
+           && (strcmp(it->proto, "udp") == 0) && (it->port > 0)) {
+
+            sock = socket (PF_INET, SOCK_DGRAM, IPPROTO_UDP);
+            if (sock < 0 ) {
+                gpsd_report(context.debug, LOG_ERROR,
+                            "UDP broadcast opening socket failed %s\n", strerror(errno));
+                return -1;
+            }
+
+            status = bind(sock, (struct sockaddr *)&it->bcast, sizeof(struct sockaddr_in));
+            if(status < 0) {
+                gpsd_report(context.debug, LOG_ERROR, 
+                            "UDP broadcast bind failed with %s\n", 
+                            strerror(errno));
+                return -1;
+            }
+
+            status = setsockopt(sock, SOL_SOCKET, SO_BROADCAST, &yes, sizeof(int) );
+            if(status < 0) {
+                gpsd_report(context.debug, LOG_ERROR, 
+                            "UDP broadcast setsockopt failed with %s\n", 
+                            strerror(errno));
+                return -1;
+            }
+            it->sock = sock;
+        }
+    }
+
+    return 0;
+}
 
 struct subscriber_t
 {
@@ -553,8 +632,7 @@ struct subscriber_t
 #ifdef LIMITED_MAX_CLIENTS
 #define MAXSUBSCRIBERS LIMITED_MAX_CLIENTS
 #else
-/* subscriber structure is small enough that there's no need to limit this */
-#define MAXSUBSCRIBERS	FD_SETSIZE
+#error
 #endif
 
 #define subscribed(sub, devp)    (sub->policy.watcher && (sub->policy.devpath[0]=='\0' || strcmp(sub->policy.devpath, devp->gpsdata.dev.path)==0))
@@ -584,12 +662,14 @@ static /*@null@*//*@observer@ */ struct subscriber_t *allocate_client(void)
     for (si = 0; si < NITEMS(subscribers); si++) {
 	if (subscribers[si].fd == UNALLOCATED_FD) {
 	    subscribers[si].fd = 0;	/* mark subscriber as allocated */
-	    subscribers[si].policy.raw     = false;
-	    subscribers[si].policy.nmea    = true;
-	    subscribers[si].policy.watcher = true;
-	    subscribers[si].policy.json    = false;
+
+	    subscribers[si].policy.raw       = false;
+	    subscribers[si].policy.nmea      = true;
+	    subscribers[si].policy.watcher   = true;
+	    subscribers[si].policy.json      = false;
 	    subscribers[si].policy.websocket = false;
-	    subscribers[si].policy.loglevel = 0;
+	    subscribers[si].policy.loglevel  = 0;
+
 	    subscribers[si].state = WS_STATE_OPENING;
     	subscribers[si].frameType = WS_INCOMPLETE_FRAME;
 	    return &subscribers[si];
@@ -618,13 +698,13 @@ static void detach_client(struct subscriber_t *sub)
 		c_ip, sub_index(sub), sub->fd);
     FD_CLR(sub->fd, &all_fds);
     adjust_max_fd(sub->fd, false);
-    sub->active = (timestamp_t)0;
+    sub->active         = (timestamp_t)0;
     sub->policy.watcher = false;
-    sub->policy.json = false;
-    sub->policy.nmea = false;
-    sub->policy.raw = 0;
-    sub->policy.scaled = false;
-    sub->policy.timing = false;
+    sub->policy.json    = false;
+    sub->policy.nmea    = false;
+    sub->policy.raw     = 0;
+    sub->policy.scaled  = false;
+    sub->policy.timing  = false;
     sub->policy.split24 = false;
     sub->policy.websocket = false;
     sub->policy.loglevel = 0;
@@ -651,7 +731,7 @@ static ssize_t throttled_write_(struct subscriber_t *sub, const char *buf,
                         sub_index(sub), 
                         buf);
         else {
-            char *cp, buf2[MAX_PACKET_LENGTH * 3];
+            const char *cp; char buf2[MAX_PACKET_LENGTH * 3];
             buf2[0] = '\0';
             for (cp = buf; cp < buf + len; cp++)
                 (void)snprintf(buf2 + strlen(buf2),
@@ -1289,7 +1369,7 @@ static void gpsd_device_write(struct gps_device_t * srcdev,
                 } else if(dt->packet_type == NMEA_PACKET) {
                     
 					(void)gpsd_write(devp, buf, (size_t)len);
-					gpsd_report(context.debug, LOG_INF, 
+					gpsd_report(context.debug, LOG_IO, 
 								"gpsd_write: %s (%s > %s)\n", buf,
 								srcdev->gpsdata.dev.path, devp->gpsdata.dev.path);
                     
@@ -1297,6 +1377,31 @@ static void gpsd_device_write(struct gps_device_t * srcdev,
 			}
 		}
 	}
+}
+
+static void gpsd_udp_write(const char *buf, size_t len) {
+
+    struct interface_t * it;
+    for (it = interfaces; it < interfaces + MAXINTERFACES; it++) {
+
+        if( (it->name[0] != '\0') 
+           && (strcmp(it->proto, "udp") == 0) ) {
+
+            if(sendto(it->sock, buf, len, 0, 
+                      (struct sockaddr *)&it->bcast, sizeof(struct sockaddr_in)) < 0) {
+
+                gpsd_report(context.debug, LOG_ERROR, 
+                            "gpsd_udp_write: %s (%s, %d) failed (%s).\n", buf,
+                            it->name, it->port,
+                            strerror(errno));
+
+            }
+            // TODO IP ADDR
+            gpsd_report(context.debug, LOG_IO, 
+                        "gpsd_udp_write: %s (%d)\n", buf, len);
+        }
+    }
+
 }
 
 static ssize_t handle_websocket_request(struct subscriber_t *sub,
@@ -1310,7 +1415,7 @@ static ssize_t handle_websocket_request(struct subscriber_t *sub,
     struct handshake hs;
     nullHandshake(&hs);
     
-    gpsd_report(context.debug, LOG_INF, "incomming frame: %s\n", buf);
+//    gpsd_report(context.debug, LOG_INF, "incomming frame: %s\n", buf);
 
     if (sub->state == WS_STATE_OPENING) {
       sub->frameType = wsParseHandshake(buf, 0, &hs);
@@ -1790,17 +1895,28 @@ static void raw_report(struct gps_device_t *device)
 		raw_report_write(sub, device);
 	}
 	
-    if (TEXTUAL_PACKET_TYPE(device->packet.type)) {
-		(void)gpsd_device_write(device,
-								(char *)device->packet.outbuffer,
-								device->packet.outbuflen);
-		return;
+    if (TEXTUAL_PACKET_TYPE(device->packet.type) 
+        || ((VYSPI_PACKET == device->packet.type) 
+            && (FRM_TYPE_NMEA0183 == device->packet.frm_type))) {
+
+            (void)gpsd_device_write(device,
+                                    (char *)device->packet.outbuffer,
+                                    device->packet.outbuflen);
+            (void)gpsd_udp_write((char *)device->packet.outbuffer,
+                                 device->packet.outbuflen);
+            return;
     }
 }
 
 static void pseudonmea_write(gps_mask_t changed,
                              char *buf, size_t len, 
                              struct gps_device_t *device) {
+
+    /* some e.g. ST sentences can't be translated and buf len might be 0. 
+       instead of catching that for every single pseudonmea sentence
+       we just catch an empty buffer here (which would cause trouble with many clients */
+    if(len <= 0) return;
+
     struct subscriber_t *sub;
     /* update all subscribers associated with this device */
     for (sub = subscribers; sub < subscribers + MAXSUBSCRIBERS; sub++) {
@@ -1815,6 +1931,7 @@ static void pseudonmea_write(gps_mask_t changed,
     }
     if (changed & DATA_IS) {
 		gpsd_device_write(device, buf, len);
+        (void)gpsd_udp_write((char *)buf, len);
     }
 }
 
@@ -2474,11 +2591,16 @@ int main(int argc, char *argv[])
         }
     }
 
+    struct interface_t * it = NULL;
+	for (it = interfaces; it < interfaces + MAXINTERFACES; it++) {
+        it->sock = -1; it->name[0] = '\0';
+    }
+
 	/*
 	 * Read additional configuration information here:
 	 * forward rules, interface accept/reject rules, etc.
 	 */ 
-	config_parse(devices);
+	config_parse(interfaces, devices);
 
     for (device = devices; device < devices + MAXDEVICES; device++) {
         
@@ -2492,6 +2614,13 @@ int main(int argc, char *argv[])
 
 	gpsd_report(context.debug, LOG_INF,
                 "Device init done.\n");
+
+    if (udpsocks() < 0) {
+
+        gpsd_report(context.debug, LOG_ERR,
+                    "UDP sockets creation failed.\n");
+        exit(EXIT_FAILURE);
+    }
 
     char jsonbuf[GPS_JSON_RESPONSE_MAX + 1];
     json_devicelist_dump(jsonbuf, GPS_JSON_RESPONSE_MAX);
