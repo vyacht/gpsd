@@ -288,20 +288,20 @@ static socket_t filesock(char *filename)
 
     /*@ -mayaliasunique -usedef @*/
     if (BAD_SOCKET(sock = socket(AF_UNIX, SOCK_STREAM, 0))) {
-	gpsd_report(context.debug, LOG_ERROR, "Can't create device-control socket\n");
-	return -1;
+        gpsd_report(context.debug, LOG_ERROR, "Can't create device-control socket\n");
+        return -1;
     }
     (void)strlcpy(addr.sun_path, filename, sizeof(addr.sun_path));
     addr.sun_family = (sa_family_t)AF_UNIX;
     if (bind(sock, (struct sockaddr *)&addr, (int)sizeof(addr)) < 0) {
-	gpsd_report(context.debug, LOG_ERROR, "can't bind to local socket %s\n", filename);
-	(void)close(sock);
-	return -1;
+        gpsd_report(context.debug, LOG_ERROR, "can't bind to local socket %s\n", filename);
+        (void)close(sock);
+        return -1;
     }
     if (listen(sock, QLEN) == -1) {
-	gpsd_report(context.debug, LOG_ERROR, "can't listen on local socket %s\n", filename);
-	(void)close(sock);
-	return -1;
+        gpsd_report(context.debug, LOG_ERROR, "can't listen on local socket %s\n", filename);
+        (void)close(sock);
+        return -1;
     }
     /*@ +mayaliasunique +usedef @*/
 
@@ -376,126 +376,126 @@ static socket_t passivesock_af(int af, char *service, char *tcp_or_udp, int qlen
     }
     ppe = getprotobyname(tcp_or_udp);
     if (strcmp(tcp_or_udp, "udp") == 0) {
-	type = SOCK_DGRAM;
-	/*@i@*/ proto = (ppe) ? ppe->p_proto : IPPROTO_UDP;
+        type = SOCK_DGRAM;
+        /*@i@*/ proto = (ppe) ? ppe->p_proto : IPPROTO_UDP;
     } else {
-	type = SOCK_STREAM;
-	/*@i@*/ proto = (ppe) ? ppe->p_proto : IPPROTO_TCP;
+        type = SOCK_STREAM;
+        /*@i@*/ proto = (ppe) ? ppe->p_proto : IPPROTO_TCP;
     }
 
     /*@ -mustfreefresh +matchanyintegral @*/
     switch (af) {
     case AF_INET:
-	sin_len = sizeof(sat.sa_in);
+        sin_len = sizeof(sat.sa_in);
 
-	memset((char *)&sat.sa_in, 0, sin_len);
-	sat.sa_in.sin_family = (sa_family_t) AF_INET;
+        memset((char *)&sat.sa_in, 0, sin_len);
+        sat.sa_in.sin_family = (sa_family_t) AF_INET;
 #ifndef S_SPLINT_S
 #ifndef FORCE_GLOBAL_ENABLE
-	if (!listen_global)
-	    sat.sa_in.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
-	else
+        if (!listen_global)
+            sat.sa_in.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+        else
 #endif /* FORCE_GLOBAL_ENABLE */
 	    sat.sa_in.sin_addr.s_addr = htonl(INADDR_ANY);
 	sat.sa_in.sin_port = htons(port);
 #endif /* S_SPLINT_S */
 
-	af_str = "IPv4";
-	/* see PF_INET6 case below */
-	s = socket(PF_INET, type, proto);
-	if (s > -1 ) {
-	/*@-unrecog@*/
-	/* Set packet priority */
-	if (setsockopt(s, IPPROTO_IP, IP_TOS, &dscp, sizeof(dscp)) == -1)
-	    gpsd_report(context.debug, LOG_WARN,
-			"Warning: SETSOCKOPT TOS failed\n");
-	}
-	/*@+unrecog@*/
+        af_str = "IPv4";
+        /* see PF_INET6 case below */
+        s = socket(PF_INET, type, proto);
+        if (s > -1 ) {
+            /*@-unrecog@*/
+            /* Set packet priority */
+            if (setsockopt(s, IPPROTO_IP, IP_TOS, &dscp, sizeof(dscp)) == -1)
+                gpsd_report(context.debug, LOG_WARN,
+                            "Warning: SETSOCKOPT TOS failed\n");
+        }
+        /*@+unrecog@*/
 
-	break;
+        break;
 #ifdef IPV6_ENABLE
     case AF_INET6:
 #ifndef S_SPLINT_S
-	sin_len = sizeof(sat.sa_in6);
+        sin_len = sizeof(sat.sa_in6);
 
-	memset((char *)&sat.sa_in6, 0, sin_len);
-	sat.sa_in6.sin6_family = (sa_family_t) AF_INET6;
+        memset((char *)&sat.sa_in6, 0, sin_len);
+        sat.sa_in6.sin6_family = (sa_family_t) AF_INET6;
 #ifndef FORCE_GLOBAL_ENABLE
-	if (!listen_global)
-	    sat.sa_in6.sin6_addr = in6addr_loopback;
-	else
+        if (!listen_global)
+            sat.sa_in6.sin6_addr = in6addr_loopback;
+        else
 #endif /* FORCE_GLOBAL_ENABLE */
 	    sat.sa_in6.sin6_addr = in6addr_any;
 	sat.sa_in6.sin6_port = htons(port);
 
-	/*
-	 * Traditionally BSD uses "communication domains", named by
-	 * constants starting with PF_ as the first argument for
-	 * select.  In practice PF_INET has the same value as AF_INET
-	 * (on BSD and Linux, and probably everywhere else).  POSIX
-	 * leaves much of this unspecified, but requires that AF_INET
-	 * be recognized.  We follow tradition here.
-	 */
-	af_str = "IPv6";
-	s = socket(PF_INET6, type, proto);
+        /*
+         * Traditionally BSD uses "communication domains", named by
+         * constants starting with PF_ as the first argument for
+         * select.  In practice PF_INET has the same value as AF_INET
+         * (on BSD and Linux, and probably everywhere else).  POSIX
+         * leaves much of this unspecified, but requires that AF_INET
+         * be recognized.  We follow tradition here.
+         */
+        af_str = "IPv6";
+        s = socket(PF_INET6, type, proto);
 
-	/*
-	 * On some network stacks, including Linux's, an IPv6 socket
-	 * defaults to listening on IPv4 as well. Unless we disable
-	 * this, trying to listen on in6addr_any will fail with the
-	 * address-in-use error condition.
-	 */
-	if (s > -1) {
-	    int on = 1;
-	    if (setsockopt(s, IPPROTO_IPV6, IPV6_V6ONLY, &on, sizeof(on)) == -1) {
-		gpsd_report(context.debug, LOG_ERROR,
-			    "Error: SETSOCKOPT IPV6_V6ONLY\n");
-		(void)close(s);
-		return -1;
-	    }
-	    /* Set packet priority */
-	    if (setsockopt(s, IPPROTO_IPV6, IPV6_TCLASS, &dscp, sizeof(dscp)) == -1)
-		gpsd_report(context.debug, LOG_WARN,
-			    "Warning: SETSOCKOPT TOS failed\n");
-	}
+        /*
+         * On some network stacks, including Linux's, an IPv6 socket
+         * defaults to listening on IPv4 as well. Unless we disable
+         * this, trying to listen on in6addr_any will fail with the
+         * address-in-use error condition.
+         */
+        if (s > -1) {
+            int on = 1;
+            if (setsockopt(s, IPPROTO_IPV6, IPV6_V6ONLY, &on, sizeof(on)) == -1) {
+                gpsd_report(context.debug, LOG_ERROR,
+                            "Error: SETSOCKOPT IPV6_V6ONLY\n");
+                (void)close(s);
+                return -1;
+            }
+            /* Set packet priority */
+            if (setsockopt(s, IPPROTO_IPV6, IPV6_TCLASS, &dscp, sizeof(dscp)) == -1)
+                gpsd_report(context.debug, LOG_WARN,
+                            "Warning: SETSOCKOPT TOS failed\n");
+        }
 #endif /* S_SPLINT_S */
-	break;
+        break;
 #endif  /* IPV6_ENABLE */
     default:
-	gpsd_report(context.debug, LOG_ERROR,
-		    "unhandled address family %d\n", af);
-	return -1;
+        gpsd_report(context.debug, LOG_ERROR,
+                    "unhandled address family %d\n", af);
+        return -1;
     }
     gpsd_report(context.debug, LOG_IO,
-		"opening %s socket\n", af_str);
+                "opening %s socket\n", af_str);
 
     if (BAD_SOCKET(s)) {
-	gpsd_report(context.debug, LOG_ERROR,
-		    "can't create %s socket\n", af_str);
-	return -1;
+        gpsd_report(context.debug, LOG_ERROR,
+                    "can't create %s socket\n", af_str);
+        return -1;
     }
     if (setsockopt(s, SOL_SOCKET, SO_REUSEADDR, (char *)&one,
-		   (int)sizeof(one)) == -1) {
-	gpsd_report(context.debug, LOG_ERROR,
-		    "Error: SETSOCKOPT SO_REUSEADDR\n");
-	(void)close(s);
-	return -1;
+                   (int)sizeof(one)) == -1) {
+        gpsd_report(context.debug, LOG_ERROR,
+                    "Error: SETSOCKOPT SO_REUSEADDR\n");
+        (void)close(s);
+        return -1;
     }
     if (bind(s, &sat.sa, sin_len) < 0) {
-	gpsd_report(context.debug, LOG_ERROR,
-		    "can't bind to %s port %s, %s\n", af_str,
-		    service, strerror(errno));
-	if (errno == EADDRINUSE) {
-	    gpsd_report(context.debug, LOG_ERROR,
-			"maybe gpsd is already running!\n");
-	}
-	(void)close(s);
-	return -1;
+        gpsd_report(context.debug, LOG_ERROR,
+                    "can't bind to %s port %s, %s\n", af_str,
+                    service, strerror(errno));
+        if (errno == EADDRINUSE) {
+            gpsd_report(context.debug, LOG_ERROR,
+                        "maybe gpsd is already running!\n");
+        }
+        (void)close(s);
+        return -1;
     }
     if (type == SOCK_STREAM && listen(s, qlen) == -1) {
-	gpsd_report(context.debug, LOG_ERROR, "can't listen on port %s\n", service);
-	(void)close(s);
-	return -1;
+        gpsd_report(context.debug, LOG_ERROR, "can't listen on port %s\n", service);
+        (void)close(s);
+        return -1;
     }
 
     gpsd_report(context.debug, LOG_SPIN, "passivesock_af() -> %d\n", s);
@@ -523,10 +523,10 @@ static int passivesocks(char *service, char *tcp_or_udp,
 #endif
 
     if (AF_UNSPEC == af || (AF_INET == af))
-	socks[0] = passivesock_af(AF_INET, service, tcp_or_udp, qlen);
+        socks[0] = passivesock_af(AF_INET, service, tcp_or_udp, qlen);
 
     if (AF_UNSPEC == af || (AF_INET6 == af))
-	socks[1] = passivesock_af(AF_INET6, service, tcp_or_udp, qlen);
+        socks[1] = passivesock_af(AF_INET6, service, tcp_or_udp, qlen);
 
     for (i = 0; i < AFCOUNT; i++)
 	if (socks[i] < 0)
@@ -644,25 +644,25 @@ static ssize_t throttled_write_(struct subscriber_t *sub, const char *buf,
     ssize_t status;
 
     if (context.debug >= LOG_RAW) {
-	if (isprint(buf[0]))
-	    gpsd_report(context.debug, LOG_CLIENT,
-			"=> %sclient(%d): %s\n", 
-			sub->policy.websocket?"ws":"",
-			sub_index(sub), 
-			buf);
-	else {
-	    char *cp, buf2[MAX_PACKET_LENGTH * 3];
-	    buf2[0] = '\0';
-	    for (cp = buf; cp < buf + len; cp++)
-		(void)snprintf(buf2 + strlen(buf2),
-			       sizeof(buf2) - strlen(buf2),
-			       "%02x", (unsigned int)(*cp & 0xff));
-	    gpsd_report(context.debug, LOG_CLIENT,
-			"===> %sclient(%d): %s\n", 
-			sub->policy.websocket?"ws":"",
-			sub_index(sub),	
-			buf2);
-	}
+        if (isprint(buf[0]))
+            gpsd_report(context.debug, LOG_CLIENT,
+                        "=> %sclient(%d): %s\n", 
+                        sub->policy.websocket?"ws":"",
+                        sub_index(sub), 
+                        buf);
+        else {
+            char *cp, buf2[MAX_PACKET_LENGTH * 3];
+            buf2[0] = '\0';
+            for (cp = buf; cp < buf + len; cp++)
+                (void)snprintf(buf2 + strlen(buf2),
+                               sizeof(buf2) - strlen(buf2),
+                               "%02x", (unsigned int)(*cp & 0xff));
+            gpsd_report(context.debug, LOG_CLIENT,
+                        "===> %sclient(%d): %s\n", 
+                        sub->policy.websocket?"ws":"",
+                        sub_index(sub),	
+                        buf2);
+        }
     }
 
 #if defined(PPS_ENABLE)
@@ -678,7 +678,7 @@ static ssize_t throttled_write_(struct subscriber_t *sub, const char *buf,
     else if (status > -1) {
 	gpsd_report(context.debug, LOG_INF,
 		    "short write disconnecting client(%d)\n",
-		    sub_index(sub));
+                sub_index(sub));
 	detach_client(sub);
 	return 0;
     } else if (errno == EAGAIN || errno == EINTR)
@@ -1325,21 +1325,21 @@ static ssize_t handle_websocket_request(struct subscriber_t *sub,
       else
 	printf("error in incoming frame\n");
             
-      if (sub->state == WS_STATE_OPENING) {
-	len = snprintf(reply, replylen,
-		 "HTTP/1.1 400 Bad Request\r\n"
-		 "%s%s\r\n\r\n",
-		 versionField,
-		 version);
-	sub->frameType = WS_INCOMPLETE_FRAME;
-	return throttled_write(sub, reply, len);
+        if (sub->state == WS_STATE_OPENING) {
+            len = snprintf(reply, replylen,
+                           "HTTP/1.1 400 Bad Request\r\n"
+                           "%s%s\r\n\r\n",
+                           versionField,
+                           version);
+            sub->frameType = WS_INCOMPLETE_FRAME;
+            return throttled_write(sub, reply, len);
 
-      } else {
-	wsMakeFrame(NULL, 0, reply, &len, WS_CLOSING_FRAME);
-	sub->state = WS_STATE_CLOSING;
-	sub->frameType = WS_INCOMPLETE_FRAME;
-	return throttled_write(sub, reply, len);
-      }
+        } else {
+            wsMakeFrame(NULL, 0, reply, &len, WS_CLOSING_FRAME);
+            sub->state = WS_STATE_CLOSING;
+            sub->frameType = WS_INCOMPLETE_FRAME;
+            return throttled_write(sub, reply, len);
+        }
     }
         
     if (sub->state == WS_STATE_OPENING) {
@@ -1749,23 +1749,23 @@ static void raw_report_write(struct subscriber_t *sub, struct gps_device_t *devi
 #ifdef BINARY_ENABLE
 #ifdef VYSPI_ENABLE
     if ((device->packet.type == NMEA2000_PACKET) && (sub->policy.raw == 1)) {
-	const char *hd = gpsd_vyspidump(device);
-	if(strlen(hd) > 0) {
-	  (void)strlcat((char *)hd, "\r\n", sizeof(device->msgbuf));
-	  (void)throttled_write(sub, (char *)hd, strlen(hd));
-	}
+        const char *hd = gpsd_vyspidump(device);
+        if(strlen(hd) > 0) {
+            (void)strlcat((char *)hd, "\r\n", sizeof(device->msgbuf));
+            (void)throttled_write(sub, (char *)hd, strlen(hd));
+        }
     } else 
 #endif
     /*
      * Maybe the user wants a binary packet hexdumped.
      */
     if (sub->policy.raw == 1) {
-	const char *hd =
-	    gpsd_hexdump(device->msgbuf, sizeof(device->msgbuf),
-			 (char *)device->packet.outbuffer,
-			 device->packet.outbuflen);
-	(void)strlcat((char *)hd, "\r\n", sizeof(device->msgbuf));
-	(void)throttled_write(sub, (char *)hd, strlen(hd));
+        const char *hd =
+            gpsd_hexdump(device->msgbuf, sizeof(device->msgbuf),
+                         (char *)device->packet.outbuffer,
+                         device->packet.outbuflen);
+        (void)strlcat((char *)hd, "\r\n", sizeof(device->msgbuf));
+        (void)throttled_write(sub, (char *)hd, strlen(hd));
     }
 #endif /* BINARY_ENABLE */
 }
@@ -1863,19 +1863,19 @@ static void pseudonmea_report(gps_mask_t changed,
 	}
 #endif /* AIVDM_ENABLE */
 	if ((changed & ENVIRONMENT_SET) != 0) {
-            int num = nmea_environment_dump(device, 0, buf, sizeof(buf));
-	    gpsd_external_report(context.debug, LOG_DATA,
-			"<= GPS (binary environment) %s: %s\n",
-			device->gpsdata.dev.path, buf);
+        int num = nmea_environment_dump(device, 0, buf, sizeof(buf));
+        gpsd_external_report(context.debug, LOG_DATA,
+                             "<= GPS (binary environment) %s: %s\n",
+                             device->gpsdata.dev.path, buf);
 	    pseudonmea_write(changed, buf, strlen(buf), device);
 
-            if(num > 1) {
-              nmea_environment_dump(device, 1, buf, sizeof(buf));
-	      gpsd_external_report(context.debug, LOG_DATA,
-                        "<= GPS (binary environment) %s: %s\n",
-                        device->gpsdata.dev.path, buf);
-              pseudonmea_write(changed, buf, strlen(buf), device);
-            }
+        if(num > 1) {
+            nmea_environment_dump(device, 1, buf, sizeof(buf));
+            gpsd_external_report(context.debug, LOG_DATA,
+                                 "<= GPS (binary environment) %s: %s\n",
+                                 device->gpsdata.dev.path, buf);
+            pseudonmea_write(changed, buf, strlen(buf), device);
+        }
 	}
 	if ((changed & NAVIGATION_SET) != 0) {
 	    nmea_navigation_dump(device, buf, sizeof(buf));
@@ -2089,30 +2089,30 @@ static int handle_gpsd_request(struct subscriber_t *sub, const char *buf)
     char reply[GPS_JSON_RESPONSE_MAX + 1];
 
     reply[0] = '\0';
-    if ((strncmp(buf, "GET ", 4) == 0) 
-	|| (sub->policy.websocket == true)) {
-      // switching to web socket mode
-      // handle_websocket_request does its own writes
-      gpsd_report(context.debug, LOG_PROG,
-		  "handle web socket request\n");
-      return handle_websocket_request(sub, buf,
-				      reply + strlen(reply),
-				      sizeof(reply) - strlen(reply));
+    if ((strncmp(buf, "GET ", 4) == 0)
+        || (sub->policy.websocket == true)) {
+        // switching to web socket mode
+        // handle_websocket_request does its own writes
+        gpsd_report(context.debug, LOG_PROG,
+                    "handle web socket request\n");
+        return handle_websocket_request(sub, buf,
+                                        reply + strlen(reply),
+                                        sizeof(reply) - strlen(reply));
      
     } else {
-      if (buf[0] == '?') {
-	const char *end;
-	for (end = buf; *buf != '\0'; buf = end)
-	  if (isspace(*buf))
-	    end = buf + 1;
-	  else
-	    handle_request(sub, buf, &end,
-			   reply + strlen(reply),
-			   sizeof(reply) - strlen(reply));
-      } else if (buf[0] == '$') {
-		  gpsd_device_write(NULL, buf, strlen(buf));
-      } 
-      return (int)throttled_write(sub, reply, strlen(reply));
+        if (buf[0] == '?') {
+            const char *end;
+            for (end = buf; *buf != '\0'; buf = end)
+                if (isspace(*buf))
+                    end = buf + 1;
+                else
+                    handle_request(sub, buf, &end,
+                                   reply + strlen(reply),
+                                   sizeof(reply) - strlen(reply));
+        } else if (buf[0] == '$') {
+            gpsd_device_write(NULL, buf, strlen(buf));
+        } 
+        return (int)throttled_write(sub, reply, strlen(reply));
     }
 }
 #endif /* SOCKET_EXPORT_ENABLE */
@@ -2467,18 +2467,18 @@ int main(int argc, char *argv[])
      */
     in_restart = false;
     for (i = optind; i < argc; i++) {
-      if (!gpsd_add_device(argv[i], NOWAIT)) {
-	    gpsd_report(context.debug, LOG_ERROR,
-			"initial GPS device %s open failed\n",
-			argv[i]);
-	}
+        if (!gpsd_add_device(argv[i], NOWAIT)) {
+            gpsd_report(context.debug, LOG_ERROR,
+                        "initial GPS device %s open failed\n",
+                        argv[i]);
+        }
     }
 
 	/*
 	 * Read additional configuration information here:
 	 * forward rules, interface accept/reject rules, etc.
 	 */ 
-	config_parse(interfaces, devices);
+	config_parse(devices);
 
     for (device = devices; device < devices + MAXDEVICES; device++) {
         
@@ -2823,7 +2823,7 @@ int main(int argc, char *argv[])
 		     */
 		    sub->active = timestamp();
 		    if (handle_gpsd_request(sub, buf) < 0)
-			detach_client(sub);
+                detach_client(sub);
 		}
 	    } else {
 		unlock_subscriber(sub);

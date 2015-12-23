@@ -2604,9 +2604,9 @@ static void vyspi_packet_accept(struct gps_packet_t *lexer, int packet_type, uin
 					lexer->outbuflen));
 	}
     } else {
-	gpsd_report(lexer->debug, LOG_ERROR,
-		    "Rejected too long packet type %d len %zu\n",
-		    packet_type, packetlen);
+        gpsd_report(lexer->debug, LOG_ERROR,
+                    "Rejected too long packet type %d len %zu\n",
+                    packet_type, packetlen);
     }
 }
 
@@ -2940,11 +2940,11 @@ static void vyspi_preparse_spi(struct gps_device_t *session) {
 
     } else if (pkgType == PKG_TYPE_NMEA0183) {
       
-      if(lexer->inbuflen < lexer->inbufptr - lexer->inbuffer + pkgLen) {
-	gpsd_report(session->context->debug, LOG_WARN, "VYSPI: exit prematurely: %ld + %d > %lu\n",
-		    (lexer->inbufptr - lexer->inbuffer), pkgLen, packetlen);
-	// discard 
-	lexer->inbufptr = lexer->inbuffer + lexer->inbuflen;
+        if(lexer->inbuflen < (unsigned int)(lexer->inbufptr - lexer->inbuffer + pkgLen)) {
+          gpsd_report(session->context->debug, LOG_WARN, "VYSPI: exit prematurely: %ld + %d > %lu\n",
+                      (lexer->inbufptr - lexer->inbuffer), pkgLen, packetlen);
+          // discard 
+          lexer->inbufptr = lexer->inbuffer + lexer->inbuflen;
 	break;
       }
 
@@ -2996,7 +2996,7 @@ static ssize_t vyspi_get(struct gps_device_t *session)
     status = read(fd, pkg->inbuffer + pkg->inbuflen,
 		sizeof(pkg->inbuffer) - (pkg->inbuflen));
 
-    pkg->outbuflen = 0;
+      pkg->outbuflen = 0;
 
     if(status == -1) {
       if ((errno == EAGAIN) || (errno == EINTR)) {
@@ -3036,28 +3036,27 @@ static ssize_t vyspi_get(struct gps_device_t *session)
   }
 
   if(session->gpsdata.dev.isSerial) {
-    vyspi_preparse_serial(session);
+      vyspi_preparse_serial(session);
   } else {
-    vyspi_preparse_spi(session);
+      vyspi_preparse_spi(session);
   }
 
-
   if (pkg->outbuflen > 0) {
-    if ((session->driver.nmea2000.workpgn == NULL) 
-	&& (session->packet.type == NMEA2000_PACKET)) {
-      gpsd_report(session->context->debug, LOG_DATA, 
-		  "VYSPI: exit with 0 with with no known PGN in N2k\n");
-      return 0;
-    }
+      if ((session->driver.nmea2000.workpgn == NULL) 
+          && (session->packet.type == NMEA2000_PACKET)) {
+          gpsd_report(session->context->debug, LOG_DATA, 
+                      "VYSPI: exit with 0 with with no known PGN in N2k\n");
+          return 0;
+      }
 
-    return (ssize_t)pkg->outbuflen;
+      return (ssize_t)pkg->outbuflen;
   } else {
-    /*
-     * Otherwise recvd is the size of whatever packet fragment we got.
-     * It can still be 0 or -1 at this point even if buffer data
-     * was consumed.
-     */
-    return status;
+      /*
+       * Otherwise recvd is the size of whatever packet fragment we got.
+       * It can still be 0 or -1 at this point even if buffer data
+       * was consumed.
+       */
+      return status;
   }
 
     //  vyspi_report_packet(pkg);

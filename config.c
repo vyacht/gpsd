@@ -331,15 +331,15 @@ config_init() {
   // uci_set_confdir(ctx, "./systemd");
   // uci_set_savedir(ctx, "./systemd");
   
-  if (uci_load(ctx, "gpsd", &p)) {
-	  gpsd_report(uci_debuglevel, LOG_ERROR, 
-				  "failed to open config file\n"); 
-    return (struct uci_package *)NULL;
-  }
+    if (uci_load(ctx, "gpsd", &p)) {
+        gpsd_report(uci_debuglevel, LOG_ERROR, 
+                    "failed to open config file\n"); 
+        return (struct uci_package *)NULL;
+    }
 
-  uci_ctx = ctx;
+    uci_ctx = ctx;
 
-  return p;
+    return p;
 }
 
 /*
