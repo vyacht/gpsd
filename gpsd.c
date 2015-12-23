@@ -102,6 +102,7 @@
  * a device.
  */
 #define COMMAND_TIMEOUT		60*15
+#define TCP_GRACE_TIMEOUT	1
 #define NOREAD_TIMEOUT		60*3
 #define RELEASE_TIMEOUT		60
 #define DEVICE_REAWAKE		0.01
@@ -664,7 +665,7 @@ static /*@null@*//*@observer@ */ struct subscriber_t *allocate_client(void)
 	    subscribers[si].fd = 0;	/* mark subscriber as allocated */
 
 	    subscribers[si].policy.raw       = false;
-	    subscribers[si].policy.nmea      = true;
+	    subscribers[si].policy.nmea      = false;
 	    subscribers[si].policy.watcher   = true;
 	    subscribers[si].policy.json      = false;
 	    subscribers[si].policy.signalk   = false;
@@ -3068,7 +3069,23 @@ int main(int argc, char *argv[])
                             "recv from client(%d) returned %d: %s\n",
                             sub_index(sub), buflen, strerror(errno));
                 detach_client(sub);
-		}
+            } else {
+                if (buf[buflen - 1] != '\n')
+                    buf[buflen++] = '\n';
+                buf[buflen] = '\0';
+                gpsd_report(context.debug, LOG_CLIENT,
+                            "<= client(%d): %s\n", sub_index(sub), buf);
+
+                /*
+                 * When a command comes in, update subscriber.active to
+                 * timestamp() so we don't close the connection
+                 * after COMMAND_TIMEOUT seconds. This makes
+                 * COMMAND_TIMEOUT useful.
+                 */
+                sub->active = timestamp();
+                if (handle_gpsd_request(sub, buf) < 0)
+                    detach_client(sub);
+            }
 	    } else {
             unlock_subscriber(sub);
 
@@ -3078,6 +3095,15 @@ int main(int argc, char *argv[])
                             "client(%d) timed out on command wait.\n",
                             sub_index(sub));
                 detach_client(sub);
+            }
+            if (sub->policy.watcher && (sub->policy.protocol == tcp)
+                && timestamp() - sub->active > TCP_GRACE_TIMEOUT) {
+
+                sub->policy.nmea = true;
+                
+                gpsd_report(context.debug, LOG_INF,
+                            "client(%d) timed out on HTTP wait. Locking to raw TCP now.\n",
+                            sub_index(sub));
             }
 	    }
 	}

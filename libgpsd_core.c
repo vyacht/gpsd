@@ -1126,9 +1126,9 @@ int gpsd_await_data(/*@out@*/fd_set *rfds,
 /* await data from any socket in the all_fds set */
 {
     int status;
-#ifdef COMPAT_SELECT
+//#ifdef COMPAT_SELECT
     struct timeval tv;
-#endif /* COMPAT_SELECT */
+//#endif /* COMPAT_SELECT */
 
 #ifdef EFDS
     FD_ZERO(efds);
@@ -1150,13 +1150,13 @@ int gpsd_await_data(/*@out@*/fd_set *rfds,
     /*@ -usedef -nullpass @*/
     errno = 0;
 
-#ifdef COMPAT_SELECT
+//#ifdef COMPAT_SELECT
     tv.tv_sec = 1;
     tv.tv_usec = 0;
     status = select(maxfd + 1, rfds, NULL, NULL, &tv);
-#else
-    status = pselect(maxfd + 1, rfds, NULL, NULL, NULL, NULL);
-#endif
+//#else
+//    status = pselect(maxfd + 1, rfds, NULL, NULL, NULL, NULL);
+//#endif
     if (status == -1) {
 	if (errno == EINTR)
 	    return AWAIT_NOT_READY;
@@ -1180,6 +1180,7 @@ int gpsd_await_data(/*@out@*/fd_set *rfds,
 	    return AWAIT_FAILED;
 	}
     }
+    if(status == 0) gpsd_report(debug, LOG_INF, "TIMEOUT\n");
     /*@ +usedef +nullpass @*/
 
     if (debug >= LOG_SPIN) {
