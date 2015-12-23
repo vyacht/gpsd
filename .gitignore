@@ -16,6 +16,7 @@ gps2udp
 gpscat
 gpsfake
 gpsprof
+gpssim
 jsongen.py
 maskaudit.py
 control
