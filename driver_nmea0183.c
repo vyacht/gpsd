@@ -546,29 +546,29 @@ static gps_mask_t processGPGSV(int count, char *field[],
      */
     int n, fldnum;
     if (count <= 3) {
-	gpsd_report(session->context->debug, LOG_WARN,
-		    "malformed GPGSV - fieldcount %d <= 3\n",
-		    count);
-	gpsd_zero_satellites(&session->gpsdata);
-	session->gpsdata.satellites_visible = 0;
-	return ONLINE_SET;
+        gpsd_report(session->context->debug, LOG_WARN,
+                    "malformed GPGSV - fieldcount %d <= 3\n",
+                    count);
+        gpsd_zero_satellites(&session->gpsdata);
+        session->gpsdata.satellites_visible = 0;
+        return ONLINE_SET;
     }
     if (count % 4 != 0) {
-	gpsd_report(session->context->debug, LOG_WARN,
-		    "malformed GPGSV - fieldcount %d %% 4 != 0\n",
-		    count);
-	gpsd_zero_satellites(&session->gpsdata);
-	session->gpsdata.satellites_visible = 0;
-	return ONLINE_SET;
+        gpsd_report(session->context->debug, LOG_WARN,
+                    "malformed GPGSV - fieldcount %d %% 4 != 0\n",
+                    count);
+        gpsd_zero_satellites(&session->gpsdata);
+        session->gpsdata.satellites_visible = 0;
+        return ONLINE_SET;
     }
 
     session->driver.nmea.await = atoi(field[1]);
     if ((session->driver.nmea.part = atoi(field[2])) < 1) {
-	gpsd_report(session->context->debug, LOG_WARN, "malformed GPGSV - bad part\n");
-	gpsd_zero_satellites(&session->gpsdata);
-	return ONLINE_SET;
+        gpsd_report(session->context->debug, LOG_WARN, "malformed GPGSV - bad part\n");
+        gpsd_zero_satellites(&session->gpsdata);
+        return ONLINE_SET;
     } else if (session->driver.nmea.part == 1)
-	gpsd_zero_satellites(&session->gpsdata);
+        gpsd_zero_satellites(&session->gpsdata);
 
     for (fldnum = 4; fldnum < count;) {
 	if (session->gpsdata.satellites_visible >= MAXCHANNELS) {
@@ -842,17 +842,17 @@ static gps_mask_t processDBT(int c UNUSED, char *field[],
     mask = ONLINE_SET;
 
     if (field[3][0] != '\0') {
-	session->gpsdata.navigation.depth = safe_atof(field[3]);
-	mask |= (NAVIGATION_SET);
-	session->gpsdata.navigation.set = NAV_DPT_PSET;
+        session->gpsdata.navigation.depth = safe_atof(field[3]);
+        mask |= (NAVIGATION_SET);
+        session->gpsdata.navigation.set = NAV_DPT_PSET;
     } else if (field[1][0] != '\0') {
-	session->gpsdata.navigation.depth = safe_atof(field[1]) / METERS_TO_FEET;
-	mask |= (NAVIGATION_SET);
-	session->gpsdata.navigation.set = NAV_DPT_PSET;
+        session->gpsdata.navigation.depth = safe_atof(field[1]) / METERS_TO_FEET;
+        mask |= (NAVIGATION_SET);
+        session->gpsdata.navigation.set = NAV_DPT_PSET;
     } else if (field[5][0] != '\0') {
-	session->gpsdata.navigation.depth = safe_atof(field[5]) / METERS_TO_FATHOMS;
-	mask |= (NAVIGATION_SET);
-	session->gpsdata.navigation.set = NAV_DPT_PSET;
+        session->gpsdata.navigation.depth = safe_atof(field[5]) / METERS_TO_FATHOMS;
+        mask |= (NAVIGATION_SET);
+        session->gpsdata.navigation.set = NAV_DPT_PSET;
     }
 
     gpsd_report(session->context->debug, LOG_RAW,

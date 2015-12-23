@@ -1464,15 +1464,15 @@ static ssize_t handle_websocket_request(struct subscriber_t *sub,
 	  nmea = true;
 	} else if (strncmp(hs.resource, "/debug", 6) == 0) {
 
-	  debug = 5;
-	  if(strlen(hs.resource) >= 14) {
-	    if(strncmp(hs.resource + 6, "?level=", 7) == 0) {
-	      debug = atoi(hs.resource + 13);
-	      gpsd_report(context.debug, LOG_INF, 
-			  "incoming resource request with loglevel %d\n",
-			  debug); 
-	    }
-	  }
+                debug = 5;
+                if(strlen(hs.resource) >= 14) {
+                    if(strncmp(hs.resource + 6, "?level=", 7) == 0) {
+                        debug = atoi(hs.resource + 13);
+                        gpsd_report(context.debug, LOG_INF, 
+                                    "incoming resource request with loglevel %d\n",
+                                    debug); 
+                    }
+                }
 
 
 	} else {
@@ -1503,26 +1503,26 @@ static ssize_t handle_websocket_request(struct subscriber_t *sub,
 	return status;
       }
     } else {
-      if (sub->frameType == WS_CLOSING_FRAME) {
-	sub->policy.websocket = false;
-	gpsd_report(context.debug, LOG_INF, "closing frame\n");
-	if (sub->state == WS_STATE_CLOSING) {
-	  return -1;
-	} else {
-	  len = replylen;
-	  wsMakeFrame((const char *)NULL, 0, reply, &len, WS_CLOSING_FRAME);
-	  throttled_write(sub, reply, len);
-	  return -1;
-	}
-      } else if (sub->frameType == WS_TEXT_FRAME) {
-          len = replylen;
-          wsMakeFrame("echo", 6, reply, &len, WS_TEXT_FRAME);
-          sub->frameType = WS_INCOMPLETE_FRAME;
-          return throttled_write(sub, reply, len);
-      }
+        if (sub->frameType == WS_CLOSING_FRAME) {
+            sub->policy.websocket = false;
+            gpsd_report(context.debug, LOG_INF, "closing frame\n");
+            if (sub->state == WS_STATE_CLOSING) {
+                return -1;
+            } else {
+                len = replylen;
+                wsMakeFrame((const char *)NULL, 0, reply, &len, WS_CLOSING_FRAME);
+                throttled_write(sub, reply, len);
+                return -1;
+            }
+        } else if (sub->frameType == WS_TEXT_FRAME) {
+            len = replylen;
+            wsMakeFrame("echo", 6, reply, &len, WS_TEXT_FRAME);
+            sub->frameType = WS_INCOMPLETE_FRAME;
+            return 0; // throttled_write(sub, reply, len);
+        }
       
-      // we should never get here
-      return -1;
+        // we should never get here
+        return -1;
     }
 
     return -1;
@@ -1828,7 +1828,6 @@ static void raw_report_write(struct subscriber_t *sub, struct gps_device_t *devi
 							  device->packet.outbuflen);
 		return;
     }
-
     
     if ((VYSPI_PACKET == device->packet.type) 
 		&& (FRM_TYPE_NMEA0183 == device->packet.frm_type)
@@ -1838,17 +1837,16 @@ static void raw_report_write(struct subscriber_t *sub, struct gps_device_t *devi
 							  device->packet.outbuflen);
 		return;
     }
-    
 
     /*
      * Also, simply copy if user has specified
      * super-raw mode.
      */
     if (sub->policy.raw > 1) {
-	(void)throttled_write(sub,
-			      (char *)device->packet.outbuffer,
-			      device->packet.outbuflen);
-	return;
+        (void)throttled_write(sub,
+                              (char *)device->packet.outbuffer,
+                              device->packet.outbuflen);
+        return;
     }
 
 #ifdef BINARY_ENABLE
@@ -2919,51 +2917,35 @@ int main(int argc, char *argv[])
 	/* accept and execute commands for all clients */
 	for (sub = subscribers; sub < subscribers + MAXSUBSCRIBERS; sub++) {
 	    if (sub->active == 0)
-		continue;
+            continue;
 
 	    lock_subscriber(sub);
 	    if (FD_ISSET(sub->fd, &rfds)) {
-		char buf[BUFSIZ];
-		int buflen;
+            char buf[BUFSIZ];
+            int buflen;
 
-		unlock_subscriber(sub);
+            unlock_subscriber(sub);
 
-		gpsd_report(context.debug, LOG_PROG,
-			    "checking client(%d)\n",
-			    sub_index(sub));
-		if ((buflen =
-		     (int)recv(sub->fd, buf, sizeof(buf) - 1, 0)) <= 0) {
-		  gpsd_report(context.debug, LOG_ERR,
-			      "recv from client(%d) returned %d: %s\n",
-			      sub_index(sub), buflen, strerror(errno));
-		  detach_client(sub);
-		} else {
-		    if (buf[buflen - 1] != '\n')
-			buf[buflen++] = '\n';
-		    buf[buflen] = '\0';
-		    gpsd_report(context.debug, LOG_CLIENT,
-				"<= client(%d): %s\n", sub_index(sub), buf);
-
-		    /*
-		     * When a command comes in, update subscriber.active to
-		     * timestamp() so we don't close the connection
-		     * after COMMAND_TIMEOUT seconds. This makes
-		     * COMMAND_TIMEOUT useful.
-		     */
-		    sub->active = timestamp();
-		    if (handle_gpsd_request(sub, buf) < 0)
+            gpsd_report(context.debug, LOG_PROG,
+                        "checking client(%d)\n",
+                        sub_index(sub));
+            if ((buflen =
+                 (int)recv(sub->fd, buf, sizeof(buf) - 1, 0)) <= 0) {
+                gpsd_report(context.debug, LOG_ERR,
+                            "recv from client(%d) returned %d: %s\n",
+                            sub_index(sub), buflen, strerror(errno));
                 detach_client(sub);
 		}
 	    } else {
-		unlock_subscriber(sub);
+            unlock_subscriber(sub);
 
-		if (!sub->policy.watcher
-		    && timestamp() - sub->active > COMMAND_TIMEOUT) {
-		    gpsd_report(context.debug, LOG_WARN,
-				"client(%d) timed out on command wait.\n",
-				sub_index(sub));
-		    detach_client(sub);
-		}
+            if (!sub->policy.watcher
+                && timestamp() - sub->active > COMMAND_TIMEOUT) {
+                gpsd_report(context.debug, LOG_WARN,
+                            "client(%d) timed out on command wait.\n",
+                            sub_index(sub));
+                detach_client(sub);
+            }
 	    }
 	}
 
