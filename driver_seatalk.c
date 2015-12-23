@@ -621,10 +621,10 @@ static gps_mask_t seatalk_process_lat_lon_raw(uint8_t * bu, uint8_t size,
   session->driver.seatalk.lon       = bu[5] + (bu[6] * 256 + bu[7])/100000.0/0.6;
   /*@+type@*/
   if( (bu[1] >> 4) & 0x01 ) {
-      session->driver.seatalk.lat *= -1.0;
+      session->driver.seatalk.lat *= -1.0; // south
   }
-  if( ((bu[1] >> 4) & 0x01) == 0 ) {
-      session->driver.seatalk.lon *= -1.0;
+  if( ((bu[1] >> 4) & 0x02) == 0 ) {
+      session->driver.seatalk.lon *= -1.0; // west
   }
 
   session->driver.seatalk.lat_set = 1;
@@ -637,10 +637,10 @@ static gps_mask_t seatalk_process_lat_lon_raw(uint8_t * bu, uint8_t size,
   mask |= seatalk_update_time(session);
 
   gpsd_report(session->context->debug, LOG_DATA,
-	      "seatalk raw lat/lon = %0.2f (%c) / %0.2f (%c) (%s)\n",
-	      session->driver.seatalk.lat , (bu[1] >> 4) & 0x01 ? 'S' : 'N', 
-	      session->driver.seatalk.lon, (bu[1] >> 4) & 0x01 ? 'E' : 'W',
-	      gps_maskdump(mask));
+              "seatalk raw lat/lon = %0.2f (%c) / %0.2f (%c) (%s)\n",
+              session->driver.seatalk.lat , (session->driver.seatalk.lat > 0) ? 'N' : 'S', 
+              session->driver.seatalk.lon, (session->driver.seatalk.lon > 0) ? 'E' : 'W',
+              gps_maskdump(mask));
 
   seatalk_print_command(bu, size, session);
 
@@ -1333,8 +1333,8 @@ static void seatalk_nextstate(struct gps_packet_t *lexer, unsigned char c)
 	    // fixed length based on lookup table
 	    if(lexer->length != (c & 0x0f)) {
 	      gpsd_report(lexer->debug, LOG_RAW + 2,
-			  "%08ld: wrong fixed length found: %lu != %lu\n",
-			  lexer->char_counter, lexer->length, c & 0x0f);
+			  "%08ld: wrong fixed length found: %lu != %u\n",
+                      lexer->char_counter, lexer->length, (c & 0x0f));
 	      lexer->state = GROUND_STATE;
 	      break;
 	    }
