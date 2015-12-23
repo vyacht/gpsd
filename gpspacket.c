@@ -40,6 +40,10 @@ void gpsd_report(int unused UNUSED, int errlevel, const char *fmt, ... )
     Py_DECREF(args);
 }
 
+void gpsd_external_report(int unused UNUSED, int errlevel, const char *fmt, ... )
+{
+}
+
 static PyTypeObject Lexer_Type;
 
 typedef struct {

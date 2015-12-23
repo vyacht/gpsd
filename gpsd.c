@@ -166,7 +166,7 @@ static int sd_socket_count = 0;
 #endif
 #endif
 
-static int max_subscriber_loglevel = 0;
+static int max_subscriber_loglevel = LOG_ERROR - 1; // -1 is LOG_ERROR
 static void set_max_subscriber_loglevel(void);
 
 static volatile sig_atomic_t signalled;
@@ -205,7 +205,7 @@ void gpsd_report(const int debuglevel, const int errlevel,
 
     va_list ap;
     va_start(ap, fmt);
-    gpsd_labeled_report(debuglevel, 0, errlevel, "gpsd:", fmt, ap);
+    gpsd_labeled_report(debuglevel, LOG_ERROR - 1, errlevel, "gpsd:", fmt, ap);
     va_end(ap);
 }
 
@@ -668,7 +668,7 @@ static /*@null@*//*@observer@ */ struct subscriber_t *allocate_client(void)
 	    subscribers[si].policy.watcher   = true;
 	    subscribers[si].policy.json      = false;
 	    subscribers[si].policy.websocket = false;
-	    subscribers[si].policy.loglevel  = 0;
+	    subscribers[si].policy.loglevel  = LOG_ERROR - 1;
 
 	    subscribers[si].state = WS_STATE_OPENING;
     	subscribers[si].frameType = WS_INCOMPLETE_FRAME;
@@ -707,7 +707,7 @@ static void detach_client(struct subscriber_t *sub)
     sub->policy.timing  = false;
     sub->policy.split24 = false;
     sub->policy.websocket = false;
-    sub->policy.loglevel = 0;
+    sub->policy.loglevel = LOG_ERROR - 1;
     sub->policy.devpath[0] = '\0';
     sub->state = WS_STATE_OPENING;
     sub->frameType = WS_INCOMPLETE_FRAME;
