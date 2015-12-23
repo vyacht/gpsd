@@ -1027,9 +1027,66 @@ static gps_mask_t seatalk_process_gps_dgps(uint8_t * bu, uint8_t size,
     break;
 
   case 0x0C: {
+      gpsd_report(session->context->debug, LOG_DATA,
+                  "seatalk data: sat numbers= %u, %u\n"
+                  "              sat signal = %u, %u\n",
+                  ((bu[2]&0xFE) >> 1), ((bu[6]&0x70) >> 1) + (bu[7]&0x07), 
+                  (bu[5]&0xFE >> 1), ((bu[9]&0x80) >> 1) + (bu[10]&0x3F));
+      break;
   }
+
+  case 0x0D: 
+  case 0x2D: 
+  case 0x7D: 
+  case 0x8D: {
+      /*
+        A5  XD  NN  AA EE SS MM BB FF GG OO CC DD XX YY ZZ   GPS Info: Sat Position and Signal
+        00  01  02  03 04 05 06 07 08 09 10 11 12 13 14 15
+            8d  32  00 0c 00 08 01 00 04 40 0e 00 01 00 02
+             Data of up to three sattelites [1,2,3] per datagram
+             Satellite number:   [1] NN&0xFE, [2] (MM&0x70)/2+(BB&0x7), [3] CC&0x3F
+             Satellite azimuth:  [1] AA*2+(EE&0x1), [2] (BB&0xF8)*2+(FF&0xF), [3] (CC&0xC0)*2+DD&0x7F
+             Satellite elevation:[1] (EE&0xFE)/2, [2] (FF&0xF0)/2+GG&0x7, [3] XX&0x7F
+             Satellite signal:   [1] (SS&0xFE)/2, [2] (GG&0x80)/2+OO&0x3F, [3] (YY&0xFC)/2+ZZ&0x1
+      */
+      uint8_t no = 1;
+      if(((bu[1]&0xF0) == 0) && (bu[2] & 0x01)) no = 2;
+      else if(((bu[1]&0xF0) == 2) && (bu[2] & 0x01)) no = 4;
+      else if(((bu[1]&0xF0) == 7) && (bu[2] & 0x01)) no = 5;
+      gpsd_report(session->context->debug, LOG_DATA,
+                  "seatalk data %u: sat numbers= %u, %u, %u\n"
+                  "                 sat azi    = %u, %u, %u\n"
+                  "                 sat elev   = %u, %u, %u\n"
+                  "                 sat signal = %u, %u, %u\n",
+                  no,
+                  ((bu[2]&0xFE) >> 1), ((bu[6]&0x70) >> 1) + (bu[7]&0x07), (bu[11]&0x3F),
+                  ((bu[3]<<1) + (bu[04]&0x01)), ((bu[7]&0xF8)<<1) + (bu[8]&0xF), ((bu[11]&0xC0) << 1) + (bu[12] & 0x7F),
+                  ((bu[4] & 0xFE) >> 1), ((bu[8]&0xF0)>>1) + (bu[9]&0x07), (bu[13]&0x7F),
+                  ((bu[5]&0xFE) >> 1), ((bu[9]&0x80) >> 1) + (bu[10]&0x3F), ((bu[14]&0xFC) >> 1) + (bu[15]&0x01));
+  }
+  case 0x98: {
+      /*
+        A5  98  NN  AA EE SS MM BB FF GG OO    GPS Info: Sat Position and Signal
+        00  01  02  03 04 05 06 07 08 09 10 
+             Data of up to three sattelites [1,2,3] per datagram
+             Satellite number:   [1] NN&0xFE >> 1, [2] (MM&0x70)/2+(BB&0x7), [3] CC&0x3F
+             Satellite azimuth:  [1] AA*2+(EE&0x1), [2] (BB&0xF8)*2+(FF&0xF), [3] (CC&0xC0)*2+DD&0x7F
+             Satellite elevation:[1] (EE&0xFE)/2, [2] (FF&0xF0)/2+GG&0x7, [3] XX&0x7F
+             Satellite signal:   [1] (SS&0xFE)/2, [2] (GG&0x80)/2+OO&0x3F, [3] (YY&0xFC)/2+ZZ&0x1
+      */
+      uint8_t no = 6;
+      gpsd_report(session->context->debug, LOG_DATA,
+                  "seatalk data %u: sat numbers= %u, %u, %u\n"
+                  "                 sat signal = %u, %u, %u\n",
+                  no,
+                  ((bu[2]&0xFE) >> 1), 0, 0,
+                  0, 0, 0);
+  }
+      
     break;
   case 0x74: {
+      gpsd_report(session->context->debug, LOG_DATA,
+                  "seatalk satellite ids: %u, %u, %u, %u, %u\n", bu[2], bu[3], bu[4], bu[5], bu[6]);
   }
     break;
 
