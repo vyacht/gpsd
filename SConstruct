@@ -1002,6 +1002,10 @@ gpsd_sources = ['gpsd.c','ntpshm.c','shmexport.c','dbusexport.c','config.c']
 if env['systemd']:
     gpsd_sources.append("sd_socket.c")
 
+gpssim_sources = [
+    'gpssim.c'
+    ]
+
 gpsmon_sources = [
     'gpsmon.c',
     'monitor_italk.c',
@@ -1038,6 +1042,10 @@ env.Depends(gpsmon, [compiled_gpsdlib, compiled_gpslib])
 gpspipe = env.Program('gpspipe', ['gpspipe.c'], parse_flags=gpslibs)
 env.Depends(gpspipe, compiled_gpslib)
 
+gpssim = env.Program('gpssim', gpssim_sources,
+                     parse_flags=gpsdlibs + ncurseslibs + ['-lm'])
+env.Depends(gpssim, [compiled_gpsdlib, compiled_gpslib])
+
 gps2udp = env.Program('gps2udp', ['gps2udp.c'], parse_flags=gpslibs)
 env.Depends(gps2udp, compiled_gpslib)
 
@@ -1050,7 +1058,7 @@ env.Depends(lcdgps, compiled_gpslib)
 cgps = env.Program('cgps', ['cgps.c'], parse_flags=gpslibs + ncurseslibs)
 env.Depends(cgps, compiled_gpslib)
 
-binaries = [gpsd, gpsdecode, gpsctl, gpsdctl, gpspipe, gps2udp, gpxlogger, lcdgps]
+binaries = [gpsd, gpsdecode, gpsctl, gpsdctl, gpspipe, gpssim, gps2udp, gpxlogger, lcdgps]
 if env["ncurses"]:
     binaries += [cgps, gpsmon]
 
@@ -1344,7 +1352,7 @@ headerinstall = [ env.Install(installdir('includedir'), x) for x in ("libgpsmm.h
 
 binaryinstall = []
 binaryinstall.append(env.Install(installdir('sbindir'), [gpsd, gpsdctl]))
-binaryinstall.append(env.Install(installdir('bindir'),  [gpsdecode, gpsctl, gpspipe, gps2udp, gpxlogger, lcdgps]))
+binaryinstall.append(env.Install(installdir('bindir'),  [gpsdecode, gpsctl, gpspipe, gpssim, gps2udp, gpxlogger, lcdgps]))
 if env["ncurses"]:
     binaryinstall.append(env.Install(installdir('bindir'), [cgps, gpsmon]))
 binaryinstall.append(LibraryInstall(env, installdir('libdir'), compiled_gpslib))
