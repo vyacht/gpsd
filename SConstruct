@@ -466,6 +466,7 @@ def GetLoadPath(context):
 if env.GetOption("clean") or env.GetOption("help"):
     dbus_libs = []
     uci_libs = []
+    uuid_libs = []
     rtlibs = []
     usblibs = []
     bluezlibs = []
@@ -565,6 +566,8 @@ else:
         env["usb"] = False
 
     uci_libs = ["-luci"]
+
+    uuid_libs = ["-luuid"]
 
     if config.CheckLib('librt'):
         confdefs.append("#define HAVE_LIBRT 1\n")
@@ -1023,7 +1026,7 @@ gpsmon_sources = [
 gpsd_env = env.Clone()
 
 gpsd = gpsd_env.Program('gpsd', gpsd_sources,
-                        parse_flags = gpsdlibs + dbus_libs + uci_libs)
+                        parse_flags = gpsdlibs + dbus_libs + uci_libs + uuid_libs)
 env.Depends(gpsd, [compiled_gpsdlib, compiled_gpslib])
 
 gpsdecode = env.Program('gpsdecode', ['gpsdecode.c'], parse_flags=gpsdlibs)

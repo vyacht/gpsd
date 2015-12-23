@@ -19,6 +19,7 @@
 #include <arpa/inet.h>
 
 #include <errno.h>
+#include <uuid/uuid.h>
 
 #ifndef FORCE_GLOBAL_ENABLE
 static bool listen_global = true;
@@ -26,7 +27,7 @@ static bool listen_global = true;
 
 static struct uci_context *uci_ctx;
 static int uci_debuglevel = 0;
-struct uci_package * config_init(void);
+struct uci_context * config_init(void);
 
 #define DEFAULT_UDP_BROADCAST_PORT 2000
 
@@ -525,28 +526,112 @@ config_parse_forward(struct gps_device_t *devices, struct uci_section *s) {
 	config_add_forward(srcport, destport->name);
 }
 
-struct uci_package *
+void
+config_add_boat_section(struct uci_package * pkg, 
+                        struct uci_ptr * ptr,
+                        bool add_section) {
+
+    struct uci_section * section = NULL;
+    int ret = UCI_OK;
+    uuid_t uuid;
+
+    // generate
+    uuid_generate_time_safe(uuid);
+    // unparse (to string)
+    char uuid_str[37]; // ex. "1b4e28ba-2fa1-11d2-883f-0016d3cca427" + "\0"
+    uuid_unparse_lower(uuid, uuid_str);
+
+    if(add_section) {
+        char buf2[32];
+
+        // , , section type, 
+        uci_add_section(uci_ctx, pkg, "configuration", &section);
+        gpsd_report(uci_debuglevel, LOG_INF, 
+                    "added section %s %s\n",
+                    section->type, section->e.name);
+
+        strcpy(buf2, "gpsd.");
+        strcat(buf2, section->e.name);
+        if (uci_lookup_ptr(uci_ctx, ptr, buf2, true) != UCI_OK) {
+            gpsd_report(uci_debuglevel, LOG_ERROR, 
+                        "config error when looking up new section %s\n",
+                        buf2);
+            return;
+        }
+
+        // section was created with default name, rename
+        ptr->value = "boat";
+        ret = uci_rename(uci_ctx, ptr);
+        ptr->section = section->e.name;
+    }
+
+    /* if section is not added then ptr already
+       should have the details about the section */
+
+    ptr->option  = "uuid";
+    ptr->value   = uuid_str;
+
+    ret = uci_set(uci_ctx, ptr);
+    if(ret == UCI_OK) {
+        gpsd_report(uci_debuglevel, LOG_INF, 
+                    "saving new values\n");
+        uci_save(uci_ctx, ptr->p);
+    }
+
+    uci_commit(uci_ctx, &pkg, false);
+}
+
+void
+config_handle_boat_section() {
+
+    struct uci_package * pkg = NULL;
+    struct uci_ptr ptr;
+    char buf2[32];
+
+    if (uci_load(uci_ctx, "gpsd", &pkg)) {
+        gpsd_report(uci_debuglevel, LOG_ERROR, 
+                    "failed to open config file\n"); 
+    }
+
+    strcpy(buf2, "gpsd.boat.uuid");
+    if (uci_lookup_ptr(uci_ctx, &ptr, buf2, true) != UCI_OK) {
+        gpsd_report(uci_debuglevel, LOG_ERROR, 
+                    "config error when looking up section %s\n",
+                    buf2);
+        return;
+    }
+
+    struct uci_element *e;
+    e = ptr.last;
+    switch(e->type) {
+    case UCI_TYPE_SECTION:
+        printf("section %s %s\n", ptr.s->type, e->name);
+        // configuration.boat section found - but no option
+        config_add_boat_section(pkg, &ptr, false);
+        break;
+    case UCI_TYPE_OPTION:
+        // option found, all ok
+        printf("option %s\n", ptr.option);
+        break;
+    default:
+        // configuration.boat section not found - need to add it
+        config_add_boat_section(pkg, &ptr, true);
+        break;
+    }
+}
+
+struct uci_context *
 config_init() {
 
     struct uci_context *ctx;
-    struct uci_package *p;
-
     ctx = uci_alloc_context ();
   
     /* for testing only */
     if( access("./systemd/gpsd", F_OK ) != -1 ) {
         uci_set_confdir(ctx, "./systemd");
     }
-  
-    if (uci_load(ctx, "gpsd", &p)) {
-        gpsd_report(uci_debuglevel, LOG_ERROR, 
-                    "failed to open config file\n"); 
-        return (struct uci_package *)NULL;
-    }
 
-    uci_ctx = ctx;
-
-    return p;
+    return ctx;
 }
 
 /*
@@ -575,16 +660,21 @@ config forward
 	option dest port1
  */
 
-int config_parse(struct interface_t * interfaces, struct gps_device_t *devices) {
+int config_parse(struct interface_t * interfaces, 
+                 struct gps_device_t *devices) {
 	
 	struct uci_package *uci_network;
 	struct uci_element *e;
 	uint8_t n = 0;
 	
-	uci_network = config_init();
+	uci_ctx = config_init();
 
-	if(!uci_network) return 1;
-  
+    if (uci_load(uci_ctx, "gpsd", &uci_network)) {
+        gpsd_report(uci_debuglevel, LOG_ERROR, 
+                    "failed to open config file\n"); 
+        return 1;
+    }
+
 	config_uci_debuglevel(devices);
     
 	// walk through all interface sections
@@ -610,6 +700,11 @@ int config_parse(struct interface_t * interfaces, struct gps_device_t *devices) 
 		}
 	}
 
+    uci_unload(uci_ctx, uci_network);
+
+    config_handle_boat_section();
+
 	uci_free_context (uci_ctx);
+
 	return 0;
 }
