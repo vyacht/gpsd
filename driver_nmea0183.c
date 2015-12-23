@@ -862,6 +862,436 @@ static gps_mask_t processDBT(int c UNUSED, char *field[],
     return mask;
 }
 
+static gps_mask_t processDPT(int c UNUSED, char *field[],
+				struct gps_device_t *session)
+{
+    /* === DPT - Depth of Water ===
+       $--DPT,x.x,x.x*hh<CR><LF>
+       1. Depth, meters
+       2. Offset from transducer, 
+          positive means distance from tansducer to water line
+          negative means distance from transducer to keel
+       3. Checksum
+    */
+    gps_mask_t mask;
+    mask = ONLINE_SET;
+
+    if (field[1][0] != '\0') {
+        session->gpsdata.navigation.depth = safe_atof(field[1]);
+        mask |= (NAVIGATION_SET);
+        session->gpsdata.navigation.set = NAV_DPT_PSET;
+    }
+    if (field[2][0] != '\0') {
+        session->gpsdata.navigation.depth_offset = safe_atof(field[2]);
+        mask |= (NAVIGATION_SET);
+        session->gpsdata.navigation.set |= NAV_DPT_OFF_PSET;
+    }
+
+    gpsd_report(session->context->debug, LOG_INF,
+		"depth %lf with offset %lf.\n",
+                session->gpsdata.navigation.depth, session->gpsdata.navigation.depth_offset);
+
+    return mask;
+}
+
+/*
+=== MTW - Mean Temperature of Water ===
+
+------------------------------------------------------------------------------
+        1   2 3
+        |   | |
+ $--MTW,x.x,C*hh<CR><LF>
+------------------------------------------------------------------------------
+
+Field Number:
+
+1. Degrees
+2. Unit of Measurement, Celcius
+3. Checksum
+
+<<GLOBALSAT>> lists this as "Meteorological Temperature of Water", which
+is probably incorrect.
+*/
+static gps_mask_t processMTW(int c UNUSED, char *field[],
+				struct gps_device_t *session)
+{
+    // ENV_TEMP_WATER_PSET, temp[temp_water]
+    gps_mask_t mask= ONLINE_SET;
+
+    if (field[1][0] != '\0') {
+        session->gpsdata.environment.temp[temp_water] = safe_atof(field[1]);
+        mask |= (ENVIRONMENT_SET);
+        session->gpsdata.environment.set = ENV_TEMP_WATER_PSET;
+    }
+
+    gpsd_report(session->context->debug, LOG_INF,
+		"water temp %lf C.\n",
+                session->gpsdata.environment.temp[temp_water]);
+
+    return mask;
+}
+
+/*
+=== MWV - Wind Speed and Angle ===
+
+------------------------------------------------------------------------------
+        1   2 3   4 5
+        |   | |   | |
+ $--MWV,x.x,a,x.x,a*hh<CR><LF>
+------------------------------------------------------------------------------
+
+Field Number:
+
+1. Wind Angle, 0 to 360 degrees
+2. Reference, R = Relative, T = True
+3. Wind Speed
+4. Wind Speed Units, K/M/N
+5. Status, A = Data Valid
+6. Checksum
+ */
+static gps_mask_t processMWV(int c UNUSED, char *field[],
+				struct gps_device_t *session)
+{
+// #define ENV_WIND_APPARENT_SPEED_PSET	(1llu<< 1), wind.apparent.speed
+// #define ENV_WIND_APPARENT_ANGLE_PSET	(1llu<< 2), wind.apparent.angle
+    gps_mask_t mask= ONLINE_SET;
+    session->gpsdata.navigation.set = 0;
+    double d = 0.0;
+
+    if(strcmp(field[5], "A") != 0) {
+        return 0;
+    }
+
+    if(strcmp(field[4], "K") == 0) {
+        d = 1.0 / KNOTS_TO_KPH;
+    } else if(strcmp(field[4], "M") == 0) {
+        d = 1.0 / KNOTS_TO_MPS;
+    } else if(strcmp(field[4], "N") == 0) {
+        d = 1.0;
+    }
+
+    if(strcmp(field[2], "T") == 0) {
+        if (field[1][0] != '\0') {
+            session->gpsdata.environment.wind.apparent.angle = safe_atof(field[1]);
+            mask |= (NAVIGATION_SET);
+            session->gpsdata.navigation.set |= ENV_WIND_APPARENT_ANGLE_PSET;
+        }
+        if (field[3][0] != '\0') {
+            session->gpsdata.environment.wind.apparent.speed = safe_atof(field[3]) * d;
+            mask |= (NAVIGATION_SET);
+            session->gpsdata.navigation.set |= ENV_WIND_APPARENT_SPEED_PSET;
+        }
+    } else if(strcmp(field[2], "R") == 0) {
+        if (field[1][0] != '\0') {
+            session->gpsdata.environment.wind.true_north.angle = safe_atof(field[1]);
+            mask |= (NAVIGATION_SET);
+            session->gpsdata.navigation.set |= ENV_WIND_TRUE_GROUND_ANGLE_PSET;
+        }
+        if (field[3][0] != '\0') {
+            session->gpsdata.environment.wind.true_north.speed = safe_atof(field[3]) * d;
+            mask |= (NAVIGATION_SET);
+            session->gpsdata.navigation.set |= ENV_WIND_TRUE_GROUND_SPEED_PSET;
+        }
+    }
+
+    return mask;
+}
+
+/*
+=== ROT - Rate Of Turn ===
+
+------------------------------------------------------------------------------
+        1   2 3
+        |   | |
+ $--ROT,x.x,A*hh<CR><LF>
+------------------------------------------------------------------------------
+
+Field Number: 
+
+1. Rate Of Turn, degrees per minute, "-" means bow turns to port
+2. Status, A means data is valid
+3. Checksum
+ */
+
+static gps_mask_t processROT(int c UNUSED, char *field[],
+				struct gps_device_t *session)
+{
+    // NAV_ROT_PSET, rate_of_turn
+    gps_mask_t mask= ONLINE_SET;
+    if (field[1][0] != '\0' && (strcmp(field[2], "A") == 0)) {
+        session->gpsdata.navigation.rate_of_turn = safe_atof(field[1])/60.0;
+        mask |= (NAVIGATION_SET);
+        session->gpsdata.navigation.set = NAV_ROT_PSET;
+    }
+    return mask;
+}
+
+/*
+=== RSA - Rudder Sensor Angle ===
+
+------------------------------------------------------------------------------
+        1   2 3   4 5
+        |   | |   | |
+ $--RSA,x.x,A,x.x,A*hh<CR><LF>
+------------------------------------------------------------------------------
+
+Field Number: 
+
+1. Starboard (or single) rudder sensor, "-" means Turn To Port
+2. Status, A means data is valid
+3. Port rudder sensor
+4. Status, A means data is valid
+5. Checksum
+*/
+static gps_mask_t processRSA(int c UNUSED, char *field[],
+				struct gps_device_t *session)
+{
+    // NAV_RUDDER_ANGLE_PSET, rudder_angle
+    gps_mask_t mask= ONLINE_SET;
+    if ((field[1][0] != '\0') && (strcmp(field[2], "A") == 0)) {
+        session->gpsdata.navigation.rudder_angle = safe_atof(field[1]);
+        mask |= (NAVIGATION_SET);
+        session->gpsdata.navigation.set = NAV_RUDDER_ANGLE_PSET;
+    }
+    return mask;
+}
+
+/*
+=== VHW - Water speed and heading ===
+
+------------------------------------------------------------------------------
+        1   2 3   4 5   6 7   8 9
+        |   | |   | |   | |   | |
+ $--VHW,x.x,T,x.x,M,x.x,N,x.x,K*hh<CR><LF>
+------------------------------------------------------------------------------
+
+Field Number: 
+
+1. Degress True
+2. T = True
+3. Degrees Magnetic
+4. M = Magnetic
+5. Knots (speed of vessel relative to the water)
+6. N = Knots
+7. Kilometers (speed of vessel relative to the water)
+8. K = Kilometers
+9. Checksum
+
+<<GLOBALSAT>> describes a different format in which the first three
+fields are water-temperature measurements.  It's not clear which 
+is correct.
+*/
+static gps_mask_t processVHW(int c UNUSED, char *field[],
+				struct gps_device_t *session)
+{
+    // NAV_STW_PSET, speed_thru_water
+    // NAV_HDG_TRUE_PSET, NAV_MAGN_TRUE_PSET, heading[compass_magnetic, compass_true]
+    gps_mask_t mask= ONLINE_SET;
+    if ((field[1][0] != '\0') && (strcmp(field[2], "T") == 0)) {
+        session->gpsdata.navigation.heading[compass_true] = safe_atof(field[1]);
+        mask |= (NAVIGATION_SET);
+        session->gpsdata.navigation.set = NAV_HDG_TRUE_PSET;
+    }
+    if ((field[3][0] != '\0') && (strcmp(field[4], "T") == 0)) {
+        session->gpsdata.navigation.heading[compass_magnetic] = safe_atof(field[3]);
+        mask |= (NAVIGATION_SET);
+        session->gpsdata.navigation.set = NAV_HDG_MAGN_PSET;
+    }
+    if ((field[5][0] != '\0') && (strcmp(field[6], "N") == 0)) {
+        session->gpsdata.navigation.speed_thru_water = safe_atof(field[5]);
+        mask |= (NAVIGATION_SET);
+        session->gpsdata.navigation.set = NAV_STW_PSET;
+    } else if ((field[7][0] != '\0') && (strcmp(field[8], "K") == 0)) {
+        session->gpsdata.navigation.speed_thru_water = safe_atof(field[7]) / KNOTS_TO_KPH;
+        mask |= (NAVIGATION_SET);
+        session->gpsdata.navigation.set = NAV_STW_PSET;
+    }
+    return mask;
+}
+
+/*
+=== VLW - Distance Traveled through Water ===
+
+------------------------------------------------------------------------------
+        1   2 3   4 5
+        |   | |   | |
+ $--VLW,x.x,N,x.x,N*hh<CR><LF>
+------------------------------------------------------------------------------
+
+Field Number: 
+
+1. Total cumulative distance
+2. N = Nautical Miles
+3. Distance since Reset
+4. N = Nautical Miles
+5. Checksum
+*/
+static gps_mask_t processVLW(int c UNUSED, char *field[],
+				struct gps_device_t *session)
+{
+    // NAV_DIST_TOT_PSET, distance_total
+    // NAV_DIST_TRIP_PSET, distance_trip
+    gps_mask_t mask= ONLINE_SET;
+
+    if ((field[1][0] != '\0') && (strcmp(field[2], "N") == 0)) {
+        session->gpsdata.navigation.distance_total = safe_atof(field[1]);
+        mask |= (NAVIGATION_SET);
+        session->gpsdata.navigation.set = NAV_DIST_TOT_PSET;
+    }
+    if ((field[3][0] != '\0') && (strcmp(field[4], "N") == 0)) {
+        session->gpsdata.navigation.distance_trip = safe_atof(field[3]);
+        mask |= (NAVIGATION_SET);
+        session->gpsdata.navigation.set = NAV_DIST_TRIP_PSET;
+    }
+
+    return mask;
+}
+
+/*
+=== VTG - Track made good and Ground speed ===
+
+------------------------------------------------------------------------------
+         1  2  3  4  5	6  7  8 9   10
+         |  |  |  |  |	|  |  | |   |
+ $--VTG,x.x,T,x.x,M,x.x,N,x.x,K,m,*hh<CR><LF>
+------------------------------------------------------------------------------
+
+Field Number: 
+
+1. Track Degrees
+2. T = True
+3. Track Degrees
+4. M = Magnetic
+5. Speed Knots
+6. N = Knots
+7. Speed Kilometers Per Hour
+8. K = Kilometers Per Hour
+9. FAA mode indicator (NMEA 2.3 and later)
+10. Checksum
+*/
+static gps_mask_t processVTG(int c UNUSED, char *field[],
+				struct gps_device_t *session)
+{
+    // NAV_SOG_PSET, speed_over_ground
+    // NAV_COG_PSET, course_over_ground
+    gps_mask_t mask= ONLINE_SET;
+    if ((field[1][0] != '\0') && (strcmp(field[2], "T") == 0)) {
+        session->gpsdata.navigation.course_over_ground = safe_atof(field[1]);
+        mask |= (NAVIGATION_SET);
+        session->gpsdata.navigation.set = NAV_COG_PSET;
+    } else if ((field[3][0] != '\0') && (strcmp(field[4], "M") == 0)) {
+        session->gpsdata.navigation.course_over_ground = safe_atof(field[3]);
+        mask |= (NAVIGATION_SET);
+        session->gpsdata.navigation.set = NAV_COG_PSET;
+    }
+
+    if ((field[5][0] != '\0') && (strcmp(field[6], "N") == 0)) {
+        session->gpsdata.navigation.speed_over_ground = safe_atof(field[5]);
+        mask |= (NAVIGATION_SET);
+        session->gpsdata.navigation.set = NAV_SOG_PSET;
+    } else if ((field[7][0] != '\0') && (strcmp(field[8], "K") == 0)) {
+        session->gpsdata.navigation.speed_over_ground = safe_atof(field[7])/KNOTS_TO_KPH;
+        mask |= (NAVIGATION_SET);
+        session->gpsdata.navigation.set = NAV_SOG_PSET;
+    }
+
+    return mask;
+}
+
+/*
+=== VWR - Relative Wind Speed and Angle ===
+
+------------------------------------------------------------------------------
+         1  2  3  4  5  6  7  8 9
+         |  |  |  |  |  |  |  | |
+ $--VWR,x.x,a,x.x,N,x.x,M,x.x,K*hh<CR><LF>
+------------------------------------------------------------------------------
+
+Field Number: 
+
+1. Wind direction magnitude in degrees
+2. Wind direction Left/Right of bow
+3. Speed
+4. N = Knots
+5. Speed
+6. M = Meters Per Second
+7. Speed
+8. K = Kilometers Per Hour
+9. Checksum
+*/
+static gps_mask_t processVWR(int c UNUSED, char *field[],
+				struct gps_device_t *session)
+{
+// ENV_WIND_APPARENT_SPEED_PSET, wind.apparent.speed
+// ENV_WIND_APPARENT_ANGLE_PSET, wind.apparent.angle
+// ENV_WIND_TRUE_GROUND_ANGLE_PSET, wind.true_north.angle
+    gps_mask_t mask= ONLINE_SET;
+
+    if (field[1][0] != '\0') {
+        if (strcmp(field[2], "R") == 0) {
+            session->gpsdata.environment.wind.apparent.angle = safe_atof(field[1]);
+            mask |= (ENVIRONMENT_SET);
+            session->gpsdata.navigation.set = ENV_WIND_APPARENT_ANGLE_PSET;
+        } else if (strcmp(field[2], "L") == 0) {
+            session->gpsdata.environment.wind.apparent.angle = 360.0 - safe_atof(field[1]);
+            mask |= (ENVIRONMENT_SET);
+            session->gpsdata.navigation.set = ENV_WIND_APPARENT_ANGLE_PSET;
+        }
+    }
+    if ((field[3][0] != '\0') && strcmp(field[4], "N") == 0) {
+        session->gpsdata.environment.wind.apparent.speed = safe_atof(field[3]);
+        mask |= (ENVIRONMENT_SET);
+        session->gpsdata.navigation.set = ENV_WIND_APPARENT_SPEED_PSET;
+    } else if ((field[5][0] != '\0') && strcmp(field[6], "M") == 0) {
+        session->gpsdata.environment.wind.apparent.speed = safe_atof(field[5]) / KNOTS_TO_MPS;
+        mask |= (ENVIRONMENT_SET);
+        session->gpsdata.navigation.set = ENV_WIND_APPARENT_SPEED_PSET;
+    } else if ((field[7][0] != '\0') && strcmp(field[8], "K") == 0) {
+        session->gpsdata.environment.wind.apparent.speed = safe_atof(field[7]) / KNOTS_TO_KPH;
+        mask |= (ENVIRONMENT_SET);
+        session->gpsdata.navigation.set = ENV_WIND_APPARENT_SPEED_PSET;
+    }
+    return mask;
+}
+
+/*
+=== XTE - Cross-Track Error, Measured ===
+
+------------------------------------------------------------------------------
+        1 2 3   4 5 6   7
+        | | |   | | |   |
+ $--XTE,A,A,x.x,a,N,m,*hh<CR><LF>
+------------------------------------------------------------------------------
+
+Field Number: 
+
+1. Status
+     - V = LORAN-C Blink or SNR warning
+     - V = general warning flag or other navigation systems when a reliable
+         fix is not available
+2. Status
+     - V = Loran-C Cycle Lock warning flag
+     - A = OK or not used
+3. Cross Track Error Magnitude
+4. Direction to steer, L or R
+5. Cross Track Units, N = Nautical Miles
+6. FAA mode indicator (NMEA 2.3 and later, optional)
+7. Checksum
+*/
+static gps_mask_t processXTE(int c UNUSED, char *field[],
+				struct gps_device_t *session)
+{
+    gps_mask_t mask= ONLINE_SET;
+
+    if ((field[3][0] != '\0') && strcmp(field[5], "N") == 0) {
+        session->gpsdata.navigation.xte = safe_atof(field[3]) / METERS_TO_NM;
+        mask |= (NAVIGATION_SET);
+        session->gpsdata.navigation.set = NAV_XTE_PSET;
+    }    
+    
+    return mask;
+}
+
 #ifdef TNT_ENABLE
 static gps_mask_t processTNTHTM(int c UNUSED, char *field[],
 				struct gps_device_t *session)
@@ -1201,11 +1631,20 @@ gps_mask_t nmea_parse(char *sentence, struct gps_device_t * session)
 	{"GLL", 7,  false, processGPGLL},
 	{"GSA", 17, false, processGPGSA},
 	{"GSV", 0,  false, processGPGSV},
-	{"VTG", 0,  false, NULL},	/* ignore Velocity Track made Good */
 	{"ZDA", 4,  false, processGPZDA},
 	{"GBS", 7,  false, processGPGBS},
-        {"HDT", 1,  false, processHDT},
+    {"HDT", 1,  false, processHDT},
 	{"DBT", 7,  true,  processDBT},
+	{"DPT", 2,  true,  processDPT},
+	{"MTW", 1,  true,  processMTW},
+	{"MWV", 4,  true,  processMWV},
+	{"ROT", 1,  true,  processROT},
+	{"RSA", 3,  true,  processRSA},
+	{"VHW", 8,  true,  processVHW},
+	{"VLW", 4,  true,  processVLW},
+	{"VTG", 8,  true,  processVTG},	
+	{"VWR", 8,  true,  processVWR},	
+	{"XTE", 5,  true,  processXTE},	
 #ifdef TNT_ENABLE
 	{"PTNTHTM", 9, false, processTNTHTM},
 #endif /* TNT_ENABLE */
