@@ -89,7 +89,6 @@ enum wsFrameType wsParseHandshake(const uint8_t *inputFrame, size_t inputLength,
     char *second = strchr(first, ' ');
     if (!second) 
         return WS_ERROR_FRAME;
-    }
     if(second - first + 1 > MAX_URI_LENGTH) {
         return WS_ERROR_FRAME;
     }
