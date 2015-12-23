@@ -1231,7 +1231,7 @@ static struct st_phrase st_process[] = {
 
 /*@+usereleased@*/
 
-static gps_mask_t process_seatalk(uint8_t * cmdBuffer, uint8_t size,
+gps_mask_t process_seatalk(uint8_t * cmdBuffer, uint8_t size,
 					struct gps_device_t *session) {
   gps_mask_t mask = 0;
 

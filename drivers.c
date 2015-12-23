@@ -1155,7 +1155,7 @@ const struct gps_type_t driver_mtk3301 = {
  **************************************************************************/
 
 /*@ -fixedformalarray -usedef -branchstate @*/
-static bool aivdm_decode(const char *buf, size_t buflen,
+bool aivdm_decode(const char *buf, size_t buflen,
 		  struct gps_device_t *session,
 		  struct ais_t *ais,
 		  int debug)

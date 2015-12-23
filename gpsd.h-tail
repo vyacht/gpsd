@@ -173,12 +173,18 @@ struct gps_packet_t {
     unsigned int frm_state;
     unsigned int frm_7dflag;
     unsigned int frm_offset;
+    unsigned int frm_length;
     unsigned int state;
     size_t length;
     unsigned char inbuffer[MAX_PACKET_LENGTH*2+1];
     size_t inbuflen;
     unsigned /*@observer@*/char *inbufptr;
     /* outbuffer needs to be able to hold 4 GPGSV records at once */
+#define MAX_OUT_BUF_RECORDS 4
+    unsigned int  out_count;
+    unsigned int  out_type[MAX_OUT_BUF_RECORDS];
+    unsigned int  out_offset[MAX_OUT_BUF_RECORDS];
+    unsigned int  out_len[MAX_OUT_BUF_RECORDS];
     unsigned char outbuffer[MAX_PACKET_LENGTH*2+1];
     size_t outbuflen;
     unsigned long char_counter;		/* count characters processed */

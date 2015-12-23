@@ -48,7 +48,8 @@ enum {
   FRM_TYPE_NMEA0183 = 1, 
   FRM_TYPE_NMEA2000 = 2, 
   FRM_TYPE_ST       = 3,
-  FRM_TYPE_MAX      = 4
+  FRM_TYPE_AIS      = 4,
+  FRM_TYPE_MAX      = 5
 };
 
 #define FRM_BUFFER_SIZE 512

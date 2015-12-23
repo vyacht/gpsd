@@ -53,6 +53,13 @@ extern void nextstate(struct gps_packet_t *lexer, unsigned char c);
 extern void character_discard(struct gps_packet_t *lexer);
 
 extern gps_mask_t seatalk_parse_input(struct gps_device_t *session);
+extern gps_mask_t process_seatalk(uint8_t * cmdBuffer, uint8_t size,
+                                  struct gps_device_t *session);
+
+extern bool aivdm_decode(const char *buf, size_t buflen,
+                         struct gps_device_t *session,
+                         struct ais_t *ais,
+                         int debug);
 
 // from driver_seatalk.c
 extern void character_skip(struct gps_packet_t *lexer);
@@ -2554,6 +2561,19 @@ static PGN *vyspi_find_pgn(uint32_t pgn) {
       return work;
 }
 
+static void vyspi_reset_outbuffer(struct gps_packet_t *lexer) {
+    
+    uint8_t cnt = 0;
+    lexer->out_count = 0;
+    lexer->outbuflen = 0;
+        
+    for(cnt = 0; cnt < MAX_OUT_BUF_RECORDS; cnt++) {
+        lexer->out_type[cnt] = 0;
+        lexer->out_offset[cnt] = 0;
+        lexer->out_len[cnt] = 0;
+    }
+}
+
 static void vyspi_n_discard(struct gps_packet_t *lexer, uint8_t nchars)
 /* shift the input buffer to discard all data up to current input pointer */
 {
@@ -2584,25 +2604,57 @@ static void vyspi_packet_discard(struct gps_packet_t *lexer)
   vyspi_n_discard(lexer, lexer->inbufptr - lexer->inbuffer);
 }
 
-static void vyspi_packet_accept(struct gps_packet_t *lexer, int packet_type, uint8_t offset)
+static void vyspi_packet_accept(struct gps_packet_t *lexer, int packet_type)
 /* packet grab succeeded, move to output buffer */
 {
-    size_t packetlen = lexer->inbufptr - lexer->inbuffer - offset;
+    
+    uint16_t newoffset = 0;
+    uint8_t cnt = lexer->out_count;
+    size_t packetlen = lexer->inbufptr - lexer->inbuffer;
 
-    if (packetlen < sizeof(lexer->outbuffer)) {
-	memcpy(lexer->outbuffer + offset, lexer->inbuffer, packetlen);
-	lexer->outbuflen = packetlen;
-	lexer->outbuffer[packetlen] = '\0';
-	lexer->type = packet_type;
-	if (lexer->debug >= LOG_RAW+1) {
-	    char scratchbuf[MAX_PACKET_LENGTH*2+1];
-	    gpsd_report(lexer->debug, LOG_RAW+1,
-			"Packet type %d accepted %zu = %s\n",
-			packet_type, packetlen,
-			gpsd_packetdump(scratchbuf,  sizeof(scratchbuf),
-					(char *)lexer->outbuffer,
-					lexer->outbuflen));
-	}
+    if(packetlen != lexer->frm_length) {
+        char scratchbuf[MAX_PACKET_LENGTH*2+1];
+        gpsd_report(lexer->debug, LOG_ERROR,
+                    "Fatal error with packet length %zu != frame length %u\n%s\n",
+                    packetlen, lexer->frm_length, 
+                                    gpsd_packetdump(scratchbuf,  sizeof(scratchbuf),
+                                        (char *)lexer->inbuffer,
+                                        packetlen));
+    }
+
+    if(cnt > 0)
+        newoffset = lexer->out_offset[cnt - 1] + lexer->out_len[cnt - 1];
+    
+    if (newoffset + packetlen < sizeof(lexer->outbuffer)) {
+        
+        memcpy(lexer->outbuffer + newoffset, lexer->inbuffer, packetlen);
+
+        // we add a '\0' for all and also non-text packages
+        lexer->outbuflen += packetlen + 1;  
+        lexer->outbuffer[newoffset + packetlen] = '\0';
+
+        lexer->out_offset[cnt] = newoffset;
+        lexer->out_len[cnt] = packetlen;
+
+        lexer->out_type[cnt] = lexer->frm_type;
+        if(lexer->frm_type == NMEA_PACKET) 
+            if(packet_type == AIVDM_PACKET)
+                lexer->out_type[cnt] = FRM_TYPE_AIS;
+        
+        lexer->type = VYSPI_PACKET;
+        lexer->out_count++;
+        
+        if (lexer->debug >= LOG_RAW+1) {
+            char scratchbuf[MAX_PACKET_LENGTH*2+1];
+            gpsd_report(lexer->debug, LOG_RAW+1,
+                        "Packet type %d with frame type %u accepted %zu = %s\n",
+                        packet_type, lexer->out_type[cnt], packetlen,
+                        gpsd_packetdump(scratchbuf,  sizeof(scratchbuf),
+                                        (char *)lexer->outbuffer,
+                                        lexer->outbuflen));
+        }
+        
+        
     } else {
         gpsd_report(lexer->debug, LOG_ERROR,
                     "Rejected too long packet type %d len %zu\n",
@@ -2637,7 +2689,7 @@ static int vyspi_packet_parse(struct gps_packet_t *lexer, unsigned char c) {
   if (lexer->state == GROUND_STATE) {
     character_skip(lexer);
   } else if (lexer->state == COMMENT_RECOGNIZED) {
-    packet_accept(lexer, COMMENT_PACKET);
+    vyspi_packet_accept(lexer, COMMENT_PACKET);
     vyspi_packet_discard(lexer);
     lexer->state = GROUND_STATE;
     return 1;
@@ -2679,7 +2731,7 @@ static int vyspi_packet_parse(struct gps_packet_t *lexer, unsigned char c) {
 	gpsd_report(lexer->debug, LOG_WARN,
 		    "bad checksum in NMEA packet; expected %s.\n",
 		    csum);
-	packet_accept(lexer, BAD_PACKET);
+	vyspi_packet_accept(lexer, BAD_PACKET);
 	lexer->state = GROUND_STATE;
 	packet_discard(lexer);
 	return 1;
@@ -2689,16 +2741,16 @@ static int vyspi_packet_parse(struct gps_packet_t *lexer, unsigned char c) {
     /* checksum passed or not present */
 #ifdef AIVDM_ENABLE
     if (strncmp((char *)lexer->inbuffer, "!AIVDM", 6) == 0)
-      packet_accept(lexer, AIVDM_PACKET);
+      vyspi_packet_accept(lexer, AIVDM_PACKET);
     else if (strncmp((char *)lexer->inbuffer, "!AIVDO", 6) == 0)
-      packet_accept(lexer, AIVDM_PACKET);
+      vyspi_packet_accept(lexer, AIVDM_PACKET);
     else if (strncmp((char *)lexer->inbuffer, "!BSVDM", 6) == 0)
-      packet_accept(lexer, AIVDM_PACKET);
+      vyspi_packet_accept(lexer, AIVDM_PACKET);
     else if (strncmp((char *)lexer->inbuffer, "!BSVDO", 6) == 0)
-      packet_accept(lexer, AIVDM_PACKET);
+      vyspi_packet_accept(lexer, AIVDM_PACKET);
     else
 #endif /* AIVDM_ENABLE */
-      packet_accept(lexer, NMEA_PACKET);
+      vyspi_packet_accept(lexer, NMEA_PACKET);
     packet_discard(lexer);
     return 1;
   }
@@ -2710,159 +2762,163 @@ static int vyspi_packet_parse(struct gps_packet_t *lexer, unsigned char c) {
 
 static void vyspi_preparse_serial(struct gps_device_t *session) {
 
-  static char * typeNames [] = {
-    "UNKOWN", "NMEA0183", "NMEA2000", "SEATALK"
-  };
+    static char * type_names [] = {
+        "COMMAND", "NMEA0183", "NMEA2000", "SEATALK", "AIS"
+    };
 
-  struct gps_packet_t *lexer = &session->packet;
-
-  gpsd_report(session->context->debug, LOG_RAW + 1, 
-    "VYSPI: preparse serial called with packet len = %lu ptr@ %lu\n", 
-	      lexer->inbufptr - lexer->inbuffer, lexer->inbuflen);
-  // one extra for reading both, len and type/origin
-
-  lexer->outbuflen = 0;
-
-  while(packet_buffered_input(lexer)) { 
-
-    uint8_t b = *lexer->inbufptr++;
+    struct gps_packet_t *lexer = &session->packet;
 
     gpsd_report(session->context->debug, LOG_RAW + 1, 
-		"VYSPI: preparse serial [%c] %02x @ %p state= %u\n", 
-		(isprint(b) ? b : '.'), b, lexer->inbufptr, lexer->frm_state);
+                "VYSPI: preparse serial called with input len = %lu and ptr at %lu\n", 
+                lexer->inbuflen, lexer->inbufptr - lexer->inbuffer);
+    // one extra for reading both, len and type/origin
 
-    if(b == 0x7d) {
-      lexer->frm_7dflag = 1;
-      character_skip(lexer);
-      continue;
+    vyspi_reset_outbuffer(lexer);
+   
+    while(packet_buffered_input(lexer)) { 
+
+        uint8_t b = *lexer->inbufptr++;
+        
+
+        gpsd_report(session->context->debug, LOG_RAW + 1, 
+                    "VYSPI: preparse serial [%c] %02x @ %p state= %u\n", 
+                    (isprint(b) ? b : '.'), b, lexer->inbufptr, lexer->frm_state);
+
+        if(b == 0x7d) {
+            lexer->frm_7dflag = 1;
+            character_skip(lexer);
+            continue;
+        }
+
+        // an unchanged 0x7e is always a frame start, escaped or not
+        if(b == 0x7e) {
+            vyspi_packet_discard(lexer);
+            lexer->frm_length = 0;
+            lexer->frm_7dflag = 0;
+            lexer->frm_state = FRM_TYPE;
+            continue;
+        }
+
+        if(lexer->frm_7dflag) {
+            lexer->frm_7dflag = 0;
+            b ^= (1 << 5);
+        }
+
+        switch(lexer->frm_state) {
+        case FRM_TYPE:
+            if(b < FRM_TYPE_MAX) {
+                lexer->frm_type  = b;
+                lexer->frm_length = 0;
+                lexer->frm_state = FRM_LEN;
+            } else {
+                lexer->frm_length = 0;
+                lexer->frm_state = FRM_GND;
+                vyspi_packet_discard(lexer);
+            }
+            break;
+
+        case FRM_LEN:
+            // if MSB is set we have a 2 byte len (well, 15 bit)
+            // we store in big endian
+
+            if(lexer->frm_length > 0) {
+                // if MSB is set in len already then we are in second byte
+                lexer->frm_state = FRM_START;
+
+                // add low byte
+                lexer->frm_length |= (b << 7);
+                lexer->frm_offset = 3;
+                vyspi_n_discard(lexer, lexer->frm_offset);
+
+            } else {
+                // if its not set in len, then this is low byte and maybe only byte
+                lexer->frm_length = b & 0x7f;
+                if(!(b & 0x80)) {
+                    // even the last byte and only byte
+                    lexer->frm_state = FRM_START;
+                    lexer->frm_offset = 2;
+                    vyspi_n_discard(lexer, lexer->frm_offset);
+                }
+            }
+
+            break;
+
+        case FRM_END:
+            
+            lexer->frm_length = 0;
+            vyspi_packet_discard(lexer);
+            break;
+
+        case FRM_START:
+            
+            /* trying to avoid a new buffer and changing existing code;
+               thus parsing inline here */
+            if(lexer->frm_type == FRM_TYPE_NMEA0183) {
+                vyspi_packet_parse(lexer, b);
+                lexer->type = VYSPI_PACKET;
+            }
+
+            /* we may take inbufptr and inbuffer as a criteria here since
+             * we are always having the recent frame start at inbuffer
+             * even if there is multiple frames in the buffer
+             */
+            if((size_t)(lexer->inbufptr - lexer->inbuffer) >= lexer->frm_length) {
+                // frame is complete
+                gpsd_report(session->context->debug, LOG_RAW, 
+                            "VYSPI: preparse serial discovered complete frame with len %lu >= %lu\n", 
+                            lexer->frm_length, lexer->inbufptr - lexer->inbuffer);
+                lexer->frm_state = FRM_END;
+
+            } 
+            break;
+
+        default:
+            // FRM_GND where we do nothing but wait for 0x7e
+            break;
+        }
+
+        if(lexer->frm_state == FRM_END) {
+
+            gpsd_report(session->context->debug, LOG_RAW, 
+                        "VYSPI: preparse serial complete frame type %s with len %lu, %lu\n", 
+                        type_names[lexer->frm_type], lexer->frm_length, lexer->inbufptr - lexer->inbuffer);
+
+
+            if((lexer->frm_type == FRM_TYPE_NMEA0183)
+               || (lexer->frm_type == FRM_TYPE_AIS)) {
+                /* we parsed packet inline during FRM_START
+                   - just discard here from inbuffer */
+                vyspi_packet_discard(lexer);
+
+            } else if(lexer->frm_type == FRM_TYPE_NMEA2000) {
+
+                session->driver.vyspi.last_pgn = 
+                    getleu32(lexer->inbuffer, 0);
+
+                gpsd_report(session->context->debug, LOG_DATA, 
+                            "VYSPI: N2K pgn %u\n", session->driver.vyspi.last_pgn);
+
+                // accept the NMEA 2000 packet
+                vyspi_packet_accept(lexer, VYSPI_PACKET);
+                vyspi_packet_discard(lexer);
+
+                PGN *work;
+                work = vyspi_find_pgn(session->driver.vyspi.last_pgn);
+                session->driver.nmea2000.workpgn = (void *) work;
+
+            } else if(lexer->frm_type == FRM_TYPE_ST) {
+
+                // TODO: use seatalk state engine - we use frame length as terminator
+                gpsd_report(session->context->debug, LOG_DATA,
+                            "VYSPI: PACKET_START & SEATALK\n");
+
+                // accept the SEATALK packet
+                vyspi_packet_accept(lexer, VYSPI_PACKET);
+                vyspi_packet_discard(lexer);
+
+            }
+        }
     }
-
-    // an unchanged 0x7e is always a frame start, escaped or not
-    if(b == 0x7e) {
-      vyspi_packet_discard(lexer);
-      lexer->length = 0;
-      lexer->frm_7dflag = 0;
-      lexer->frm_state = FRM_TYPE;
-      continue;
-    }
-
-    if(lexer->frm_7dflag) {
-      lexer->frm_7dflag = 0;
-      b ^= (1 << 5);
-    }
-
-    switch(lexer->frm_state) {
-    case FRM_TYPE:
-      if(b < FRM_TYPE_MAX) {
-	lexer->frm_type  = b;
-	lexer->length = 0;
-	lexer->frm_state = FRM_LEN;
-      } else {
-	lexer->length = 0;
-	lexer->frm_state = FRM_GND;
-	vyspi_packet_discard(lexer);
-      }
-      break;
-
-    case FRM_LEN:
-      // if MSB is set we have a 2 byte len (well, 15 bit)
-      // we store in big endian
-
-      if(lexer->length > 0) {
-	// if MSB is set in len already then we are in second byte
-	lexer->frm_state = FRM_START;
-
-	// add low byte
-	lexer->length |= (b << 7);
-	lexer->frm_offset = 3;
-	vyspi_n_discard(lexer, lexer->frm_offset);
-
-      } else {
-	// if its not set in len, then this is low byte and maybe only byte
-	lexer->length = b & 0x7f;
-	if(!(b & 0x80)) {
-	  // even the last byte and only byte
-	  lexer->frm_state = FRM_START;
-	  lexer->frm_offset = 2;
-	  vyspi_n_discard(lexer, lexer->frm_offset);
-	}
-      }
-
-      break;
-
-    case FRM_END:
-      lexer->length = 0;
-      vyspi_packet_discard(lexer);
-      break;
-
-    case FRM_START:
-
-
-      /* trying to avoid a new buffer and changing existing code;
-	 thus parsing inline here */
-      if(lexer->frm_type == FRM_TYPE_NMEA0183) {
-	vyspi_packet_parse(lexer, b);
-	lexer->type = VYSPI_PACKET;
-      }
-
-      if((size_t)(lexer->inbufptr - lexer->inbuffer) >= lexer->length) {
-	// frame is complete
-	gpsd_report(session->context->debug, LOG_RAW, 
-		    "VYSPI: preparse serial discovered complete frame with len %lu >= %lu\n", 
-		    lexer->length, lexer->inbufptr - lexer->inbuffer);
-	lexer->frm_state = FRM_END;
-
-      } 
-      break;
-
-    default:
-      // FRM_GND where we do nothing but wait for 0x7e
-      break;
-    }
-
-    if(lexer->frm_state == FRM_END) {
-
-      gpsd_report(session->context->debug, LOG_DATA, 
-		  "VYSPI: preparse serial complete frame type %d with len %lu, %lu\n", 
-		  lexer->frm_type, lexer->length, lexer->inbufptr - lexer->inbuffer);
-
-
-      if(lexer->frm_type == FRM_TYPE_NMEA0183) {
-
-	vyspi_packet_discard(lexer);
-
-	break;
-
-      } else if(lexer->frm_type == FRM_TYPE_NMEA2000) {
-
-	session->driver.vyspi.last_pgn = 
-	  getleu32(lexer->inbuffer, 0);
-
-	gpsd_report(session->context->debug, LOG_WARN, 
-		    "VYSPI: N2K pgn %u\n", session->driver.vyspi.last_pgn);
-
-	// accept the NMEA 2000 packet
-	vyspi_packet_accept(lexer, VYSPI_PACKET, 0);
-	vyspi_packet_discard(lexer);
-
-	PGN *work;
-	work = vyspi_find_pgn(session->driver.vyspi.last_pgn);
-	session->driver.nmea2000.workpgn = (void *) work;
-	break;
-
-      } else if(lexer->frm_type == FRM_TYPE_ST) {
-
-        // TODO: use seatalk state engine - we use frame length as terminator
-	gpsd_report(session->context->debug, LOG_WARN, "VYSPI: PACKET_START & SEATALK\n");
-
-	// accept the SEATALK packet
-	vyspi_packet_accept(lexer, VYSPI_PACKET, 0);
-	vyspi_packet_discard(lexer);
-
-	break;
-      }
-    }
-  }
 }
 
 static void vyspi_preparse_spi(struct gps_device_t *session) {
@@ -2988,52 +3044,54 @@ static ssize_t vyspi_get(struct gps_device_t *session)
   ssize_t          status;
 
   errno = 0;
+  
   // we still need to process old package before getching a new)
-  if(!packet_buffered_input(pkg)) {
+  //if(!packet_buffered_input(pkg)) {
 
-    // gpsd_report(session->context->debug, LOG_IO, "VYSPI reading from device\n");
+      status = read(fd, pkg->inbuffer + pkg->inbuflen,
+                    sizeof(pkg->inbuffer) - (pkg->inbuflen));
 
-    status = read(fd, pkg->inbuffer + pkg->inbuflen,
-		sizeof(pkg->inbuffer) - (pkg->inbuflen));
+      gpsd_report(session->context->debug, LOG_IO,
+                  "VYSPI reading from device with status %zd\n", status);
 
       pkg->outbuflen = 0;
 
-    if(status == -1) {
-      if ((errno == EAGAIN) || (errno == EINTR)) {
-	gpsd_report(session->context->debug, LOG_IO, "no bytes ready\n");
-	status = 0;
-	/* fall through, input buffer may be nonempty */
+      if(status == -1) {
+          if ((errno == EAGAIN) || (errno == EINTR)) {
+              gpsd_report(session->context->debug, LOG_IO, "no bytes ready\n");
+              status = 0;
+              /* fall through, input buffer may be nonempty */
+          } else {
+              gpsd_report(session->context->debug, LOG_ERROR, 
+                          "errno: %s\n", strerror(errno));
+              return -1;
+          }
       } else {
-	gpsd_report(session->context->debug, LOG_ERROR, 
-		    "errno: %s\n", strerror(errno));
-	return -1;
+          if (session->context->debug >= LOG_IO) {
+              char scratchbuf[MAX_PACKET_LENGTH*2+1];
+              gpsd_report(session->context->debug, LOG_IO,
+                          "Read %zd chars to buffer offset %zd (total %zd): %s\n",
+                          status, pkg->inbuflen, pkg->inbuflen + status,
+                          gpsd_packetdump(scratchbuf, sizeof(scratchbuf),
+                                          (char *)pkg->inbuffer + pkg->inbuflen, (size_t)status));
+          }
       }
-    } else {
-	if (pkg->debug >= LOG_RAW+1) {
-	    char scratchbuf[MAX_PACKET_LENGTH*2+1];
-	    gpsd_report(pkg->debug, LOG_RAW + 1,
-			"Read %zd chars to buffer offset %zd (total %zd): %s\n",
-			status, pkg->inbuflen, pkg->inbuflen + status,
-			gpsd_packetdump(scratchbuf, sizeof(scratchbuf),
-			    (char *)pkg->inbuffer + pkg->inbuflen, (size_t)status));
-	}
-    }
 
-    if(status <= 0) {
-      gpsd_report(session->context->debug, LOG_DATA, 
-		  "VYSPI: exit with len in bytes= %lu, errno= %d\n", 
-		  status, errno);
-      return 0;
-    }
+      if(status <= 0) {
+          gpsd_report(session->context->debug, LOG_DATA, 
+                      "VYSPI: exit with len in bytes= %lu, errno= %d\n", 
+                      status, errno);
+          return 0;
+      }
 
-    if(session->gpsdata.dev.isSerial) {
-      pkg->inbuflen += status;
-    } else {
-      // is SPI
-      pkg->inbuflen = status;
-      pkg->inbufptr = pkg->inbuffer;
-    }
-  }
+      if(session->gpsdata.dev.isSerial) {
+          pkg->inbuflen += status;
+      } else {
+          // is SPI
+          pkg->inbuflen = status;
+          pkg->inbufptr = pkg->inbuffer;
+      }
+//  } if(!packet_buffered_input(pkg))
 
   if(session->gpsdata.dev.isSerial) {
       vyspi_preparse_serial(session);
@@ -3087,86 +3145,90 @@ static gps_mask_t vyspi_parse_serial_input(struct gps_device_t *session)
 {    
   gps_mask_t mask = 0;
   struct gps_packet_t * lexer = &session->packet;
+  uint8_t ct = 0;
 
   PGN *work = NULL;
 
   static char * typeNames [] = {
-    "UNKOWN", "NMEA0183", "NMEA2000"
+      "COMMAND", "NMEA0183", "NMEA2000", "SEATALK", "AIS", "UNKOWN"
   };
 
   gpsd_report(session->context->debug, LOG_RAW, 
-	      "VYSPI: parse_input called with packet len = %lu\n", 
-	      lexer->outbuflen);
+	      "VYSPI: parse_input called with packet len = %lu and %u frames\n", 
+              lexer->outbuflen, lexer->out_count);
 
-  gpsd_report(session->context->debug, LOG_DATA, "VYSPI: type= %s, len= %lu\n", 
-	      ((lexer->frm_type > PKG_TYPE_NMEA2000) && (lexer->frm_type < PKG_TYPE_NMEA0183)) 
-	      ? typeNames[0] : typeNames[lexer->frm_type], 
-	      lexer->length);
-
-  if(lexer->length > lexer->outbuflen) 
-    return 0;
-
-  if(lexer->frm_type == FRM_TYPE_NMEA2000) {
-
-    if(4 > lexer->outbuflen) { 
-      gpsd_report(session->context->debug, LOG_WARN, 
-		  "VYSPI: exit prematurely: 4 > %lu\n",
-		  lexer->outbuflen);
-      return 0;
-    }
-
-    session->driver.vyspi.last_pgn = getleu32(lexer->outbuffer, 0);
-
-    gpsd_report(session->context->debug, LOG_DATA, 
-		"VYSPI: PGN = %u\n", 
-		session->driver.vyspi.last_pgn);
-    work = vyspi_find_pgn( session->driver.vyspi.last_pgn );
-
-    if (work != NULL) {
-
-      mask |= (work->func)(&session->packet.outbuffer[4], 
-			   lexer->length - 4, work, session);
-
-    } else {
-      gpsd_report(session->context->debug, LOG_ERROR, 
-		  "VYSPI: no work PGN found for pgn = %u\n", 
-		  session->driver.vyspi.last_pgn);
-    }
-
-  } else if (lexer->frm_type == FRM_TYPE_NMEA0183) {
+  for(ct = 0; ct < lexer->out_count; ct++) {
       
-    gps_mask_t st = 0;
+      gpsd_report(session->context->debug, LOG_DATA, "VYSPI: type= %s, len= %lu\n", 
+                  ((lexer->out_type[ct] >= 0) && (lexer->out_type[ct] < FRM_TYPE_MAX)) 
+                  ? typeNames[lexer->out_type[ct]] : typeNames[FRM_TYPE_MAX], 
+                  lexer->out_len[ct]);
+      
+      if(lexer->out_type[ct] == FRM_TYPE_NMEA2000) {
 
-    gpsd_report(session->context->debug, LOG_IO, "<= GPS: %s", lexer->outbuffer);
+          if(4 > lexer->out_len[ct]) { 
+              gpsd_report(session->context->debug, LOG_WARN, 
+                          "VYSPI: exit prematurely: 4 > %lu\n",
+                          lexer->outbuflen);
+              return 0;
+          }
 
-    if ((st= nmea_parse((char *)lexer->outbuffer, session)) == 0) {
-      gpsd_report(session->context->debug, LOG_WARN, 
-		  "unknown sentence: \"%s\"\n",	lexer->outbuffer);
-    } 
+          session->driver.vyspi.last_pgn =
+              getleu32(lexer->outbuffer + lexer->out_offset[ct], 0);
 
-    mask |= st;
+          gpsd_report(session->context->debug, LOG_DATA, 
+                      "VYSPI: PGN = %u\n", 
+                      session->driver.vyspi.last_pgn);
+          
+          work = vyspi_find_pgn( session->driver.vyspi.last_pgn );
 
-  } else if (lexer->frm_type == FRM_TYPE_ST) {
+          if (work != NULL) {
+              
+              unsigned char * b =
+                  session->packet.outbuffer + 4 + lexer->out_offset[ct];
+              
+              mask |= (work->func)(b, lexer->out_len[ct] - 4, work, session);
 
-    gps_mask_t st = 0;
+          } else {
+              gpsd_report(session->context->debug, LOG_ERROR, 
+                          "VYSPI: no work PGN found for pgn = %u\n", 
+                          session->driver.vyspi.last_pgn);
+          }
 
-    gpsd_report(session->context->debug, LOG_RAW, 
-		"VYSPI: Seatalk len= %lu (or %lu)\n", 
-		lexer->length, lexer->outbuflen);	  
-
-    st= seatalk_parse_input(session);
-    if(st == 0) {
-      gpsd_report(session->context->debug, LOG_WARN, 
-		  "unknown sentence\n");
-    } 
-
-    mask |= st;
-
-  } else {
+      } else if (lexer->out_type[ct] == FRM_TYPE_NMEA0183) {
+      
+          gpsd_report(session->context->debug, LOG_IO, "<= GPS: %s",
+                      lexer->outbuffer + lexer->out_offset[ct]);
+          
+          mask |= nmea_parse((char *)lexer->outbuffer + lexer->out_offset[ct], session);
     
-    gpsd_report(session->context->debug, LOG_ERROR, "UNKOWN: len= %lu\n", 
-		lexer->length);	  
+      } else if (lexer->out_type[ct] == FRM_TYPE_AIS) {
+      
+    
+          if (aivdm_decode
+              ((char *)session->packet.outbuffer + lexer->out_offset[ct],
+               session->packet.outbuflen,
+               session, &session->gpsdata.ais, 
+               session->context->debug)) {
+              mask = ONLINE_SET | AIS_SET;
+          } else
+              mask = ONLINE_SET;
 
+      } else if (lexer->out_type[ct] == FRM_TYPE_ST) {
+
+          gpsd_report(session->context->debug, LOG_RAW, 
+                      "VYSPI: Seatalk len= %lu (or %lu)\n", 
+                      lexer->out_len[ct], lexer->outbuflen);	  
+
+          mask |= process_seatalk(session->packet.outbuffer + lexer->out_offset[ct],
+                               lexer->out_len[ct], session);
+          
+      } else {
+    
+          gpsd_report(session->context->debug, LOG_ERROR, "UNKOWN: len= %lu\n", 
+                      lexer->out_len[ct]);	  
+
+      }
   }
 
   //    session->packet.outbuflen = 0;
