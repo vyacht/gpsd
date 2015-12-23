@@ -36,51 +36,29 @@ extern "C" {
 #include <stdio.h> /* sscanf */
 #include <ctype.h> /* isdigit */
 
-#ifdef __AVR__
-    #include <avr/pgmspace.h>
-#else
-    #define PROGMEM
-    #define PSTR
-    #define strstr_P strstr
-    #define sscanf_P sscanf
-    #define sprintf_P sprintf
-    #define strlen_P strlen
-    #define memcmp_P memcmp
-    #define memcpy_P memcpy
-#endif
-
 #define MAX_URI_LENGTH 2048
 
-#ifndef TRUE
-    #define TRUE 1
-#endif
-#ifndef FALSE
-    #define FALSE 0
-#endif
+static const char WS_HEADER_CONNECTION[] = "Connection: ";
+static const char WS_HEADER_UPGRADE[]    = "Upgrade: ";
 
-static const char connectionField[] PROGMEM = "Connection: ";
-static const char upgrade[] PROGMEM = "upgrade";
-static const char upgrade2[] PROGMEM = "Upgrade";
-static const char upgradeField[] PROGMEM = "Upgrade: ";
-static const char websocket[] PROGMEM = "websocket";
-static const char hostField[] PROGMEM = "Host: ";
-static const char originField[] PROGMEM = "Origin: ";
-static const char keyField[] PROGMEM = "Sec-WebSocket-Key: ";
-static const char protocolField[] PROGMEM = "Sec-WebSocket-Protocol: ";
-static const char versionField[] PROGMEM = "Sec-WebSocket-Version: ";
-static const char version[] PROGMEM = "13";
-static const char secret[] PROGMEM = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
+static const char hostField[]        = "Host: ";
+static const char originField[]      = "Origin: ";
+static const char keyField[]         = "Sec-WebSocket-Key: ";
+static const char protocolField[]    = "Sec-WebSocket-Protocol: ";
+static const char versionField[]     = "Sec-WebSocket-Version: ";
+static const char version[]          = "13";
+static const char secret[]           = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
 
-enum wsFrameType { // errors starting from 0xF0
-    WS_EMPTY_FRAME = 0xF0,
-    WS_ERROR_FRAME = 0xF1,
-    WS_INCOMPLETE_FRAME = 0xF2,
-    WS_TEXT_FRAME = 0x01,
-    WS_BINARY_FRAME = 0x02,
-    WS_PING_FRAME = 0x09,
-    WS_PONG_FRAME = 0x0A,
-    WS_OPENING_FRAME = 0xF3,
-    WS_CLOSING_FRAME = 0x08
+enum wsFrameType { 
+    WS_EMPTY_FRAME       = 0xF0,
+    WS_ERROR_FRAME       = 0xF1,
+    WS_INCOMPLETE_FRAME  = 0xF2,
+    WS_TEXT_FRAME        = 0x01,
+    WS_BINARY_FRAME      = 0x02,
+    WS_PING_FRAME        = 0x09,
+    WS_PONG_FRAME        = 0x0A,
+    WS_OPENING_FRAME     = 0xF3,
+    WS_CLOSING_FRAME     = 0x08
 };
     
 enum wsState {
