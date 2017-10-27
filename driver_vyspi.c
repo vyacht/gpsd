@@ -4607,6 +4607,52 @@ ssize_t vyspi_write_with_protocol(struct gps_device_t *session,
     size_t frmlen = frm_toHDLC8(frm, 255, frm_type, protocol_version, buf, len);
     gpsd_serial_write(session, (const char *)frm, frmlen);
 
+    session->driver.vyspi.bytes_written_frm[frm_type] += frmlen;
+    session->driver.vyspi.bytes_written_raw[frm_type] += len;
+
+    if(session->context->debug >= LOG_IO) {
+
+        int i = 0;
+        
+        struct timespec now;
+        tu_gettime(&now);
+
+        uint32_t nowms = tu_get_time_in_milli(&now);
+        uint32_t diff = nowms - session->driver.vyspi.bytes_written_last_ms;
+        double rate = 1000.0*((double)(frmlen))/((double)diff);
+        
+        gpsd_report(session->context->debug, LOG_IO,
+                    "Wrote %f bytes/s (%0.2fkBit/s) as %lu bytes in %u ms\n",
+                    rate, rate*8.0/1024.0,
+                    frmlen, diff);
+        session->driver.vyspi.bytes_written_last_ms = nowms;
+        
+        if(session->driver.vyspi.bytes_written_last_sec + 1000 < nowms) {
+            const char * ftn[5] = { "CMD", "183", "N2K", "ST ", "AIS"};
+
+            for(i = 0; i < 5; i++) {
+                double rate_f = 1000.0*((double)(session->driver.vyspi.bytes_written_frm[i]))/
+                    ((double)(nowms - session->driver.vyspi.bytes_written_last_sec));
+                double rate_r = 1000.0*((double)(session->driver.vyspi.bytes_written_raw[i]))/
+                    ((double)(nowms - session->driver.vyspi.bytes_written_last_sec));
+                gpsd_report(session->context->debug, LOG_IO,
+                            "%s   %0.2f (%0.2f) kBit/s with %u (%u) bytes in %u ms\n",
+                            ftn[i],
+                            rate_f*8.0/1024.0, rate_r*8.0/1024.0,
+                            session->driver.vyspi.bytes_written_frm[i],
+                            session->driver.vyspi.bytes_written_raw[i],
+                            (nowms - session->driver.vyspi.bytes_written_last_sec));
+                
+                session->driver.vyspi.bytes_written_frm[i] = 0;
+                session->driver.vyspi.bytes_written_raw[i] = 0;
+            }
+            gpsd_report(session->context->debug, LOG_IO,
+                        "    last= %u ms, now= %u ms\n",
+                        session->driver.vyspi.bytes_written_last_sec, nowms);
+            session->driver.vyspi.bytes_written_last_sec = nowms;
+        }
+    }
+    
     return len;
 }
 
@@ -4636,6 +4682,13 @@ int vyspi_init(struct gps_device_t *session) {
                     "Error reading port configuration. Assuming defaults.\n");
         return 1;
     }
+
+    for(i = 0; i < 5; i++) {
+        session->driver.vyspi.bytes_written_frm[i] = 0; /* collecting stats per type */ 
+        session->driver.vyspi.bytes_written_raw[i] = 0; /* net amount of data w/o frm overhead */
+    }
+    session->driver.vyspi.bytes_written_last_ms = 0;
+    session->driver.vyspi.bytes_written_last_sec = 0;
 
     uint8_t cmd[255];
     size_t len = 0;

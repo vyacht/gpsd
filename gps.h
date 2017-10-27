@@ -2375,6 +2375,7 @@ struct gps_data_t {
 
     /* Private data - client code must not set this */
     void *privdata;
+    uint32_t bytes_send;
 };
 
 extern int gps_open(/*@null@*/const char *, /*@null@*/const char *,

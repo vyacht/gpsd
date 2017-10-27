@@ -552,6 +552,7 @@ ssize_t gpsd_serial_write(struct gps_device_t * session,
 */
     status = write(session->gpsdata.gps_fd, buf, len);
     ok = (status == (ssize_t) len);
+    session->gpsdata.bytes_send += status;
     if(!ok) error = errno;
     (void)tcdrain(session->gpsdata.gps_fd);
     /* extra guard prevents expensive hexdump calls */

@@ -723,7 +723,11 @@ struct gps_device_t {
             uint8_t prio;
             uint8_t src;
             uint8_t dest;
-
+            
+            uint32_t bytes_written_frm[5]; /* collecting stats per type */ 
+            uint32_t bytes_written_raw[5]; /* net amount of data w/o frm overhead */
+            uint32_t bytes_written_last_ms;
+            uint32_t bytes_written_last_sec;
         } vyspi;
 #endif /* VYSPI_ENABLE */
 #ifdef SEATALK_ENABLE

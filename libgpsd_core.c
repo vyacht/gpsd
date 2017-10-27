@@ -386,6 +386,7 @@ void gpsd_init(struct gps_device_t *session, struct gps_context_t *context,
 
     // we start out with protocol version 0 and upgrade if stm32 supports it
     session->gpsdata.dev.protocol_version = 0;
+    session->gpsdata.bytes_send = 0;
 
     session->driver.nmea2000.own_src_id = 0xff; // use this as null
     session->driver.nmea2000.enable_writing = 0x00;

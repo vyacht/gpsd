@@ -174,6 +174,12 @@ static int sd_socket_count = 0;
 #endif
 #endif
 
+uint32_t last_bytes_send = 0,
+    last_bytes_send_report_ms = 0;
+uint32_t last_bytes_send_second = 0,
+    last_bytes_send_second_report_ms = 0;
+
+
 const char *gpsd_canboatdump(char *scbuf, size_t scbuflen, struct gps_device_t *device);
 
 static int max_subscriber_loglevel = LOG_ERROR - 1; // -1 is LOG_ERROR
@@ -2464,6 +2470,34 @@ static void all_reports(struct gps_device_t *device, gps_mask_t changed)
 
     /* report raw packets to users subscribed to those */
     raw_report(device);
+
+    if(context.debug >= LOG_IO) {
+        struct timespec now;
+        tu_gettime(&now);
+
+        uint32_t nowms = tu_get_time_in_milli(&now);
+        double rate = 1000.0*((double)(device->gpsdata.bytes_send - last_bytes_send))/
+            ((double)(nowms - last_bytes_send_report_ms));
+        gpsd_report(context.debug, LOG_IO,
+                    "Wrote %f bytes/s (%0.2fkBit/s) as %u bytes in %u ms\n", rate, rate*8.0/1024.0,
+                    device->gpsdata.bytes_send - last_bytes_send,
+                    (nowms - last_bytes_send_report_ms));
+        last_bytes_send = device->gpsdata.bytes_send;
+        last_bytes_send_report_ms = nowms;
+
+        if(last_bytes_send_second_report_ms + 1000 > nowms) {
+            rate = 1000.0*((double)(device->gpsdata.bytes_send - last_bytes_send_second))/
+                ((double)(nowms - last_bytes_send_second_report_ms));
+            gpsd_report(context.debug, LOG_IO,
+                        "Wrote %f bytes/s (%0.2fkBit/s) as %u bytes in last %0.2f secs\n",
+                        rate, rate*8.0/1024.0,
+                        device->gpsdata.bytes_send - last_bytes_send_second,
+                        (nowms - last_bytes_send_second_report_ms)/1000.0);
+            last_bytes_send_second = device->gpsdata.bytes_send;
+            last_bytes_send_second_report_ms = nowms;
+        }
+    }
+
 
 #ifdef SOCKET_EXPORT_ENABLE
     /* update all subscribers associated with this device */
