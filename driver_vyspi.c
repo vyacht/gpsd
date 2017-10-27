@@ -4447,8 +4447,14 @@ static void vyspi_set_serial(struct gps_device_t *session, speed_t speed) {
   // session->ttyset.c_cc[VTIME]     =   5;                  // 0.5 seconds read timeout
 
   /* Set Baud Rate */
-  cfsetospeed (&session->ttyset, (speed_t)speed);
-  cfsetispeed (&session->ttyset, (speed_t)speed);
+  if(cfsetospeed (&session->ttyset, (speed_t)speed) < 0) {
+    gpsd_report(session->context->debug, LOG_ERROR,
+		"Failed to set new speed %d: %s\n", errno, strerror(errno));
+  }
+  if(cfsetispeed (&session->ttyset, (speed_t)speed) < 0) {
+    gpsd_report(session->context->debug, LOG_ERROR,
+		"Failed to set new speed %d: %s\n", errno, strerror(errno));
+  }
 
   /* Setting other Port Stuff */
   session->ttyset.c_cflag     &=  ~CSIZE;
