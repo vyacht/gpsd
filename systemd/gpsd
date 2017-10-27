@@ -3,15 +3,15 @@ config gpsd 'core'
 	option port '2947'
 	option listen_globally 'true'
 	option enabled 'true'
-	list device 'udp://127.255.255.255:2000'
+	list device 'vyspi://127.255.255.255:2000'
 
 config interface 'port1'
-	option device 'udp://127.255.255.255:2000'
+	option device 'vyspi://127.255.255.255:2000'
 	option input 'ACCEPT'
 	option output 'ACCEPT'
 
 config interface 'port2'
-	option device 'udp://127.255.255.255:2000'
+	option device 'vyspi://127.255.255.255:2000'
 	option input 'ACCEPT'
 
 config forward
