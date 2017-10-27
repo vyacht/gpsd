@@ -2207,6 +2207,7 @@ static void pseudonmea_report(gps_mask_t changed,
                 device->gpsdata.dev.path);
 
     int go = 0;
+    int nmea0183_ais = device->packet.out_count;
 
     if(VYSPI_PACKET == device->packet.type) {
         uint16_t cnt = 0;
@@ -2215,10 +2216,18 @@ static void pseudonmea_report(gps_mask_t changed,
                || (device->packet.out_type[cnt] == FRM_TYPE_ST)){
                 go = 1;
                 break;
+            } else if((device->packet.out_type[cnt] == FRM_TYPE_AIS)
+                      || (device->packet.out_type[cnt] == FRM_TYPE_NMEA0183)) {
+                nmea0183_ais--;
             }
+        }
+        // we only had NMEA 0183 packages, no need to generate from data
+        if(nmea0183_ais <= 0) {
+            return;
         }
     }
 
+    
     if (((GPS_PACKET_TYPE(device->packet.type)
          && !TEXTUAL_PACKET_TYPE(device->packet.type))) || go) {
 
