@@ -365,8 +365,8 @@ static void update_compass_panel(struct gps_data_t *gpsdata)
     (void)mvwprintw(datawin, 1, DATAWIN_VALUE_OFFSET, "%-*s", 27, scr);
 
     /* Fill in the heading. */
-    if (isnan(gpsdata->navigation.course_over_ground) == 0) {
-	(void)snprintf(scr, sizeof(scr), "%.1f degrees", gpsdata->navigation.course_over_ground);
+    if (isnan(gpsdata->navigation.course_over_ground[compass_true]) == 0) {
+	(void)snprintf(scr, sizeof(scr), "%.1f degrees", gpsdata->navigation.course_over_ground[compass_true]);
     } else
 	(void)snprintf(scr, sizeof(scr), "n/a");
     (void)mvwprintw(datawin, 2, DATAWIN_VALUE_OFFSET, "%-*s", 27, scr);
@@ -517,13 +517,14 @@ static void update_gps_panel(struct gps_data_t *gpsdata)
     (void)mvwprintw(datawin, 5, DATAWIN_VALUE_OFFSET, "%-*s", 27, scr);
 
     /* Fill in the heading. */
-    if (gpsdata->fix.mode >= MODE_2D && isnan(gpsdata->navigation.course_over_ground) == 0) {
+    if (gpsdata->fix.mode >= MODE_2D 
+        && isnan(gpsdata->navigation.course_over_ground[compass_true]) == 0) {
 	double magheading = true2magnetic(gpsdata->fix.latitude,
-					 gpsdata->fix.longitude,
-					  gpsdata->navigation.course_over_ground);
+                                      gpsdata->fix.longitude,
+                                      gpsdata->navigation.course_over_ground[compass_true]);
 	if (!magnetic_flag || isnan(magheading) != 0) {
 	    (void)snprintf(scr, sizeof(scr), "%.1f deg (true)",
-			   gpsdata->navigation.course_over_ground);
+			   gpsdata->navigation.course_over_ground[compass_true]);
 	} else {
 	    (void)snprintf(scr, sizeof(scr), "%.1f deg (mag) ",
 		magheading);

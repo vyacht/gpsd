@@ -81,8 +81,8 @@ bool ais_binary_decode(const int debug,
     ais->repeat = UBITS(6, 2);
     ais->mmsi = UBITS(8, 30);
     gpsd_report(debug, LOG_INF,
-		"AIVDM message type %d, MMSI %09d:\n",
-		ais->type, ais->mmsi);
+                "%s message type %d, MMSI %09d:\n",
+                ais->own_mmsi?"AIVDO":"AIVDM", ais->type, ais->mmsi);
 
 #define PERMISSIVE_LENGTH_CHECK(correct) \
 	if (bitlen < correct) { \
@@ -127,6 +127,14 @@ bool ais_binary_decode(const int debug,
 	//ais->type1.spare	= UBITS(145, 3);
 	ais->type1.raim		= UBITS(148, 1)!=0;
 	ais->type1.radio	= UBITS(149, 19);
+            gpsd_report(debug, LOG_DATA,
+                        "%s message type %d, MMSI %09d, speed: %u d kts, cog: %d d deg, hdg: %d deg\n",
+                        ais->own_mmsi?"AIVDO":"AIVDM", ais->type, ais->mmsi,
+                        ais->type1.speed, ais->type1.course, ais->type1.heading);
+            gpsd_report(debug, LOG_DATA,
+                        "%s message type %d, MMSI %09d, lat: %f, lon: %f\n",
+                        ais->own_mmsi?"AIVDO":"AIVDM", ais->type, ais->mmsi,
+                        ais->type1.lat/AIS_LATLON_DIV, ais->type1.lon/AIS_LATLON_DIV);   
 	break;
     case 4: 	/* Base Station Report */
     case 11:	/* UTC/Date Response */
@@ -176,6 +184,10 @@ bool ais_binary_decode(const int debug,
 	if (bitlen >= 423)
 	    ais->type5.dte          = UBITS(422, 1);
 	//ais->type5.spare        = UBITS(423, 1);
+            gpsd_report(debug, LOG_DATA,
+                        "%s message type %d, MMSI %09d, callsign %s, name %s\n",
+                        ais->own_mmsi?"AIVDO":"AIVDM", ais->type, ais->mmsi,
+                        ais->type5.callsign, ais->type5.shipname);
 	break;
     case 6: /* Addressed Binary Message */
 	RANGE_CHECK(88, 1008);
@@ -831,6 +843,14 @@ bool ais_binary_decode(const int debug,
 	ais->type18.assigned	= UBITS(146, 1)!=0;
 	ais->type18.raim		= UBITS(147, 1)!=0;
 	ais->type18.radio		= UBITS(148, 20);
+            gpsd_report(debug, LOG_DATA,
+                        "%s message type %d, MMSI %09d, speed: %u d kts, cog: %d d deg, hdg: %d deg\n",
+                        ais->own_mmsi?"AIVDO":"AIVDM", ais->type, ais->mmsi,
+                        ais->type18.speed, ais->type18.course, ais->type18.heading);
+            gpsd_report(debug, LOG_DATA,
+                        "%s message type %d, MMSI %09d, lat: %f, lon: %f\n",
+                        ais->own_mmsi?"AIVDO":"AIVDM", ais->type, ais->mmsi,
+                        ais->type18.lat/AIS_LATLON_DIV, ais->type18.lon/AIS_LATLON_DIV);
 	break;
     case 19:	/* Extended Class B CS Position Report */
 	PERMISSIVE_LENGTH_CHECK(312)

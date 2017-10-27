@@ -31,6 +31,8 @@ extern "C" {
 #endif
 #include <netinet/in.h> /* sockaddr_in */
 
+#include "ring_buffer.h"
+
 /*
  * 4.1 - Base version for initial JSON protocol (Dec 2009, release 2.90)
  * 4.2 - AIS application IDs split into DAC and FID (July 2010, release 2.95)
@@ -887,8 +889,9 @@ struct route_info {
 struct ais_t
 {
     unsigned int	type;		/* message type */
-    unsigned int    	repeat;		/* Repeat indicator */
+    unsigned int    repeat;		/* Repeat indicator */
     unsigned int	mmsi;		/* MMSI */
+    unsigned int    own_mmsi;   /* 0: other, >=1: own */
     union {
 	/* Types 1-3 Common navigation info */
 	struct {
@@ -1828,8 +1831,8 @@ struct dop_t {
 };
 
 enum compass_t {
-  compass_magnetic,
-  compass_true
+    compass_true = 0,
+    compass_magnetic = 1,
 };
 
 struct navigation_t {
@@ -1837,35 +1840,39 @@ struct navigation_t {
 #define NAV_SOG_PSET            (1llu<< 1)
 #define NAV_EPS_PSET            (1llu<< 2)
 #define NAV_STW_PSET	        (1llu<< 3)
-#define NAV_COG_PSET	        (1llu<< 4)
-#define NAV_EPD_PSET	        (1llu<< 5)
-#define NAV_DPT_PSET	        (1llu<< 6)
-#define NAV_DPT_OFF_PSET        (1llu<< 7)
-#define NAV_DIST_TOT_PSET	(1llu<< 8)
-#define NAV_DIST_TRIP_PSET	(1llu<< 9)
-#define NAV_HDG_TRUE_PSET	(1llu<<10)
-#define NAV_HDG_MAGN_PSET	(1llu<<11)
-#define NAV_ROT_PSET	        (1llu<<12)
-#define NAV_RUDDER_ANGLE_PSET	(1llu<<13)
-#define NAV_XTE_PSET	        (1llu<<14)
+#define NAV_COG_TRUE_PSET       (1llu<< 4)
+#define NAV_COG_MAGN_PSET       (1llu<< 5)
+#define NAV_EPD_PSET	        (1llu<< 6)
+#define NAV_DPT_PSET	        (1llu<< 7)
+#define NAV_DPT_OFF_PSET        (1llu<< 8)
+#define NAV_DIST_TOT_PSET   	(1llu<< 9)
+#define NAV_DIST_TRIP_PSET	    (1llu<<10)
+#define NAV_HDG_TRUE_PSET	    (1llu<<11)
+#define NAV_HDG_MAGN_PSET	    (1llu<<12)
+#define NAV_ROT_PSET	        (1llu<<13)
+#define NAV_RUDDER_ANGLE_PSET	(1llu<<14)
 
-  gps_mask_t set;
+    gps_mask_t set;
 
-  // speed is knots
-  double speed_over_ground;
-  double eps;		/* Speed uncertainty, meters/sec */
+    // speed is knots
+    double speed_over_ground;
+    rb_t speed_over_grounds;
 
-  double speed_thru_water;
+    double eps;		/* Speed uncertainty, meters/sec */
+
+
+    double speed_thru_water;
+    rb_t speed_thru_waters;
 
   // deg north
-  double course_over_ground;
+  double course_over_ground[2];
   double epd;		/* Track uncertainty, degrees */
 
   // deg / sec
-  double rate_of_turn; 
+  double rate_of_turn;
 
   // deg
-  double rudder_angle; 
+  double rudder_angle;
 
   // metric meters
   double depth;
@@ -1877,26 +1884,77 @@ struct navigation_t {
 
   // magnetic or true heading
   double heading[2];
+};
 
-  // meters
-  double xte;
 
+enum waypoint_arrival_status_t {
+    waypoint_arrival_unknown       = 0,
+    waypoint_not_arrived           = 1,
+    waypoint_circle_entered        = 2,
+    waypoint_perpendicular_crossed = 4,
+};
+
+struct waypoint_navigation_t {
+
+#define WPY_XTE_PSET	               (1llu<<1)
+#define WPY_ACTIVE_TO_PSET             (1llu<<2)
+#define WPY_ACTIVE_FROM_PSET           (1llu<<3)
+#define WPY_LATLON_TO_PSET             (1llu<<4)
+#define WPY_RANGE_TO_PSET              (1llu<<5)
+#define WPY_BEARING_FROM_ORG_TO_PSET   (1llu<<6)
+#define WPY_BEARING_FROM_POS_TO_PSET   (1llu<<7)
+#define WPY_SPEED_FROM_ORG_TO_PSET     (1llu<<8)
+#define WPY_ARRIVAL_STATUS_PSET        (1llu<<9)
+#define WPY_ETA_PSET                   (1llu<<10)
+
+    gps_mask_t set;
+
+    // meters
+    double xte;
+
+    // active to waypoint
+    char active_to[255];
+    // active from waypoint
+    char active_from[255];
+
+    // Destination Waypoint Latitude
+    double latitude;
+    // Destination Waypoint Longitude
+    double longitude;
+
+    // Range to destination in m
+    double range_to_destination;
+
+    // Bearing to destination from origin in degrees True to North
+    double bearing_from_org_to_destination;
+
+    // Bearing to destination from position in degrees True to North
+    double bearing_from_pos_to_destination;
+
+    // Destination closing velocity in knots
+    double speed_to_destination;
+
+    // Arrival Status, A = Arrival Circle Entered
+    uint8_t arrival_status;
+
+    // ETA
+    timestamp_t eta;
 };
 
 struct wind_t {
   // deg 0 .. 360, in case of apparent: right of bow (clockwise)
   double angle;
-  
+
   // speed in knots
   double speed;
 };
 
-struct wind_reference_t {
-  struct wind_t apparent; // or "relative"
-  struct wind_t true_north; 
-  struct wind_t magnetic_north; 
-  struct wind_t calculated_ground;
-  struct wind_t calculated_water;
+enum wind_reference_t {
+    wind_true_north = 0,
+    wind_magnetic_north = 1,
+    wind_apparent = 2,
+    wind_true_to_boat = 3,
+    wind_true_to_water = 4
 };
 
 enum temp_reference_t {
@@ -1905,22 +1963,27 @@ enum temp_reference_t {
   temp_inside
 };
 
+// hack for now
+#define ENV_WIND_APPARENT_SPEED_PSET        (1llu<< 1)
+#define ENV_WIND_APPARENT_ANGLE_PSET        (1llu<< 2)
+#define ENV_WIND_TRUE_NORTH_SPEED_PSET      (1llu<< 3)
+#define ENV_WIND_TRUE_NORTH_ANGLE_PSET      (1llu<< 4)
+#define ENV_WIND_MAGN_SPEED_PSET            (1llu<< 5)
+#define ENV_WIND_MAGN_ANGLE_PSET            (1llu<< 6)
+#define ENV_WIND_TRUE_TO_BOAT_SPEED_PSET    (1llu<< 7)
+#define ENV_WIND_TRUE_TO_BOAT_ANGLE_PSET    (1llu<< 8)
+#define ENV_WIND_TRUE_TO_WATER_SPEED_PSET   (1llu<< 9)
+#define ENV_WIND_TRUE_TO_WATER_ANGLE_PSET   (1llu<< 10)
+#define ENV_TEMP_WATER_PSET	                (1llu<< 11)
+#define ENV_TEMP_AIR_PSET	                (1llu<< 12)
+#define ENV_VARIATION_PSET	                (1llu<< 13)
+#define ENV_DEVIATION_PSET	                (1llu<< 14)
+
 struct environment_t {
-  // hack for now
-#define ENV_WIND_APPARENT_SPEED_PSET	(1llu<< 1)
-#define ENV_WIND_APPARENT_ANGLE_PSET	(1llu<< 2)
-#define ENV_WIND_TRUE_GROUND_SPEED_PSET	(1llu<< 3)
-#define ENV_WIND_TRUE_GROUND_ANGLE_PSET	(1llu<< 4)
-#define ENV_WIND_TRUE_WATER_SPEED_PSET	(1llu<< 5)
-#define ENV_WIND_TRUE_WATER_ANGLE_PSET	(1llu<< 6)
-#define ENV_TEMP_WATER_PSET	        (1llu<< 7)
-#define ENV_TEMP_AIR_PSET	        (1llu<< 8)
-#define ENV_VARIATION_PSET	        (1llu<< 9)
-#define ENV_DEVIATION_PSET	        (1llu<<10)
 
   gps_mask_t set;
 
-  struct wind_reference_t wind;
+  struct wind_t wind[5];
 
   // we take it in deg Celsius
   double temp[5];
@@ -1938,7 +2001,70 @@ struct environment_t {
 
   // compass error in degrees
   double deviation;
-  
+
+};
+
+enum engine_reference_t {
+    single_or_double_port = 0,
+    starboard = 1,
+};
+
+enum engine_transmission_state_t {
+    forward,
+    neutral,
+    reverse,
+    fault
+};
+
+struct engine_transmission_t {
+    enum engine_transmission_state_t state;
+
+};
+
+struct single_engine_t {
+
+#define ENG_PORT_PSET       (1llu<< 1)
+#define ENG_STARBOARD_PSET  (1llu<< 2)
+
+#define ENG_SPEED_PSET      (1llu<< 3)
+#define ENG_TILT_PSET       (1llu<< 4)
+
+#define ENG_BOOST_PRESSURE_PSET         (1llu<< 5)
+#define ENG_TEMPERATURE_PSET            (1llu<< 6)
+#define ENG_FUEL_RATE_PSET              (1llu<< 7)
+#define ENG_FUEL_PRESSURE_PSET          (1llu<< 8)
+#define ENG_ALTERNATOR_VOLTAGE_PSET     (1llu<< 9)
+#define ENG_OIL_TEMPERATURE_PSET        (1llu<< 10)
+#define ENG_OIL_PRESSURE_PSET           (1llu<< 11)
+#define ENG_COOLANT_TEMPERATURE_PSET    (1llu<< 12)
+#define ENG_COOLANT_PRESSURE_PSET       (1llu<< 13)
+#define ENG_TOTAL_HOURS_PSET            (1llu<< 14)
+#define ENG_TORQUE_PSET                 (1llu<< 15)
+#define ENG_LOAD_PSET                   (1llu<< 16)
+
+
+    double speed;              // RPM
+    double tilt;
+    double boost_pressure;     // pascal
+    double temperature;        // K
+    double fuel_rate;          // liter per hour
+    double fuel_pressure;      // pascal
+    double alternator_voltage; // V
+    double oil_temperature;    // K
+    double oil_pressure;       // pascal
+    double coolant_temperature;// K
+    double coolant_pressure;   // pascal
+    double total_hours;        // seconds
+    double torque;             // percentage
+    double load;               // percentage
+
+    struct engine_transmission_t transmission;
+
+};
+
+struct engine_t {
+    gps_mask_t set;
+    struct single_engine_t instance[2];
 };
 
 struct rawdata_t {
@@ -1968,8 +2094,8 @@ struct version_t {
 
   /* this should actually go into a shared file with stm32/vynema */
 
-typedef enum {PORT_TYPE_HOST     = 0, 
-	      PORT_TYPE_NMEA0183 = 1, 
+typedef enum {PORT_TYPE_HOST     = 0,
+	      PORT_TYPE_NMEA0183 = 1,
 	      PORT_TYPE_SEATALK  = 2} port_type_t;
 
 typedef enum {PORT_SPEED_4800 = 4800,
@@ -1977,9 +2103,9 @@ typedef enum {PORT_SPEED_4800 = 4800,
 	      PORT_SPEED_115200 = 115200} port_speed_t;
 
 
-#define MAX_VY_PORT 3
+#define MAX_VY_PORT 5
 #define DEVICE_SHORTNAME_MAX 24
-    
+
 typedef enum {
   device_policy_accept = 0,
   device_policy_reject = 1
@@ -1988,7 +2114,7 @@ typedef enum {
 struct device_port_t {
     char type_str[PATH_MAX];
     char name[DEVICE_SHORTNAME_MAX];            /* optional short name for this device */
-    
+
     int no;
     port_speed_t speed;
     port_type_t type;
@@ -1997,9 +2123,20 @@ struct device_port_t {
     char forward[4][DEVICE_SHORTNAME_MAX];         /* list of device shortnames to forward to */
 };
 
+    // node states tracked in order to handle a n2k node start
+    enum node_state_t {
+        node_init     = 0,  // not yet initialized, just in reading state
+        node_starting = 1,  // handshake phase
+        node_ready    = 2   // ready to also write to n2k bus
+    } ;
+
 struct devconfig_t {
-   
+
     char path[GPS_PATH_MAX];
+
+    uint8_t protocol_version;
+    enum node_state_t node_state;
+    struct timespec	node_state_time;
 
     /* host port = 0, port 1 and port 2 */
     struct device_port_t portlist[MAX_VY_PORT];
@@ -2025,7 +2162,7 @@ enum protocol_t {
     tcp       = 0,
     websocket = 1,
     http      = 2
-}; 
+};
 
 struct policy_t {
     enum protocol_t protocol;	/* normal, websocket or http mode? */
@@ -2034,6 +2171,7 @@ struct policy_t {
     bool json;				/* requesting JSON? */
     bool signalk;			/* requesting signalk? */
     bool nmea;				/* requesting dumping as NMEA? */
+    bool canboat;			/* requesting dumping as canboat? */
     int raw;				/* requesting raw data? */
     bool scaled;			/* requesting report scaling? */
     bool timing;			/* requesting timing info */
@@ -2051,8 +2189,8 @@ struct policy_t {
 
 /*
  * interfaces are unique by addr and name
- * multiple interfaces maybe created by a 
- *   single interface configuration section 
+ * multiple interfaces maybe created by a
+ *   single interface configuration section
  *   e.g. there is no addr giving, then all available addr will create an interface
  */
 struct interface_t {
@@ -2062,6 +2200,16 @@ struct interface_t {
     char proto[16];
     struct sockaddr_in ipaddr;
     struct sockaddr_in bcast;
+};
+
+#define MAX_UUID_STR_LEN 37
+#define MAX_MMSI_STR_LEN 10
+#define MAX_VESSELNAME_STR_LEN 256
+
+struct vessel_t {
+    char uuid[MAX_UUID_STR_LEN];
+    uint32_t mmsi;
+    char name[MAX_VESSELNAME_STR_LEN];
 };
 
 struct timedrift_t {
@@ -2138,8 +2286,10 @@ struct gps_data_t {
 #define TIMEDRIFT_SET	(1llu<<32)
 #define NAVIGATION_SET	(1llu<<33)
 #define ENVIRONMENT_SET	(1llu<<34)
-#define EOF_SET		(1llu<<35)
-#define SET_HIGH_BIT	35
+#define ENGINE_SET	(1llu<<35)
+#define WAYPOINT_SET	(1llu<<36)
+#define EOF_SET		(1llu<<37)
+#define SET_HIGH_BIT	37
     timestamp_t online;		/* NZ if GPS is on line, 0 if not.
 				 *
 				 * Note: gpsd clears this time when sentences
@@ -2184,18 +2334,26 @@ struct gps_data_t {
 
     struct devconfig_t dev;	/* device that shipped last update */
 
-    struct policy_t policy;	/* our listening policy 
+    struct policy_t policy;	/* our listening policy
                                    TODO: seems to be mere for status reporting in libgps_core */
 
     /* should be moved to privdata someday */
     char tag[MAXTAGLEN+1];	/* tag of last sentence processed */
 
-    struct navigation_t navigation;
-    struct environment_t environment;
+    struct navigation_t          navigation;
+    struct environment_t         environment;
+    struct waypoint_navigation_t waypoint;
+    struct engine_t              engine;
+
+    uint32_t own_mmsi;
+
+    // list of ecu_names encountered, position in array is the can src id
+    uint64_t ecu_names[256];
+    uint8_t src_addr_seen[256];
 
     /* pack things never reported together to reduce structure size */
 #define UNION_SET	(RTCM2_SET|RTCM3_SET|SUBFRAME_SET|AIS_SET|ATTITUDE_SET|GST_SET|VERSION_SET|DEVICELIST_SET|LOGMESSAGE_SET|ERROR_SET|TIMEDRIFT_SET)
-    union {
+    struct {
 	/* unusual forms of sensor data that might come up the pipe */
 	struct rtcm2_t	rtcm2;
 	struct rtcm3_t	rtcm3;
@@ -2269,7 +2427,10 @@ extern double wgs84_separation(double, double);
 #define MPS_TO_KPH	3.6		/* Meters per second to klicks/hr */
 #define MPS_TO_MPH	2.2369363	/* Meters/second to miles per hour */
 #define MPS_TO_KNOTS	1.9438445	/* Meters per second to knots */
+#define MPS_TO_SMPH     2.23693629  /* Meters per second to statute miles per hour */
 /* miles and knots are both the international standard versions of the units */
+
+#define KELVIN_2_CELSIUS -273.15
 
 /* angle conversion multipliers */
 #define GPS_PI      	3.1415926535897932384626433832795029
@@ -2309,10 +2470,10 @@ extern double wgs84_separation(double, double);
 
 /* Some libcs don't have strlcat/strlcpy. Local copies are provided */
 #ifndef HAVE_STRLCAT
-size_t strlcat(/*@out@*/char *dst, /*@in@*/const char *src, size_t size);
+//size_t strlcat(/*@out@*/char *dst, /*@in@*/const char *src, size_t size);
 #endif
 #ifndef HAVE_STRLCPY
-size_t strlcpy(/*@out@*/char *dst, /*@in@*/const char *src, size_t size);
+//size_t strlcpy(/*@out@*/char *dst, /*@in@*/const char *src, size_t size);
 #endif
 
 #ifdef __cplusplus

@@ -36,7 +36,10 @@ extern "C" {
 #include <stdio.h> /* sscanf */
 #include <ctype.h> /* isdigit */
 
-#define MAX_URI_LENGTH 2048
+#define WS_MAX_URI_LENGTH 2048
+#define WS_MAX_PARAM_LEN 16
+#define WS_MAX_VALUE_LEN 32
+#define WS_MAX_PARAM_NO   5
 
 /*
  * OPTIONS /signalk/api/v2/vessels/self HTTP/1.1
@@ -80,14 +83,21 @@ enum wsState {
     WS_STATE_CLOSING
 };
 
+    struct ws_param_t {
+        char param[WS_MAX_URI_LENGTH];
+        char value[WS_MAX_URI_LENGTH];
+    };
+
 struct handshake {
-    char *host;
-    char *origin;
-    char *key;
-    char *protocol;
-    char resource[MAX_URI_LENGTH];
+    char host[WS_MAX_URI_LENGTH];
+    char origin[WS_MAX_URI_LENGTH];
+    char key[WS_MAX_URI_LENGTH];
+    char protocol[WS_MAX_URI_LENGTH];
+    char resource[WS_MAX_URI_LENGTH];
+    struct ws_param_t params[WS_MAX_PARAM_NO];
     enum wsFrameType frameType;
 };
+
 
     /**
      * @param inputFrame Pointer to input frame
@@ -124,7 +134,7 @@ struct handshake {
      * @param outLen Return length of extracted data
      * @return Type of parsed frame
      */
-    enum wsFrameType wsParseInputFrame(uint8_t *inputFrame, size_t inputLength,
+    enum wsFrameType wsParseInputFrame(const uint8_t *inputFrame, const size_t inputLength,
                                        uint8_t **dataPtr, size_t *dataLength);
 
     /**

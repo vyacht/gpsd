@@ -40,6 +40,11 @@
 #if defined(SEATALK_ENABLE)
 #include "driver_seatalk.h"
 #endif /* defined(SEATALK_ENABLE) */
+#include "navigation.h"
+
+void gpsd_init_ports(struct gps_device_t *session);
+void gpsd_waypoint_clear(struct waypoint_navigation_t *);
+void gpsd_environment_clear(struct environment_t * env);
 
 #if defined(PPS_ENABLE)
 static pthread_mutex_t report_mutex;
@@ -77,7 +82,7 @@ const char *gpsd_prettydump(struct gps_device_t *session)
 /* dump the current packet in a form optimised for eyeballs */
 {
     return gpsd_packetdump(session->msgbuf, sizeof(session->msgbuf),
-			   (char *)session->packet.outbuffer, 
+			   (char *)session->packet.outbuffer,
 			   session->packet.outbuflen);
 }
 
@@ -150,7 +155,7 @@ void gpsd_labeled_report(const int debuglevel, const int sublevel, const int err
 #endif /* !SQUELCH_ENABLE */
 }
 
-static void gpsd_run_device_hook(const int debuglevel, 
+static void gpsd_run_device_hook(const int debuglevel,
 				 char *device_name, char *hook)
 {
     struct stat statbuf;
@@ -271,41 +276,19 @@ void gps_context_init(struct gps_context_t *context)
 }
 /*@+compdestroy@*/
 
-void gpsd_navigation_clear(struct navigation_t * nav) {
-
-  nav->set = 0;
-
-  // speed is knots
-  nav->speed_over_ground = NAN;
-  nav->eps               = NAN;		/* Speed uncertainty, meters/sec */
-
-  nav->speed_thru_water  = NAN;
-
-  // deg north
-  nav->course_over_ground= NAN;
-  nav->epd               = NAN;		/* Track uncertainty, degrees */
-
-  // deg / sec
-  nav->rate_of_turn      = NAN; 
-
-  // deg
-  nav->rudder_angle      = NAN; 
-
-  // metric meters
-  nav->depth             = NAN;
-  nav->depth_offset      = NAN;
-
-  // nm
-  nav->distance_total    = NAN;
-  nav->distance_trip     = NAN;
-
-  // magnetic or true heading
-  nav->heading[0]        = NAN;
-  nav->heading[1]        = NAN;
-
-  // meters
-  nav->xte               = NAN;
-
+void gpsd_waypoint_clear(struct waypoint_navigation_t * wpy) {
+    wpy->set = 0;
+    wpy->xte = NAN;
+    wpy->active_to[0] = '\0';
+    wpy->active_from[0] = '\0';
+    wpy->latitude = NAN;
+    wpy->longitude = NAN;
+    wpy->range_to_destination = NAN;
+    wpy->bearing_from_org_to_destination = NAN;
+    wpy->bearing_from_pos_to_destination = NAN;
+    wpy->speed_to_destination = NAN;
+    wpy->arrival_status = waypoint_arrival_unknown;
+    wpy->eta = (timestamp_t)0;
 }
 
 void gpsd_environment_clear(struct environment_t * env) {
@@ -314,18 +297,12 @@ void gpsd_environment_clear(struct environment_t * env) {
 
   env->set = 0;
 
-  env->wind.apparent.angle = NAN;
-  env->wind.apparent.speed = NAN;
-  env->wind.true_north.angle = NAN;
-  env->wind.true_north.speed = NAN;
-  env->wind.magnetic_north.angle = NAN;
-  env->wind.magnetic_north.speed = NAN;
-  env->wind.calculated_ground.angle = NAN;
-  env->wind.calculated_ground.speed = NAN;
-  env->wind.calculated_water.angle = NAN;
-  env->wind.calculated_water.speed = NAN;
+  for(i= 0; i < 5; i++) {
+      env->wind[i].angle = NAN;
+      env->wind[i].speed = NAN;
+  }
 
-  for(i = 0; i < 5; i++) 
+  for(i = 0; i < 5; i++)
     env->temp[i] = NAN;
 
   env->pressure = NAN;
@@ -345,10 +322,10 @@ void gpsd_init_ports(struct gps_device_t *session) {
     for(n = 0; n < MAX_VY_PORT; n++) {
 
         struct device_port_t * p = &session->gpsdata.dev.portlist[n];
-        
+
         strcpy(p->name, "");
         strcpy(p->type_str, "nmea0183");
-        
+
         p->input = device_policy_accept;
         p->output = device_policy_reject;
         p->speed = 4800;
@@ -357,7 +334,7 @@ void gpsd_init_ports(struct gps_device_t *session) {
         for(n = 0; n < MAXDEVICES; n++) {
             strcpy(p->forward[n], "");
         }
-        
+
     }
 }
 
@@ -366,7 +343,12 @@ void gpsd_init(struct gps_device_t *session, struct gps_context_t *context,
 /* initialize GPS polling */
 {
 	uint8_t n = 0;
-	
+    uint16_t e = 0;
+
+    /* clear the private data union */
+    memset(&session->driver, '\0', sizeof(session->driver));
+
+
     /*@ -mayaliasunique @*/
     if (device != NULL)
 	(void)strlcpy(session->gpsdata.dev.path, device,
@@ -389,12 +371,32 @@ void gpsd_init(struct gps_device_t *session, struct gps_context_t *context,
     session->gpsdata.epe = NAN;
     session->mag_var = NAN;
 
+    for(n = 0; n < AIVDM_CHANNELS; n++) {
+        session->driver.aivdm.context[n].type24_queue.index = 0;
+        for(e = 0; e < MAX_TYPE24_INTERLEAVE; e++)
+            memset(session->driver.aivdm.context[n].type24_queue.ships[e].shipname, 0, AIS_SHIPNAME_MAXLEN+1);
+    }
+
     session->gpsdata.dev.cycle = session->gpsdata.dev.mincycle = 1;
 
     gpsd_init_ports(session);
 
     gpsd_environment_clear(&session->gpsdata.environment);
-    gpsd_navigation_clear(&session->gpsdata.navigation);
+    gpsd_waypoint_clear(&session->gpsdata.waypoint);
+
+    // we start out with protocol version 0 and upgrade if stm32 supports it
+    session->gpsdata.dev.protocol_version = 0;
+
+    session->driver.nmea2000.own_src_id = 0xff; // use this as null
+    session->driver.nmea2000.enable_writing = 0x00;
+
+    session->gpsdata.dev.node_state = node_init;
+    // init source addresses
+    for(e = 0; e < 256; e++) {
+        session->gpsdata.ecu_names[e] = 0;
+        session->gpsdata.src_addr_seen[0] = 0;
+    }
+
 #ifdef TIMING_ENABLE
     session->sor = 0.0;
     session->chars = 0;
@@ -406,6 +408,8 @@ void gpsd_init(struct gps_device_t *session, struct gps_context_t *context,
 
     /* initialize things for the packet parser */
     packet_reset(&session->packet);
+
+    nav_init(session);
 }
 
 void gpsd_deactivate(struct gps_device_t *session)
@@ -432,7 +436,7 @@ void gpsd_deactivate(struct gps_device_t *session)
 #endif /* of defined(NMEA2000_ENABLE) */
         (void)gpsd_close(session);
     if (session->mode == O_OPTIMIZE)
-	gpsd_run_device_hook(session->context->debug, 
+	gpsd_run_device_hook(session->context->debug,
 			     session->gpsdata.dev.path,
 			     "DEACTIVATE");
 #ifdef PPS_ENABLE
@@ -459,9 +463,8 @@ void gpsd_clear(struct gps_device_t *session)
     session->mag_var = NAN;
     session->releasetime = (timestamp_t)0;
     session->badcount = 0;
-
-    /* clear the private data union */
-    memset(&session->driver, '\0', sizeof(session->driver));
+    gpsd_environment_clear(&session->gpsdata.environment);
+    gpsd_waypoint_clear(&session->gpsdata.waypoint);
 
     session->opentime = timestamp();
 }
@@ -503,7 +506,7 @@ int gpsd_open(struct gps_device_t *session)
 			netlib_errstr(dsock));
 	    return -1;
 	} else
-	    gpsd_report(session->context->debug, LOG_SPIN, 
+	    gpsd_report(session->context->debug, LOG_SPIN,
 			"TCP device opened on fd %d\n", dsock);
 	session->gpsdata.gps_fd = dsock;
 	session->sourcetype = source_tcp;
@@ -522,9 +525,9 @@ int gpsd_open(struct gps_device_t *session)
 	    return -1;
 	}
 	*port++ = '\0';
-	if(!strlen(server) || (strcmp("*", server) == 0)) 
+	if(!strlen(server) || (strcmp("*", server) == 0))
 	  host = NULL;
-	else 
+	else
 	  host = server;
 	gpsd_report(session->context->debug, LOG_INF,
 		    "opening UDP feed at %s, port %s.\n", NULL==host?"*":host,
@@ -605,11 +608,11 @@ int gpsd_activate(struct gps_device_t *session, const int mode)
 
     // cppcheck-suppress pointerLessThanZero
     if (session->gpsdata.gps_fd < 0)
-	return -1;
+        return -1;
     else {
 #ifdef NON_NMEA_ENABLE
 	/* if it's a sensor, it must be probed */
-        if ((session->servicetype == service_sensor) && 
+        if ((session->servicetype == service_sensor) &&
 	    (session->sourcetype != source_can)) {
 	    const struct gps_type_t **dp;
 
@@ -1119,9 +1122,9 @@ static void gpsd_error_model(struct gps_device_t *session,
 #endif /* CHEAPFLOATS_ENABLE */
 
 /*@ -mustdefine -compdef @*/
-int gpsd_await_data(/*@out@*/fd_set *rfds, 
+int gpsd_await_data(/*@out@*/fd_set *rfds,
 		     const int maxfd,
-		     /*@in@*/fd_set *all_fds, 
+		     /*@in@*/fd_set *all_fds,
 		     const int debug)
 /* await data from any socket in the all_fds set */
 {
@@ -1180,7 +1183,10 @@ int gpsd_await_data(/*@out@*/fd_set *rfds,
 	    return AWAIT_FAILED;
 	}
     }
-    if(status == 0) gpsd_report(debug, LOG_INF, "TIMEOUT\n");
+    if(status == 0) {
+	gpsd_report(debug, LOG_INF, "TIMEOUT\n");
+	return AWAIT_TIMEOUT;
+    }
     /*@ +usedef +nullpass @*/
 
     if (debug >= LOG_SPIN) {
@@ -1233,7 +1239,7 @@ static bool hunt_failure(struct gps_device_t *session)
      * enough).  Removing this conjunct resurrected the failure
      * of test/daemon/tcp-torture.log.
      *
-     * Our third attempt, isatty(session->gpsdata.gps_fd) != 0 
+     * Our third attempt, isatty(session->gpsdata.gps_fd) != 0
      * && session->badcount++>1, reverts to the old test that worked
      * well on ttys for ttys and prevents non-tty devices from *ever*
      * having hunt failures. This has the cost that non-tty devices
@@ -1252,6 +1258,8 @@ gps_mask_t gpsd_poll(struct gps_device_t *session)
     struct gps_type_t *prev_driver = NULL;
 
     gps_clear_fix(&session->newdata);
+    gpsd_environment_clear(&session->gpsdata.environment);
+    gpsd_waypoint_clear(&session->gpsdata.waypoint);
 
 #ifdef TIMING_ENABLE
     /*
@@ -1292,39 +1300,40 @@ gps_mask_t gpsd_poll(struct gps_device_t *session)
 #define MINIMUM_QUIET_TIME	0.25
     if (session->packet.outbuflen == 0)
     {
-	/* beginning of a new packet */
-	timestamp_t now = timestamp();
-	if (session->device_type != NULL && session->packet.start_time > 0) {
+        /* beginning of a new packet */
+        timestamp_t now = timestamp();
+        if (session->device_type != NULL && session->packet.start_time > 0) {
 #ifdef RECONFIGURE_ENABLE
-	    const double min_cycle = session->device_type->min_cycle;
+            const double min_cycle = session->device_type->min_cycle;
 #else
-	    const double min_cycle = 1;
+            const double min_cycle = 1;
 #endif /* RECONFIGURE_ENABLE */
-	    double quiet_time = (MINIMUM_QUIET_TIME * min_cycle);
-	    double gap = now - session->packet.start_time;
+            double quiet_time = (MINIMUM_QUIET_TIME * min_cycle);
+            double gap = now - session->packet.start_time;
 
-	    if (gap > min_cycle)
-		gpsd_report(session->context->debug, LOG_WARN,
-			    "cycle-start detector failed.\n");
-	    else if (gap > quiet_time) {
-		gpsd_report(session->context->debug, LOG_PROG,
-			    "transmission pause of %f\n", gap);
-		session->sor = now;
-		session->packet.start_char = session->packet.char_counter;
-	    }
-	}
-	session->packet.start_time = now;
+            if (gap > min_cycle)
+                gpsd_report(session->context->debug, LOG_WARN,
+                            "cycle-start detector failed.\n");
+            else if (gap > quiet_time) {
+                gpsd_report(session->context->debug, LOG_PROG,
+                            "transmission pause of %f\n", gap);
+                session->sor = now;
+                session->packet.start_char = session->packet.char_counter;
+            }
+        }
+        session->packet.start_time = now;
     }
 #endif /* TIMING_ENABLE */
 
     if (session->packet.type >= COMMENT_PACKET) {
-	/*@-shiftnegative@*/
-	session->observed |= PACKET_TYPEMASK(session->packet.type);
-	/*@+shiftnegative@*/
+        /*@-shiftnegative@*/
+        session->observed |= PACKET_TYPEMASK(session->packet.type);
+        /*@+shiftnegative@*/
     }
 
     /* can we get a full packet from the device? */
     if (session->device_type != NULL) {
+
         newlen = session->device_type->get_packet(session);
         /* coverity[deref_ptr] */
         gpsd_report(session->context->debug, LOG_RAW,
@@ -1337,264 +1346,264 @@ gps_mask_t gpsd_poll(struct gps_device_t *session)
 
     /* update the scoreboard structure from the GPS */
     gpsd_report(session->context->debug, LOG_RAW + 2,
-		"%s sent %zd new characters\n",
-		session->gpsdata.dev.path, newlen);
+                "%s sent %zd new characters\n",
+                session->gpsdata.dev.path, newlen);
     if (newlen < 0) {		/* read error */
-	gpsd_report(session->context->debug, LOG_INF,
-		    "GPS on %s returned error %zd (%lf sec since data)\n",
-		    session->gpsdata.dev.path, newlen,
-		    timestamp() - session->gpsdata.online);
-	session->gpsdata.online = (timestamp_t)0;
-	return ERROR_SET;
+        gpsd_report(session->context->debug, LOG_INF,
+                    "GPS on %s returned error %zd (%lf sec since data)\n",
+                    session->gpsdata.dev.path, newlen,
+                    timestamp() - session->gpsdata.online);
+        session->gpsdata.online = (timestamp_t)0;
+        return ERROR_SET;
     } else if (newlen == 0) {		/* zero length read, possible EOF */
-	/*
-	 * Multiplier is 2 to avoid edge effects due to sampling at the exact
-	 * wrong time...
-	 */
-	if (session->gpsdata.online > 0 && timestamp() - session->gpsdata.online >= session->gpsdata.dev.cycle * 2) {
-	    gpsd_report(session->context->debug, LOG_INF,
-			"GPS on %s is offline (%lf sec since data)\n",
-			session->gpsdata.dev.path,
-			timestamp() - session->gpsdata.online);
-	    session->gpsdata.online = (timestamp_t)0;
-	}
-	return NODATA_IS;
+        /*
+         * Multiplier is 2 to avoid edge effects due to sampling at the exact
+         * wrong time...
+         */
+        if (session->gpsdata.online > 0 && timestamp() - session->gpsdata.online >= session->gpsdata.dev.cycle * 2) {
+            gpsd_report(session->context->debug, LOG_INF,
+                        "GPS on %s is offline (%lf sec since data)\n",
+                        session->gpsdata.dev.path,
+                        timestamp() - session->gpsdata.online);
+            session->gpsdata.online = (timestamp_t)0;
+        }
+        return NODATA_IS;
     } else /* (newlen > 0) */ {
 
-	gpsd_report(session->context->debug, LOG_RAW,
-		    "packet sniff on %s finds type %d\n",
-		    session->gpsdata.dev.path, session->packet.type);
-	if (session->packet.type == COMMENT_PACKET) {
-	    if (strcmp((const char *)session->packet.outbuffer, "# EOF\n") == 0) {
-		gpsd_report(session->context->debug, LOG_PROG,
-			    "synthetic EOF\n");
-		return EOF_SET;
-	    }
-	    else
-		gpsd_report(session->context->debug, LOG_PROG,
-			    "comment, sync lock deferred\n");
-	    /* FALL THROUGH */
-	} else if (session->packet.type > COMMENT_PACKET) {
-	    if (session->device_type == NULL)
-		driver_change = true;
-	    else {
-		int newtype = session->packet.type;
-		/*
-		 * Are we seeing a new packet type? Then we probably
-		 * want to change drivers.
-		 */
-		bool new_packet_type = 
-		    (newtype != session->device_type->packet_type);
-		/*
-		 * Possibly the old driver has a mode-switcher method, in
-		 * which case we know it can handle NMEA itself and may
-		 * want to do special things (like tracking whether a
-		 * previous mode switch to binary succeeded in suppressing
-		 * NMEA).
-		 */
+        gpsd_report(session->context->debug, LOG_RAW,
+                    "packet sniff on %s finds type %d\n",
+                    session->gpsdata.dev.path, session->packet.type);
+        if (session->packet.type == COMMENT_PACKET) {
+            if (strcmp((const char *)session->packet.outbuffer, "# EOF\n") == 0) {
+                gpsd_report(session->context->debug, LOG_PROG,
+                            "synthetic EOF\n");
+                return EOF_SET;
+            }
+            else
+                gpsd_report(session->context->debug, LOG_PROG,
+                            "comment, sync lock deferred\n");
+            /* FALL THROUGH */
+        } else if (session->packet.type > COMMENT_PACKET) {
+            if (session->device_type == NULL)
+                driver_change = true;
+            else {
+                int newtype = session->packet.type;
+                /*
+                 * Are we seeing a new packet type? Then we probably
+                 * want to change drivers.
+                 */
+                bool new_packet_type =
+                    (newtype != session->device_type->packet_type);
+                /*
+                 * Possibly the old driver has a mode-switcher method, in
+                 * which case we know it can handle NMEA itself and may
+                 * want to do special things (like tracking whether a
+                 * previous mode switch to binary succeeded in suppressing
+                 * NMEA).
+                 */
 #ifdef RECONFIGURE_ENABLE
-		bool dependent_nmea = (newtype == NMEA_PACKET
-				       && session->device_type->mode_switcher!=NULL);
+                bool dependent_nmea = (newtype == NMEA_PACKET
+                                       && session->device_type->mode_switcher!=NULL);
 #else
-		bool dependent_nmea = false;
+                bool dependent_nmea = false;
 #endif /* RECONFIGURE_ENABLE */
 
-		/*
-		 * Compute whether to switch drivers.
-		 * If the previous driver type was sticky and this one
-		 * isn't, we'll revert after processing the packet.
-		 */
-		driver_change = new_packet_type && !dependent_nmea;
-	    }
-	    /*@-nullderef@*/
-	    if (driver_change) {
-		const struct gps_type_t **dp;
-		prev_driver = session->device_type;
+                /*
+                 * Compute whether to switch drivers.
+                 * If the previous driver type was sticky and this one
+                 * isn't, we'll revert after processing the packet.
+                 */
+                driver_change = new_packet_type && !dependent_nmea;
+            }
+            /*@-nullderef@*/
+            if (driver_change) {
+                const struct gps_type_t **dp;
+                prev_driver = session->device_type;
 
-		for (dp = gpsd_drivers; *dp; dp++)
-		    if (session->packet.type == (*dp)->packet_type) {
-			gpsd_report(session->context->debug, LOG_PROG,
-				    "switching to match packet type %d: %s\n",
-				    session->packet.type, gpsd_prettydump(session));
-			(void)gpsd_switch_driver(session, (*dp)->type_name);
-			break;
-		    }
-	    }
-	    /*@+nullderef@*/
-	    session->badcount = 0;
-	    session->gpsdata.dev.driver_mode = (session->packet.type > NMEA_PACKET) ? MODE_BINARY : MODE_NMEA;
-	    /* FALL THROUGH */
-	} else if (hunt_failure(session) && !gpsd_next_hunt_setting(session)) {
-	    gpsd_report(session->context->debug, LOG_INF,
-			"hunt on %s failed (%lf sec since data)\n",
-			session->gpsdata.dev.path,
-			timestamp() - session->gpsdata.online);
-	    return ERROR_SET;
-	}
+                for (dp = gpsd_drivers; *dp; dp++)
+                    if (session->packet.type == (*dp)->packet_type) {
+                        gpsd_report(session->context->debug, LOG_PROG,
+                                    "switching to match packet type %d: %s\n",
+                                    session->packet.type, gpsd_prettydump(session));
+                        (void)gpsd_switch_driver(session, (*dp)->type_name);
+                        break;
+                    }
+            }
+            /*@+nullderef@*/
+            session->badcount = 0;
+            session->gpsdata.dev.driver_mode = (session->packet.type > NMEA_PACKET) ? MODE_BINARY : MODE_NMEA;
+            /* FALL THROUGH */
+        } else if (hunt_failure(session) && !gpsd_next_hunt_setting(session)) {
+            gpsd_report(session->context->debug, LOG_INF,
+                        "hunt on %s failed (%lf sec since data)\n",
+                        session->gpsdata.dev.path,
+                        timestamp() - session->gpsdata.online);
+            return ERROR_SET;
+        }
     }
 
     if (session->packet.outbuflen == 0) {	/* got new data, but no packet */
-	gpsd_report(session->context->debug, LOG_RAW + 3,
-		    "New data on %s, not yet a packet\n",
-		    session->gpsdata.dev.path);
-	return ONLINE_SET;
+        gpsd_report(session->context->debug, LOG_RAW,
+                    "New data on %s, not yet a packet\n",
+                    session->gpsdata.dev.path);
+        return ONLINE_SET;
     } else {			/* we have recognized a packet */
-	gps_mask_t received = PACKET_SET;
-	session->gpsdata.online = timestamp();
+        gps_mask_t received = PACKET_SET;
+        session->gpsdata.online = timestamp();
 
-	gpsd_report(session->context->debug, LOG_RAW + 3,
-		    "Accepted packet on %s.\n",
-		    session->gpsdata.dev.path);
+        gpsd_report(session->context->debug, LOG_RAW,
+                "Accepted packet on %s.\n",
+                    session->gpsdata.dev.path);
 
-	/* track the packet count since achieving sync on the device */
-	if (driver_change 
-		&& (session->drivers_identified & (1 << session->driver_index)) == 0) {
-	    speed_t speed = gpsd_get_speed(session);
+        /* track the packet count since achieving sync on the device */
+        if (driver_change
+            && (session->drivers_identified & (1 << session->driver_index)) == 0) {
+            speed_t speed = gpsd_get_speed(session);
 
-	    /*@-nullderef@*/
-	    /* coverity[var_deref_op] */
-	    gpsd_report(session->context->debug, LOG_INF,
-			"%s identified as type %s, %f sec @ %ubps\n",
-			session->gpsdata.dev.path,
-			session->device_type->type_name,
-			timestamp() - session->opentime,
-			(unsigned int)speed);
-	    /*@+nullderef@*/
-	    /* fire the identified hook */
-	    if (session->device_type != NULL
-		&& session->device_type->event_hook != NULL)
-		session->device_type->event_hook(session, event_identified);
-	    session->packet.counter = 0;
+            /*@-nullderef@*/
+            /* coverity[var_deref_op] */
+            gpsd_report(session->context->debug, LOG_INF,
+                        "%s identified as type %s, %f sec @ %ubps\n",
+                        session->gpsdata.dev.path,
+                        session->device_type->type_name,
+                        timestamp() - session->opentime,
+                        (unsigned int)speed);
+            /*@+nullderef@*/
+            /* fire the identified hook */
+            if (session->device_type != NULL
+                && session->device_type->event_hook != NULL)
+                session->device_type->event_hook(session, event_identified);
+            session->packet.counter = 0;
 
-	    /* let clients know about this. */
-	    received |= DRIVER_IS;
+            /* let clients know about this. */
+            received |= DRIVER_IS;
 
-	    /* mark the fact that this driver has been seen */
-	    session->drivers_identified |= (1 << session->driver_index);
-	} else
-	    session->packet.counter++;
+            /* mark the fact that this driver has been seen */
+            session->drivers_identified |= (1 << session->driver_index);
+        } else
+            session->packet.counter++;
 
-	/* fire the configure hook */
-	if (session->device_type != NULL
-	    && session->device_type->event_hook != NULL)
-	    session->device_type->event_hook(session, event_configure);
+        /* fire the configure hook */
+        if (session->device_type != NULL
+            && session->device_type->event_hook != NULL)
+            session->device_type->event_hook(session, event_configure);
 
-	/*
-	 * The guard looks superfluous, but it keeps the rather expensive
-	 * gpsd_packetdump() function from being called even when the debug
-	 * level does not actually require it.
-	 */
-	if (session->context->debug >= LOG_RAW)
-	    gpsd_report(session->context->debug, LOG_RAW,
-			"raw packet of type %d, %zd:%s\n",
-			session->packet.type,
-			session->packet.outbuflen,
-			gpsd_prettydump(session));
+        /*
+         * The guard looks superfluous, but it keeps the rather expensive
+         * gpsd_packetdump() function from being called even when the debug
+         * level does not actually require it.
+         */
+        if (session->context->debug >= LOG_RAW)
+            gpsd_report(session->context->debug, LOG_RAW,
+                        "raw packet of type %d, %zd:%s\n",
+                        session->packet.type,
+                        session->packet.outbuflen,
+                        gpsd_prettydump(session));
 
-	/* Get data from current packet into the fix structure */
-	if (session->packet.type != COMMENT_PACKET)
-	    if (session->device_type != NULL
-		&& session->device_type->parse_packet != NULL)
-		received |= session->device_type->parse_packet(session);
+        /* Get data from current packet into the fix structure */
+        if (session->packet.type != COMMENT_PACKET)
+            if (session->device_type != NULL
+                && session->device_type->parse_packet != NULL)
+                received |= session->device_type->parse_packet(session);
 
 #ifdef RECONFIGURE_ENABLE
-	/*
-	 * We may want to revert to the last driver that was marked
-	 * sticky.  What this accomplishes is that if we've just
-	 * processed something like AIVDM, but a driver with control
-	 * methods or an event hook had been active before that, we
-	 * keep the information about those capabilities.
-	 */
-	/*@-mustfreeonly@*/
-        if (!STICKY(session->device_type) 
-	      && (session->last_controller != NULL)) 
-	{
-	    session->device_type = session->last_controller;
-	    gpsd_report(session->context->debug, LOG_PROG,
-			"reverted to %s driver...\n",
-			session->device_type->type_name);
-	}
-	/*@+mustfreeonly@*/
+        /*
+         * We may want to revert to the last driver that was marked
+         * sticky.  What this accomplishes is that if we've just
+         * processed something like AIVDM, but a driver with control
+         * methods or an event hook had been active before that, we
+         * keep the information about those capabilities.
+         */
+        /*@-mustfreeonly@*/
+        if (!STICKY(session->device_type)
+            && (session->last_controller != NULL))
+        {
+            session->device_type = session->last_controller;
+            gpsd_report(session->context->debug, LOG_PROG,
+                        "reverted to %s driver...\n",
+                        session->device_type->type_name);
+        }
+        /*@+mustfreeonly@*/
 #endif /* RECONFIGURE_ENABLE */
 
 #ifdef TIMING_ENABLE
-	/* are we going to generate a report? if so, count characters */
-	if ((received & REPORT_IS) != 0) {
-	    session->chars = session->packet.char_counter - session->packet.start_char;
-	}
+        /* are we going to generate a report? if so, count characters */
+        if ((received & REPORT_IS) != 0) {
+            session->chars = session->packet.char_counter - session->packet.start_char;
+        }
 #endif /* TIMING_ENABLE */
 
 
-	session->gpsdata.set = ONLINE_SET | received;
+            session->gpsdata.set = ONLINE_SET | received;
 
 #ifdef CHEAPFLOATS_ENABLE
-	/*
-	 * Compute fix-quality data from the satellite positions.
-	 * These will not overwrite any DOPs reported from the packet
-	 * we just got.
-	 */
-	if ((received & SATELLITE_SET) != 0
-	    && session->gpsdata.satellites_visible > 0) {
-	    session->gpsdata.set |= fill_dop(&session->gpsdata, &session->gpsdata.dop, session->context->debug);
-	    session->gpsdata.epe = NAN;
-	}
+        /*
+         * Compute fix-quality data from the satellite positions.
+         * These will not overwrite any DOPs reported from the packet
+         * we just got.
+         */
+        if ((received & SATELLITE_SET) != 0
+            && session->gpsdata.satellites_visible > 0) {
+            session->gpsdata.set |= fill_dop(&session->gpsdata, &session->gpsdata.dop, session->context->debug);
+            session->gpsdata.epe = NAN;
+        }
 #endif /* CHEAPFLOATS_ENABLE */
 
-	/* copy/merge device data into staging buffers */
-	/*@-nullderef -nullpass@*/
-	if ((session->gpsdata.set & CLEAR_IS) != 0)
-	    gps_clear_fix(&session->gpsdata.fix);
-	/* don't downgrade mode if holding previous fix */
-	if (session->gpsdata.fix.mode > session->newdata.mode)
-	    session->gpsdata.set &= ~MODE_SET;
-	/*	gpsd_report(session->context->debug, LOG_PROG,
-		"transfer mask on %s: %02x\n", session->gpsdata.tag, session->gpsdata.set); */
-	gps_merge_fix(&session->gpsdata.fix,
-		      session->gpsdata.set, &session->newdata);
+        /* copy/merge device data into staging buffers */
+        /*@-nullderef -nullpass@*/
+        if ((session->gpsdata.set & CLEAR_IS) != 0)
+            gps_clear_fix(&session->gpsdata.fix);
+        /* don't downgrade mode if holding previous fix */
+        if (session->gpsdata.fix.mode > session->newdata.mode)
+            session->gpsdata.set &= ~MODE_SET;
+        /*	gpsd_report(session->context->debug, LOG_PROG,
+            "transfer mask on %s: %02x\n", session->gpsdata.tag, session->gpsdata.set); */
+        gps_merge_fix(&session->gpsdata.fix,
+                      session->gpsdata.set, &session->newdata);
 #ifdef CHEAPFLOATS_ENABLE
-	gpsd_error_model(session, &session->gpsdata.fix, &session->oldfix);
+        gpsd_error_model(session, &session->gpsdata.fix, &session->oldfix);
 #endif /* CHEAPFLOATS_ENABLE */
 
-	/*@+nullderef -nullpass@*/
+        /*@+nullderef -nullpass@*/
 
-	/*
-	 * Count good fixes. We used to check
-	 *      session->gpsdata.status > STATUS_NO_FIX
-	 * here, but that wasn't quite right.  That tells us whether
-	 * we think we have a valid fix for the current cycle, but remains
-	 * true while following non-fix packets are received.  What we
-	 * really want to know is whether the last packet received was a
-	 * fix packet AND held a valid fix. We must ignore non-fix packets
-	 * AND packets which have fix data but are flagged as invalid. Some
-	 * devices output fix packets on a regular basis, even when unable
-	 * to derive a good fix. Such packets should set STATUS_NO_FIX.
-	 */
-	if ( 0 != (session->gpsdata.set & LATLON_SET)) {
-	    if ( session->gpsdata.status > STATUS_NO_FIX) {
-		session->context->fixcnt++;
-		session->fixcnt++;
+        /*
+         * Count good fixes. We used to check
+         *      session->gpsdata.status > STATUS_NO_FIX
+         * here, but that wasn't quite right.  That tells us whether
+         * we think we have a valid fix for the current cycle, but remains
+         * true while following non-fix packets are received.  What we
+         * really want to know is whether the last packet received was a
+         * fix packet AND held a valid fix. We must ignore non-fix packets
+         * AND packets which have fix data but are flagged as invalid. Some
+         * devices output fix packets on a regular basis, even when unable
+         * to derive a good fix. Such packets should set STATUS_NO_FIX.
+         */
+        if ( 0 != (session->gpsdata.set & LATLON_SET)) {
+            if ( session->gpsdata.status > STATUS_NO_FIX) {
+                session->context->fixcnt++;
+                session->fixcnt++;
             } else {
-		session->context->fixcnt = 0;
-		session->fixcnt = 0;
+                session->context->fixcnt = 0;
+                session->fixcnt = 0;
             }
-	}
+        }
 
-	/*
-	 * Sanity check.  This catches a surprising number of port and
-	 * driver errors, including 32-vs.-64-bit problems.
-	 */
-	/*@+relaxtypes +longunsignedintegral@*/
-	if ((session->gpsdata.set & TIME_SET) != 0) {
-	    if (session->newdata.time > time(NULL) + (60 * 60 * 24 * 365))
-		gpsd_report(session->context->debug, LOG_WARN,
-			    "date more than a year in the future!\n");
-	    else if (session->newdata.time < 0)
-		gpsd_report(session->context->debug, LOG_ERROR,
-			    "date in %s is negative!\n", session->gpsdata.tag);
-	}
-	/*@-relaxtypes -longunsignedintegral@*/
+        /*
+         * Sanity check.  This catches a surprising number of port and
+         * driver errors, including 32-vs.-64-bit problems.
+         */
+        /*@+relaxtypes +longunsignedintegral@*/
+        if ((session->gpsdata.set & TIME_SET) != 0) {
+            if (session->newdata.time > time(NULL) + (60 * 60 * 24 * 365))
+                gpsd_report(session->context->debug, LOG_WARN,
+                            "date more than a year in the future!\n");
+            else if (session->newdata.time < 0)
+                gpsd_report(session->context->debug, LOG_ERROR,
+                            "date in %s is negative!\n", session->gpsdata.tag);
+        }
+        /*@-relaxtypes -longunsignedintegral@*/
 
-	return session->gpsdata.set;
+        return session->gpsdata.set;
     }
 }
 
@@ -1606,140 +1615,154 @@ int gpsd_multipoll(const bool data_ready,
 {
     if (data_ready)
     {
-	int fragments;
+        int fragments;
 
-	gpsd_report(device->context->debug, LOG_RAW + 1, 
-		    "polling %d\n", device->gpsdata.gps_fd);
+        gpsd_report(device->context->debug, LOG_RAW + 1,
+                    "polling %d\n", device->gpsdata.gps_fd);
 
 #ifdef NETFEED_ENABLE
-	/*
-	 * Strange special case - the opening transaction on an NTRIP connection
-	 * may not yet be completed.  Try to ratchet things forward.
-	 */
-	if (device->servicetype == service_ntrip
-	    && device->ntrip.conn_state != ntrip_conn_established) {
+        /*
+         * Strange special case - the opening transaction on an NTRIP connection
+         * may not yet be completed.  Try to ratchet things forward.
+         */
+        if (device->servicetype == service_ntrip
+            && device->ntrip.conn_state != ntrip_conn_established) {
 
-	    (void)ntrip_open(device, "");
-	    if (device->ntrip.conn_state == ntrip_conn_err) {
-		gpsd_report(device->context->debug, LOG_WARN,
-			    "connection to ntrip server failed\n");
-		device->ntrip.conn_state = ntrip_conn_init;
-		return DEVICE_ERROR;
-	    } else {
-		return DEVICE_READY;
-	    }
-	}
+            (void)ntrip_open(device, "");
+            if (device->ntrip.conn_state == ntrip_conn_err) {
+                gpsd_report(device->context->debug, LOG_WARN,
+                            "connection to ntrip server failed\n");
+                device->ntrip.conn_state = ntrip_conn_init;
+                return DEVICE_ERROR;
+            } else {
+                return DEVICE_READY;
+            }
+        }
 #endif /* NETFEED_ENABLE */
 
-	for (fragments = 0; ; fragments++) {
-	    gps_mask_t changed = gpsd_poll(device);
+        for (fragments = 0; ; fragments++) {
 
-	    if (changed == EOF_SET) {
-		gpsd_report(device->context->debug, LOG_WARN,
-			    "device signed off %s\n",
-			    device->gpsdata.dev.path);
-		return DEVICE_EOF;
-	    } else if (changed == ERROR_SET) {
-		gpsd_report(device->context->debug, LOG_WARN,
-			    "device read of %s returned error or packet sniffer failed sync (flags %s)\n",
-			    device->gpsdata.dev.path,
-			    gps_maskdump(changed));
-		return DEVICE_ERROR;
-	    } else if (changed == NODATA_IS) {
-		/*
-		 * No data on the first fragment read means the device
-		 * fd may have been in an end-of-file condition on select.
-		 */
-		if (fragments == 0) {
-		    gpsd_report(device->context->debug, LOG_DATA,
-				"%s returned zero bytes\n",
-				device->gpsdata.dev.path);
-		    if (device->zerokill) {
-			/* failed timeout-and-reawake, kill it */
-			gpsd_deactivate(device);
-			if (device->ntrip.works) {
-			    device->ntrip.works = false; // reset so we try this once only
-			    if (gpsd_activate(device, O_CONTINUE) < 0) {
-				gpsd_report(device->context->debug, LOG_WARN,
-					    "reconnect to ntrip server failed\n");
-				return DEVICE_ERROR;
-			    } else {
-				gpsd_report(device->context->debug, LOG_INFO,
-					    "reconnecting to ntrip server\n");
-				return DEVICE_READY;
-			    }
-			}
-		    } else if (reawake_time == 0) {
-			return DEVICE_ERROR;
-		    } else {
-			/*
-			 * Disable listening to this fd for long enough
-			 * that the buffer can fill up again.
-			 */
-			gpsd_report(device->context->debug, LOG_DATA,
-				    "%s will be repolled in %f seconds\n",
-				    device->gpsdata.dev.path, reawake_time);
-			device->reawake = timestamp() + reawake_time;
-			return DEVICE_UNREADY;
-		    }
-		}
-		/*
-		 * No data on later fragment reads just means the
-		 * input buffer is empty.  In this case break out
-		 * of the fragment-processing loop but consider
-		 * the device still good.
-		 */
-		break;
-	    }
+            gpsd_report(device->context->debug, LOG_DATA,
+                        "polling now fragment %d\n",
+                        fragments);
 
-	    /* we got actual data, head off the reawake special case */
-	    device->zerokill = false;
-	    device->reawake = (timestamp_t)0;
+            gps_mask_t changed = gpsd_poll(device);
 
-	    /* must have a full packet to continue */
-	    if ((changed & PACKET_SET) == 0)
-		break;
+            if (changed == EOF_SET) {
+                gpsd_report(device->context->debug, LOG_WARN,
+                            "device signed off %s\n",
+                            device->gpsdata.dev.path);
+                return DEVICE_EOF;
+            } else if (changed == ERROR_SET) {
+                gpsd_report(device->context->debug, LOG_WARN,
+                            "device read of %s returned error or packet sniffer failed sync (flags %s)\n",
+                            device->gpsdata.dev.path,
+                            gps_maskdump(changed));
+                return DEVICE_ERROR;
+            } else if (changed == NODATA_IS) {
+                /*
+                 * No data on the first fragment read means the device
+                 * fd may have been in an end-of-file condition on select.
+                 */
+                if (fragments == 0) {
+                    gpsd_report(device->context->debug, LOG_DATA,
+                                "%s returned zero bytes\n",
+                                device->gpsdata.dev.path);
+                    if (device->zerokill) {
+                        /* failed timeout-and-reawake, kill it */
+                        gpsd_deactivate(device);
+                        if (device->ntrip.works) {
+                            device->ntrip.works = false; // reset so we try this once only
+                            if (gpsd_activate(device, O_CONTINUE) < 0) {
+                                gpsd_report(device->context->debug, LOG_WARN,
+                                            "reconnect to ntrip server failed\n");
+                                return DEVICE_ERROR;
+                            } else {
+                                gpsd_report(device->context->debug, LOG_INFO,
+                                            "reconnecting to ntrip server\n");
+                                return DEVICE_READY;
+                            }
+                        }
+                    } else if (reawake_time == 0) {
+                        return DEVICE_ERROR;
+                    } else {
+                        /*
+                         * Disable listening to this fd for long enough
+                         * that the buffer can fill up again.
+                         */
+                        gpsd_report(device->context->debug, LOG_DATA,
+                                    "%s will be repolled in %f seconds\n",
+                                    device->gpsdata.dev.path, reawake_time);
+                        device->reawake = timestamp() + reawake_time;
+                        return DEVICE_UNREADY;
+                    }
+                }
+                /*
+                 * No data on later fragment reads just means the
+                 * input buffer is empty.  In this case break out
+                 * of the fragment-processing loop but consider
+                 * the device still good.
+                 */
+                gpsd_report(device->context->debug, LOG_DATA,
+                            "exit poll loop at fragment %d with no data read\n",
+                            fragments);
+                break;
+            }
 
-	    /* conditional prevents mask dumper from eating CPU */
-	    if (device->context->debug >= LOG_DATA) {
-		if (device->packet.type == BAD_PACKET)
-		    gpsd_report(device->context->debug, LOG_DATA,
-				"packet with bad checksum from %s\n",
-				device->gpsdata.dev.path);
-		else
-		    gpsd_report(device->context->debug, LOG_DATA,
-				"packet type %d from %s with %s\n",
-				device->packet.type,
-				device->gpsdata.dev.path,
-				gps_maskdump(device->gpsdata.set));
-	    }
+            /* we got actual data, head off the reawake special case */
+            device->zerokill = false;
+            device->reawake = (timestamp_t)0;
+
+            /* must have a full packet to continue */
+            if ((changed & PACKET_SET) == 0) {
+                gpsd_report(device->context->debug, LOG_DATA,
+                            "exit poll loop with incomplete packet\n");
+                break;
+            }
+
+            /* conditional prevents mask dumper from eating CPU */
+            if (device->context->debug >= LOG_DATA) {
+                if (device->packet.type == BAD_PACKET)
+                    gpsd_report(device->context->debug, LOG_DATA,
+                                "packet with bad checksum from %s\n",
+                                device->gpsdata.dev.path);
+                else
+                    gpsd_report(device->context->debug, LOG_DATA,
+                                "packet type %d from %s with %s\n",
+                                device->packet.type,
+                                device->gpsdata.dev.path,
+                                gps_maskdump(device->gpsdata.set));
+            }
 
 
-	    /* handle data contained in this packet */
-	    if (device->packet.type != BAD_PACKET)
-		/*@i1@*/handler(device, changed);
+            /* handle data contained in this packet */
+            if (device->packet.type != BAD_PACKET) {
+                gpsd_report(device->context->debug, LOG_DATA,
+                            "calling handler\n");
+                /*@i1@*/handler(device, changed);
+            }
 
-	    /*
-	     * Bernd Ocklin suggests:
-	     * Exit when a full packet was received and parsed.
-	     * This allows other devices to be serviced even if
-	     * this device delivers a full packet at every single
-	     * read.
-	     * Otherwise we can sit here for a long time without
-	     * any for-loop exit condition being met.
-	     */
-	    if ((changed & PACKET_SET) != 0)
-               break;
-	}
+            /*
+             * Bernd Ocklin suggests:
+             * Exit when a full packet was received and parsed.
+             * This allows other devices to be serviced even if
+             * this device delivers a full packet at every single
+             * read.
+             * Otherwise we can sit here for a long time without
+             * any for-loop exit condition being met.
+             */
+            //if ((changed & PACKET_SET) != 0)
+            //    break;
+        }
     }
     else if (device->reawake>0 && timestamp()>device->reawake) {
-	/* device may have had a zero-length read */
-	gpsd_report(device->context->debug, LOG_DATA,
-		    "%s reawakened after zero-length read\n",
-		    device->gpsdata.dev.path);
-	device->reawake = (timestamp_t)0;
-	device->zerokill = true;
-	return DEVICE_READY;
+        /* device may have had a zero-length read */
+        gpsd_report(device->context->debug, LOG_DATA,
+                    "%s reawakened after zero-length read\n",
+                    device->gpsdata.dev.path);
+        device->reawake = (timestamp_t)0;
+        device->zerokill = true;
+        return DEVICE_READY;
     }
 
     /* no change in device descriptor state */

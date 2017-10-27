@@ -24,13 +24,13 @@
 # * Coveraging mode: gcc "-coverage" flag requires a hack for building the python bindings
 
 # Release identification begins here
-gpsd_version = "3.11"
+gpsd_version = "3.30"
 
 # library version
-libgps_version_current   = 21
+libgps_version_current   = 30
 libgps_version_revision  = 0
 libgps_version_age       = 0
-libgpsd_version_current  = 22
+libgpsd_version_current  = 30
 libgpsd_version_revision = 0
 libgpsd_version_age      = 0
 
@@ -42,7 +42,7 @@ libgpsd_version_age      = 0
 # anywhere else in the distribution; preserve this property!
 sitename   = "Savannah"
 sitesearch = "catb.org"
-website    = "http://catb.org/gpsd" 
+website    = "http://catb.org/gpsd"
 mainpage   = "https://savannah.nongnu.org/projects/gpsd/"
 webupload  = "login.ibiblio.org:/public/html/catb/gpsd"
 cgiupload  = "thyrsus.com:/home/www/thyrsus.com/cgi-bin/"
@@ -161,7 +161,8 @@ boolopts = (
     ("shared",        True,  "build shared libraries, not static"),
     ("implicit_link", imloads,"implicit linkage is supported in shared libs"),
     ("python",        True,  "build Python support and modules."),
-    ("debug",         False, "include debug information in build"),
+    ("vydebug",       True,  "include debug information in build"),
+    ("debug",         True,  "include debug information in build"),
     ("profiling",     False, "build with profiling enabled"),
     ("coveraging",    False, "build with code coveraging enabled"),
     ("strip",         True,  "build with stripping of binaries enabled"),
@@ -324,10 +325,12 @@ if not 'CCFLAGS' in os.environ:
         env.Append(LDFLAGS=['-coverage'])
         env.Append(LINKFLAGS=['-coverage'])
     # Should we build with debug symbols?
+    if env['vydebug']:
+        env.Append(CCFLAGS=['-ggdb3'])
     if env['debug']:
         env.Append(CCFLAGS=['-g'])
     # Should we build with optimisation?
-    if env['debug'] or env['coveraging']:
+    if env['vydebug'] or env['debug'] or env['coveraging']:
         env.Append(CCFLAGS=['-O0'])
     else:
         env.Append(CCFLAGS=['-O2'])
@@ -763,7 +766,7 @@ pid_t getsid(pid_t pid);
     env = config.Finish()
 
     # Be explicit about what we're doing.
-    changelatch = False 
+    changelatch = False
     for (name, default, help) in boolopts + nonboolopts + pathopts:
         if env[name] != env.subst(default):
             if not changelatch:
@@ -812,6 +815,7 @@ libgps_sources = [
     "libgps_shm.c",
     "libgps_sock.c",
     "netlib.c",
+    "ring_buffer.c",
     "rtcm2_json.c",
     "rtcm3_json.c",
     "shared_json.c",
@@ -825,22 +829,26 @@ if env['libgpsmm']:
 libgpsd_sources = [
     "bsd_base64.c",
     "crc24q.c",
+    "config.c",
     "gpsd_json.c",
     "geoid.c",
     "isgps.c",
     "libgpsd_core.c",
+    "navigation.c",
     "net_dgpsip.c",
     "net_gnss_dispatch.c",
     "net_ntrip.c",
     "ppsthread.c",
     "packet.c",
     "pseudonmea.c",
+    "pseudon2k.c",
     "pseudoais.c",
     "serial.c",
     "signalk.c",
     "subframe.c",
     "timebase.c",
-    "websocket.c", 
+    "timeutil.c",
+    "websocket.c",
     "drivers.c",
     "driver_ais.c",
     "driver_evermore.c",
@@ -997,17 +1005,26 @@ if qt_env:
 # The libraries have dependencies on system libraries
 
 gpslibs = ["-lgps", "-lm"]
-gpsdlibs = ["-lgpsd"] + usblibs + bluezlibs + gpslibs
+gpsdlibs = ["-lgpsd"] + usblibs + bluezlibs + gpslibs + uci_libs + uuid_libs + dbus_libs
 
 # Source groups
 
-gpsd_sources = ['gpsd.c','ntpshm.c','shmexport.c','dbusexport.c','config.c']
+gpsd_sources = ['gpsd.c','ntpshm.c','shmexport.c','dbusexport.c']
 
 if env['systemd']:
     gpsd_sources.append("sd_socket.c")
 
 gpssim_sources = [
-    'gpssim.c'
+    'gpssim.c',
+    'nmea2000.c'
+    ]
+
+testn2k_sources = [
+    'testn2k.c'
+    ]
+
+hostcmd_sources = [
+    'hostcmd.c'
     ]
 
 gpsmon_sources = [
@@ -1027,7 +1044,7 @@ gpsmon_sources = [
 gpsd_env = env.Clone()
 
 gpsd = gpsd_env.Program('gpsd', gpsd_sources,
-                        parse_flags = gpsdlibs + dbus_libs + uci_libs + uuid_libs)
+                        parse_flags = gpsdlibs)
 env.Depends(gpsd, [compiled_gpsdlib, compiled_gpslib])
 
 gpsdecode = env.Program('gpsdecode', ['gpsdecode.c'], parse_flags=gpsdlibs)
@@ -1050,6 +1067,14 @@ gpssim = env.Program('gpssim', gpssim_sources,
                      parse_flags=gpsdlibs + ncurseslibs + ['-lm'])
 env.Depends(gpssim, [compiled_gpsdlib, compiled_gpslib])
 
+hostcmd = env.Program('hostcmd', hostcmd_sources,
+                     parse_flags=gpsdlibs + ncurseslibs + ['-lm'])
+env.Depends(hostcmd, [compiled_gpsdlib, compiled_gpslib])
+
+testn2k = env.Program('testn2k', testn2k_sources,
+                     parse_flags=gpsdlibs + ncurseslibs + ['-lm'])
+env.Depends(testn2k, [compiled_gpsdlib, compiled_gpslib])
+
 gps2udp = env.Program('gps2udp', ['gps2udp.c'], parse_flags=gpslibs)
 env.Depends(gps2udp, compiled_gpslib)
 
@@ -1062,7 +1087,10 @@ env.Depends(lcdgps, compiled_gpslib)
 cgps = env.Program('cgps', ['cgps.c'], parse_flags=gpslibs + ncurseslibs)
 env.Depends(cgps, compiled_gpslib)
 
-binaries = [gpsd, gpsdecode, gpsctl, gpsdctl, gpspipe, gpssim, gps2udp, gpxlogger, lcdgps]
+readpgns = env.Program('readpgns', ['readpgns.c'], parse_flags=gpsdlibs)
+env.Depends(gpsdecode, [compiled_gpsdlib, compiled_gpslib])
+
+binaries = [gpsd, gpsdecode, gpsctl, gpsdctl, gpspipe, gpssim, gps2udp, gpxlogger, hostcmd, testn2k, lcdgps, readpgns]
 if env["ncurses"]:
     binaries += [cgps, gpsmon]
 
@@ -1096,7 +1124,7 @@ if not env['python']:
     python_targets = []
 else:
     python_progs = ["gpscat", "gpsfake", "gpsprof", "xgps", "xgpsspeed", "gegps"]
-    python_modules = Glob('gps/*.py') 
+    python_modules = Glob('gps/*.py')
 
     # Build Python binding
     #
@@ -1356,7 +1384,7 @@ headerinstall = [ env.Install(installdir('includedir'), x) for x in ("libgpsmm.h
 
 binaryinstall = []
 binaryinstall.append(env.Install(installdir('sbindir'), [gpsd, gpsdctl]))
-binaryinstall.append(env.Install(installdir('bindir'),  [gpsdecode, gpsctl, gpspipe, gpssim, gps2udp, gpxlogger, lcdgps]))
+binaryinstall.append(env.Install(installdir('bindir'),  [gpsdecode, gpsctl, gpspipe, gpssim, gps2udp, gpxlogger, hostcmd, testn2k, lcdgps, readpgns]))
 if env["ncurses"]:
     binaryinstall.append(env.Install(installdir('bindir'), [cgps, gpsmon]))
 binaryinstall.append(LibraryInstall(env, installdir('libdir'), compiled_gpslib))
@@ -1519,7 +1547,7 @@ bits_regress = Utility('bits-regress', [test_bits], [
     '$SRCDIR/test_bits --quiet'
     ])
 
-# Check that all Python modules compile properly 
+# Check that all Python modules compile properly
 if env['python']:
     def check_compile(target, source, env):
         for pyfile in source:
@@ -1604,7 +1632,7 @@ aivdm_regress = Utility('aivdm-regress', [gpsdecode], [
     '$SRCDIR/gpsdecode -u -e -j <$SRCDIR/test/sample.aivdm.ju.chk >$${TMPFILE}; '
         'grep -v "^#" $SRCDIR/test/sample.aivdm.ju.chk | diff -ub - $${TMPFILE}; '
         'rm -f $${TMPFILE}; ',
-    # Parse the unscaled json reference, dump it as scaled json, 
+    # Parse the unscaled json reference, dump it as scaled json,
     # and finally compare it with the scaled json reference
     '@echo "Testing idempotency of scaled JSON dump/decode for AIS"',
     '@TMPFILE=`mktemp -t gpsd-test-XXXXXXXXXXXXXX.chk`; '
@@ -1727,7 +1755,7 @@ if env.WhereIs('asciidoc'):
     asciidocs = ["www/" + stem + ".html" for stem in txtfiles] \
                 + ["www/installation.html"]
     for stem in txtfiles:
-        env.Command('www/%s.html' % stem, 'www/%s.txt' % stem,    
+        env.Command('www/%s.html' % stem, 'www/%s.txt' % stem,
                     ['asciidoc -a toc -o www/%s.html www/%s.txt' % (stem,stem)])
     env.Command("www/installation.html",
                 "INSTALL",
@@ -1737,9 +1765,9 @@ else:
     asciidocs = []
 
 htmlpages = Split('''www/installation.html
-    www/gpscat.html www/gpsctl.html www/gpsdecode.html 
-    www/gpsd.html www/gpsd_json.html www/gpsfake.html www/gpsmon.html 
-    www/gpspipe.html www/gps2udp.html www/gpsprof.html www/gps.html 
+    www/gpscat.html www/gpsctl.html www/gpsdecode.html
+    www/gpsd.html www/gpsd_json.html www/gpsfake.html www/gpsmon.html
+    www/gpspipe.html www/gps2udp.html www/gpsprof.html www/gps.html
     www/libgpsd.html www/libgpsmm.html www/libgps.html
     www/srec.html www/writing-a-driver.html www/hardware.html
     www/performance/performance.html www/internals.html
@@ -1751,7 +1779,7 @@ webpages = htmlpages + asciidocs + map(lambda f: f[:-3], glob.glob("www/*.in"))
 www = env.Alias('www', webpages)
 
 # Paste 'scons --quiet validation-list' to a batch validator such as
-# http://htmlhelp.com/tools/validator/batch.html.en 
+# http://htmlhelp.com/tools/validator/batch.html.en
 def validation_list(target, source, env):
     for page in glob.glob("www/*.html"):
         if not '-head' in page:
@@ -1776,7 +1804,7 @@ if htmlbuilder:
     # Manual pages
     for xml in glob.glob("*.xml"):
         env.HTML('www/%s.html' % xml[:-4], xml)
-    
+
     # DocBook documents
     for stem in ['writing-a-driver', 'performance/performance']:
         env.HTML('www/%s.html' % stem, 'www/%s.xml' % stem)
@@ -1948,7 +1976,7 @@ if os.path.exists("gpsd.c") and os.path.exists(".gitignore"):
     # but it doesn't do any uploads or public repo mods.
     #
     # Note that tag_release has to fire early, otherwise the value of REVISION
-    # won't be right when revision.h is generated for the tarball. 
+    # won't be right when revision.h is generated for the tarball.
     releaseprep = env.Alias("releaseprep",
                             [Utility("distclean", [], ["rm -f revision.h"]),
                              tag_release,

@@ -60,7 +60,7 @@ static int json_tpv_read(const char *buf, struct gps_data_t *gpsdata,
 			         .dflt.real = NAN},
 	{"epv",    t_real,    .addr.real = &gpsdata->fix.epv,
 			         .dflt.real = NAN},
-	{"cog",   t_real,   .addr.real = &gpsdata->navigation.course_over_ground,
+	{"cog",   t_real,   .addr.real = &gpsdata->navigation.course_over_ground[compass_true],
 			         .dflt.real = NAN},
 	{"sog",   t_real,   .addr.real = &gpsdata->navigation.speed_over_ground,
 			         .dflt.real = NAN},
@@ -424,9 +424,9 @@ int libgps_json_unpack(const char *buf,
 	    gpsdata->set |= HERR_SET;
 	if (isnan(gpsdata->fix.epv) == 0)
 	    gpsdata->set |= VERR_SET;
-	if (isnan(gpsdata->navigation.course_over_ground) == 0) {
+	if (isnan(gpsdata->navigation.course_over_ground[compass_true]) == 0) {
 	    gpsdata->set |= NAVIGATION_SET;
-	    gpsdata->navigation.set |= NAV_COG_PSET;
+	    gpsdata->navigation.set |= NAV_COG_TRUE_PSET;
 	}
 	if (isnan(gpsdata->navigation.speed_over_ground) == 0) {
 	    gpsdata->set |= NAVIGATION_SET;

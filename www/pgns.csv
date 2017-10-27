@@ -1,0 +1,71 @@
+pgn,fast,type,receive,transmit,msg
+ISO,,,,,
+59392,0,0,0,0,ISO Acknowledgment
+59904,0,0,1,1,ISO Request
+60928,0,0,1,1,ISO  Address Claim
+126208,0,0,0,0,NMEA Command/Request/Acknowledge
+126464,1,0,0,1,ISO  Transmit/Receive PGN List
+126996,1,0,0,0,ISO  Product Information
+,,,,,
+GPS,,,,,
+129025,0,1,1,1,GNSS Position Rapid Update
+129026,0,1,1,1,GNSS COG and SOG Rapid Update
+129029,1,1,1,0,GNSS Positition Data
+126992,0,0,0,1,GNSS System Time
+129539,0,1,1,0,GNSS DOPs
+129540,1,1,1,0,GNSS Satellites in View
+129541,1,1,0,0,GNSS Almanac Data
+,,,,,
+AIS,,,,,
+129038,1,2,1,0,AIS  Class A Position Report
+129039,1,2,1,0,AIS  Class B Position Report
+129040,1,2,1,0,AIS  Class B Extended Position Report
+129793,1,2,0,0,AIS  UTC and Date Report
+129794,1,2,1,0,AIS  Class A Static and Voyage Related Data
+129798,1,2,1,0,AIS  SAR Aircraft Position Report
+129802,1,2,1,0,AIS  Safty Related Broadcast Message
+129809,1,2,1,0,"AIS  Class B CS Static Data Report, Part A"
+129810,1,2,1,0,"AIS  Class B CS Static Data Report, Part B"
+130842,1,2,1,0,"AIS  Class B Static Data Report (msg 24, Part A and B)"
+,,,,,
+PWR,,,,,
+127506,1,3,0,0,PWR DC Detailed Status
+127508,1,3,0,0,PWR Battery Status
+127513,1,3,0,0,PWR Battery Configuration Status
+,,,,,
+ENG,,,,,
+127488,0,0,1,0,"Engine Parameters, Rapid"
+127489,1,3,1,0,"Engine Parameters, Dynamic"
+127493,1,3,0,0,"Transmissions Parameters, Dynamic"
+127505,1,3,0,0,Fluid 
+,,,,,
+NAV,,,,,
+127237,0,0,0,0,Heading/Track Control
+127245,0,4,1,0,NAV Rudder
+127250,0,4,1,1,NAV Vessel Heading
+127257,0,0,1,0,Attitude
+127251,0,0,1,0,Rate of Turn
+127258,0,0,1,0,GNSS Magnetic Variation
+,,,,,
+128259,0,4,1,0,NAV Speed
+128267,0,4,1,0,NAV Water Depth
+128275,1,4,1,0,NAV Distance Log
+,,,,,
+129033,1,1,0,1,Time & Date
+,,,,,
+129283,0,0,1,0,NAV Cross Track Error
+129284,1,0,0,0,NAV Navigation Data
+129285,1,0,0,0,NAV Navigation - Route/WP Information
+,,,,,
+129291,0,0,0,0,"NAV Set & Drift, Rapid Update"
+,,,,,
+130306,0,4,1,1,NAV Wind Data
+130310,0,4,1,0,"NAV Water Temp., Outside Air Temp., Atmospheric Pressure"
+130311,0,4,1,0,NAV Temperature
+130312,0,4,1,0,NAV Temperature
+,,,,,
+SIM,,,,,
+130850,0,0,0,0,Simnet Autopilot Commands
+,,,,,
+UNKOWN,,,,,
+0,0,0,0,0,Unkown sentence

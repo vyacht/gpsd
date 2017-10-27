@@ -188,10 +188,10 @@ void json_tpv_dump(const struct gps_device_t *session,
 	    (void)snprintf(reply + strlen(reply),
 			   replylen - strlen(reply),
 			   "\"epv\":%.3f,", gpsdata->fix.epv);
-	if (isnan(gpsdata->navigation.course_over_ground) == 0)
+	if (isnan(gpsdata->navigation.course_over_ground[compass_true]) == 0)
 	    (void)snprintf(reply + strlen(reply),
 			   replylen - strlen(reply),
-			   "\"cog\":%.4f,", gpsdata->navigation.course_over_ground);
+			   "\"cog\":%.4f,", gpsdata->navigation.course_over_ground[compass_true]);
 	if (isnan(gpsdata->navigation.speed_over_ground) == 0)
 	    (void)snprintf(reply + strlen(reply),
 			   replylen - strlen(reply),

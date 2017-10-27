@@ -11,6 +11,7 @@
 #include <time.h>
 
 #include "gpsd.h"
+#include "navigation.h"
 
 #ifdef NMEA_ENABLE
 /**************************************************************************
@@ -19,7 +20,7 @@
  *
  **************************************************************************/
 
-static void do_lat_lon(char *field[], struct gps_fix_t *out)
+static void do_lat_lon(char *field[], double * latitude, double * longitude)
 /* process a pair of latitude/longitude fields starting at field index BEGIN */
 {
     double d, m;
@@ -34,7 +35,7 @@ static void do_lat_lon(char *field[], struct gps_fix_t *out)
 	p = field[1];
 	if (*p == 'S')
 	    lat = -lat;
-	out->latitude = lat;
+	*latitude = lat;
     }
     if (*(p = field[2]) != '\0') {
 	double lon;
@@ -46,7 +47,7 @@ static void do_lat_lon(char *field[], struct gps_fix_t *out)
 	p = field[3];
 	if (*p == 'W')
 	    lon = -lon;
-	out->longitude = lon;
+	*longitude = lon;
     }
 }
 
@@ -141,6 +142,86 @@ static void register_fractional_time(const char *tag, const char *fld,
  *
  **************************************************************************/
 
+/*
+ === RMB - Recommended Minimum Navigation Information ===
+
+ To be sent by a navigation receiver when a destination waypoint is active.
+
+ ------------------------------------------------------------------------------
+                                                              14
+         1 2   3 4    5    6       7 8        9 10  11  12  13|  15
+         | |   | |    |    |       | |        | |   |   |   | |   |
+  $--RMB,A,x.x,a,c--c,c--c,llll.ll,a,yyyyy.yy,a,x.x,x.x,x.x,A,m,*hh<CR><LF>
+ ------------------------------------------------------------------------------
+
+ Field Number:
+
+ 1. Status, A= Active, V = Void
+ 2. Cross Track error - nautical miles
+ 3. Direction to Steer, Left or Right
+ 4. TO Waypoint ID
+ 5. FROM Waypoint ID
+ 6. Destination Waypoint Latitude
+ 7. N or S
+ 8. Destination Waypoint Longitude
+ 9. E or W
+ 10. Range to destination in nautical miles
+ 11. Bearing to destination in degrees True
+ 12. Destination closing velocity in knots
+ 13. Arrival Status, A = Arrival Circle Entered
+ 14. FAA mode indicator (NMEA 2.3 and later)
+ 15. Checksum
+
+ Example: $GPRMB,A,0.66,L,003,004,4917.24,N,12309.57,W,001.3,052.5,000.5,V*0B
+*/
+static gps_mask_t processRMB(int count, char *field[],
+    struct gps_device_t *session) {
+
+    gps_mask_t mask = 0;
+
+    if(count < 13) return 0;
+
+    if (strcmp(field[1], "V") == 0) {
+        return 0;
+    }
+
+    session->gpsdata.waypoint.xte = safe_atof(field[2])/METERS_TO_NM;
+    session->gpsdata.waypoint.set |= WPY_XTE_PSET;
+
+    if(strcmp(field[3], "R") == 0)
+        session->gpsdata.waypoint.xte *= -1.0;
+
+    strncpy(session->gpsdata.waypoint.active_to, field[4], 255);
+    strncpy(session->gpsdata.waypoint.active_from, field[5], 255);
+
+    do_lat_lon(&field[6],
+        &session->gpsdata.waypoint.latitude,
+        &session->gpsdata.waypoint.longitude);
+    session->gpsdata.waypoint.set |= WPY_LATLON_TO_PSET;
+
+    session->gpsdata.waypoint.range_to_destination = safe_atof(field[10])/METERS_TO_NM;
+    session->gpsdata.waypoint.set |= WPY_RANGE_TO_PSET;
+
+    session->gpsdata.waypoint.bearing_from_pos_to_destination = safe_atof(field[11]);
+    session->gpsdata.waypoint.set |= WPY_BEARING_FROM_POS_TO_PSET;
+
+    session->gpsdata.waypoint.speed_to_destination = safe_atof(field[12]);
+    session->gpsdata.waypoint.set |= WPY_SPEED_FROM_ORG_TO_PSET;
+
+    session->gpsdata.waypoint.arrival_status = waypoint_arrival_unknown;
+    if(strcmp(field[13], "A") == 0) {
+        session->gpsdata.waypoint.arrival_status |= waypoint_circle_entered;
+        session->gpsdata.waypoint.set |= WPY_ARRIVAL_STATUS_PSET;
+    } else if(strcmp(field[13], "V") == 0) {
+        session->gpsdata.waypoint.arrival_status |= waypoint_not_arrived;
+        session->gpsdata.waypoint.set |= WPY_ARRIVAL_STATUS_PSET;
+    }
+
+    mask |= WAYPOINT_SET;
+
+    return mask;
+}
+
 static gps_mask_t processGPRMC(int count, char *field[],
 			       struct gps_device_t *session)
 /* Recommend Minimum Course Specific GPS/TRANSIT Data */
@@ -153,7 +234,7 @@ static gps_mask_t processGPRMC(int count, char *field[],
      * 3,4   4916.45,N    Latitude 49 deg. 16.45 min North
      * 5,6   12311.12,W   Longitude 123 deg. 11.12 min West
      * 7     000.5      Speed over ground, Knots
-     * 8     054.7      Course Made Good, True north
+     * 8     054.7      Course Over Ground, True north
      * 9     181194       Date of fix  18 November 1994
      * 10,11 020.3,E      Magnetic variation 20.3 deg East
      * 12    A      FAA mode indicator (NMEA 2.3 and later)
@@ -189,13 +270,23 @@ static gps_mask_t processGPRMC(int count, char *field[],
 	    mask |= TIME_SET;
 	    register_fractional_time(field[0], field[1], session);
 	}
-	do_lat_lon(&field[3], &session->newdata);
+	do_lat_lon(&field[3], &session->newdata.latitude, &session->newdata.longitude);
 	mask |= LATLON_SET;
-	session->gpsdata.navigation.speed_over_ground = safe_atof(field[7]) * KNOTS_TO_MPS;
-	session->gpsdata.navigation.set |= NAV_SOG_PSET;
-	session->gpsdata.navigation.course_over_ground = safe_atof(field[8]);
-	session->gpsdata.navigation.set |= NAV_COG_PSET;
+
+    mask |= nav_set_speed_over_ground_in_knots(safe_atof(field[7]), session);
+
+	session->gpsdata.navigation.course_over_ground[compass_true] = safe_atof(field[8]);
+	session->gpsdata.navigation.set |= NAV_COG_TRUE_PSET;
 	mask |= NAVIGATION_SET;
+
+    if(count > 11 && field[10][0] != '\0' && field[11][0] != '\0') {
+        if((strcmp(field[11], "W") == 0) || (strcmp(field[11], "S") == 0))
+            session->gpsdata.environment.variation = safe_atof(field[10]) * -1.0;
+        else
+            session->gpsdata.environment.variation = safe_atof(field[10]);
+        session->gpsdata.environment.set |= ENV_VARIATION_PSET;
+        mask |= ENVIRONMENT_SET;
+    }
 	/*
 	 * This copes with GPSes like the Magellan EC-10X that *only* emit
 	 * GPRMC. In this case we set mode and status here so the client
@@ -219,7 +310,7 @@ static gps_mask_t processGPRMC(int count, char *field[],
 		session->newdata.latitude,
 		session->newdata.longitude,
 		session->gpsdata.navigation.speed_over_ground,
-		session->gpsdata.navigation.course_over_ground,
+		session->gpsdata.navigation.course_over_ground[compass_true],
 		session->newdata.mode,
 		session->gpsdata.status);
     return mask;
@@ -277,7 +368,7 @@ static gps_mask_t processGPGLL(int count, char *field[],
     if (strcmp(field[6], "A") == 0 && (count < 8 || *status != 'N')) {
 	int newstatus;
 
-	do_lat_lon(&field[1], &session->newdata);
+	do_lat_lon(&field[1], &session->newdata.latitude, &session->newdata.longitude);
 	mask |= LATLON_SET;
 	if (count >= 8 && *status == 'D')
 	    newstatus = STATUS_DGPS_FIX;	/* differential */
@@ -363,7 +454,7 @@ static gps_mask_t processGPGGA(int c UNUSED, char *field[],
 	else {
 	    mask |= TIME_SET;
 	}
-	do_lat_lon(&field[2], &session->newdata);
+	do_lat_lon(&field[2], &session->newdata.latitude, &session->newdata.longitude);
 	mask |= LATLON_SET;
 	session->gpsdata.satellites_used = atoi(field[7]);
 	altitude = field[9];
@@ -777,6 +868,75 @@ static gps_mask_t processGPZDA(int c UNUSED, char *field[],
     return mask;
 }
 
+static gps_mask_t processHDG(int c UNUSED, char *field[],
+    struct gps_device_t *session)
+{
+    /*
+    === HDG - Heading - Deviation & Variation ===
+
+    ------------------------------------------------------------------------------
+            1   2   3 4   5 6
+            |   |   | |   | |
+     $--HDG,x.x,x.x,a,x.x,a*hh<CR><LF>
+    ------------------------------------------------------------------------------
+
+    Field Number:
+
+    1. Magnetic Sensor heading in degrees
+    2. Magnetic Deviation, degrees
+    3. Magnetic Deviation direction, E = Easterly, W = Westerly
+    4. Magnetic Variation degrees
+    5. Magnetic Variation direction, E = Easterly, W = Westerly
+    6. Checksum
+    */
+
+    gps_mask_t mask = 0;
+
+    session->gpsdata.navigation.set        |= NAV_HDG_MAGN_PSET;
+    session->gpsdata.navigation.heading[compass_magnetic] = safe_atof(field[1]);
+
+    session->gpsdata.environment.set       |= ENV_DEVIATION_PSET;
+    session->gpsdata.environment.deviation = safe_atof(field[2]);
+    if (strcmp(field[3], "W") == 0)
+        session->gpsdata.environment.deviation -= session->gpsdata.environment.deviation;
+
+    session->gpsdata.environment.set       |= ENV_VARIATION_PSET;
+    session->gpsdata.environment.variation = safe_atof(field[4]);
+    if (strcmp(field[5], "W") == 0)
+        session->gpsdata.environment.variation -= session->gpsdata.environment.variation;
+
+    mask |= (NAVIGATION_SET | ENVIRONMENT_SET);
+
+    return mask;
+}
+
+static gps_mask_t processHDM(int c UNUSED, char *field[],
+				struct gps_device_t *session)
+{
+    /*
+      === HDM - Heading Magnetic ===
+
+      $--HDM,x.x,T*hh<CR><LF>
+
+      0. Heading Magnetic
+      1. T = True
+      2. Checksum
+    */
+    gps_mask_t mask;
+    mask = ONLINE_SET;
+
+    session->gpsdata.navigation.heading[compass_magnetic] = safe_atof(field[1]);
+    mask |= (NAVIGATION_SET);
+    session->gpsdata.navigation.set = NAV_HDG_MAGN_PSET;
+
+    gpsd_report(session->context->debug, LOG_RAW,
+		"time %.3f, heading %lf.\n",
+		session->newdata.time,
+		session->gpsdata.navigation.heading[compass_magnetic]);
+    return mask;
+}
+
+
 static gps_mask_t processHDT(int c UNUSED, char *field[],
 				struct gps_device_t *session)
 {
@@ -794,25 +954,6 @@ static gps_mask_t processHDT(int c UNUSED, char *field[],
 
     session->gpsdata.navigation.heading[compass_true] = safe_atof(field[1]);
 
-    session->gpsdata.attitude.mag_st = '\0';
-    session->gpsdata.attitude.pitch = NAN;
-    session->gpsdata.attitude.pitch_st = '\0';
-    session->gpsdata.attitude.roll = NAN;
-    session->gpsdata.attitude.roll_st = '\0';
-    session->gpsdata.attitude.yaw = NAN;
-    session->gpsdata.attitude.yaw_st = '\0';
-    session->gpsdata.attitude.dip = NAN;
-    session->gpsdata.attitude.mag_len = NAN;
-    session->gpsdata.attitude.mag_x = NAN;
-    session->gpsdata.attitude.mag_y = NAN;
-    session->gpsdata.attitude.mag_z = NAN;
-    session->gpsdata.attitude.acc_len = NAN;
-    session->gpsdata.attitude.acc_x = NAN;
-    session->gpsdata.attitude.acc_y = NAN;
-    session->gpsdata.attitude.acc_z = NAN;
-    session->gpsdata.attitude.gyro_x = NAN;
-    session->gpsdata.attitude.gyro_y = NAN;
-
     mask |= (NAVIGATION_SET);
     session->gpsdata.navigation.set = NAV_HDG_TRUE_PSET;
 
@@ -820,6 +961,106 @@ static gps_mask_t processHDT(int c UNUSED, char *field[],
 		"time %.3f, heading %lf.\n",
 		session->newdata.time,
 		session->gpsdata.navigation.heading[compass_true]);
+    return mask;
+}
+
+static gps_mask_t processAPA(int c UNUSED, char *field[] UNUSED,
+    struct gps_device_t *session UNUSED)
+{
+    /*
+    === APA - Autopilot Sentence "A" ===
+
+    This sentence is sent by some GPS receivers to allow them to be used
+    to control an autopilot unit. This sentence is commonly used by
+    autopilots and contains navigation receiver warning flag status,
+    cross-track-error, waypoint arrival status, initial bearing from
+    origin waypoint to the destination, continuous bearing from present
+    position to destination and recommended heading-to-steer to
+    destination waypoint for the active navigation leg of the journey.
+
+    ------------------------------------------------------------------------------
+            1 2  3   4 5 6 7  8  9 10    11
+            | |  |   | | | |  |  | |     |
+     $--APA,A,A,x.xx,L,N,A,A,xxx,M,c---c*hh<CR><LF>
+    ------------------------------------------------------------------------------
+
+    Field Number:
+
+    1. Status
+         V = LORAN-C Blink or SNR warning
+         V = general warning flag or other navigation systems when a reliable
+             fix is not available
+    2. Status
+         V = Loran-C Cycle Lock warning flag
+         A = OK or not used
+    3. Cross Track Error Magnitude
+    4. Direction to steer, L or R
+    5. Cross Track Units (Nautic miles or kilometers)
+    6. Status
+         A = Arrival Circle Entered
+    7. Status
+         A = Perpendicular passed at waypoint
+    8. Bearing origin to destination
+    9. M = Magnetic, T = True
+    10. Destination Waypoint ID
+    11. checksum
+
+    Example: $GPAPA,A,A,0.10,R,N,V,V,011,M,DEST,011,M*82
+    */
+
+    gps_mask_t mask = 0;
+    return mask;
+
+}
+
+static gps_mask_t processAPB(int c UNUSED, char *field[] UNUSED,
+    struct gps_device_t *session UNUSED)
+{
+    /*
+    Note: Some autopilots, Robertson in particular, misinterpret "bearing
+    from origin to destination" as "bearing from present position to
+    destination". This is likely due to the difference between the APB
+    sentence and the APA sentence. for the APA sentence this would be the
+    correct thing to do for the data in the same field. APA only differs
+    from APB in this one field and APA leaves off the last two fields
+    where this distinction is clearly spelled out. This will result in
+    poor performance if the boat is sufficiently off-course that the two
+    bearings are different.
+                                             13    15
+    ------------------------------------------------------------------------------
+            1 2 3   4 5 6 7 8   9 10   11  12|   14|
+            | | |   | | | | |   | |    |   | |   | |
+     $--APB,A,A,x.x,a,N,A,A,x.x,a,c--c,x.x,a,x.x,a*hh<CR><LF>
+    ------------------------------------------------------------------------------
+
+    Field Number:
+
+    1. Status
+         V = LORAN-C Blink or SNR warning
+         V = general warning flag or other navigation systems when a reliable
+             fix is not available
+    2. Status
+         V = Loran-C Cycle Lock warning flag
+         A = OK or not used
+    3. Cross Track Error Magnitude
+    4. Direction to steer, L or R
+    5. Cross Track Units, N = Nautical Miles
+    6. Status
+         A = Arrival Circle Entered
+    7. Status
+         A = Perpendicular passed at waypoint
+    8. Bearing origin to destination
+    9. M = Magnetic, T = True
+    10. Destination Waypoint ID
+    11. Bearing, present position to Destination
+    12. M = Magnetic, T = True
+    13. Heading to steer to destination waypoint
+    14. M = Magnetic, T = True
+    15. Checksum
+
+    Example: $GPAPB,A,A,0.10,R,N,V,V,011,M,DEST,011,M,011,M*82 */
+
+    gps_mask_t mask = 0;
     return mask;
 }
 
@@ -868,7 +1109,7 @@ static gps_mask_t processDPT(int c UNUSED, char *field[],
     /* === DPT - Depth of Water ===
        $--DPT,x.x,x.x*hh<CR><LF>
        1. Depth, meters
-       2. Offset from transducer, 
+       2. Offset from transducer,
           positive means distance from tansducer to water line
           negative means distance from transducer to keel
        3. Checksum
@@ -893,6 +1134,49 @@ static gps_mask_t processDPT(int c UNUSED, char *field[],
 
     return mask;
 }
+
+static gps_mask_t processMDA(int c UNUSED, char *field[] UNUSED,
+    struct gps_device_t *session UNUSED)
+{
+/*
+=== MDA - Meteorological Composite ===
+
+Barometric pressure, air and water temperature, humidity, dew point and wind speed and direction relative to the surface of the earth.
+The use of $--MTW, $--MWV and $--XDR is recommended.
+
+------------------------------------------------------------------------------
+         1  2  3  4  5  6  7  8  9  10  11 12 13 14 15 16 17 18 19 20
+         |  |  |  |  |  |  |  |  |   |   |  |  |  |  |  |  |  |  |  |
+ $--MDA,x.x,I,x.x,B,x.x,C,x.x,C,x.x,x.x,x.x,C,x.x,T,x.x,M,x.x,N,x.x,M*hh<CR><LF>
+------------------------------------------------------------------------------
+
+Field Number:
+
+1.  Barometric pressure, inches of mercury
+2.  I
+3.  Barometric pressure, bars
+4.  B
+5.  Air temperature, degrees C
+6.  C
+7.  Water temperature, degrees C
+8.  C
+9.  Relative humidity, percent
+10. Absolute humidity, percent
+11. Dew point, degrees C
+12. C
+13. Wind direction, degrees True
+14. T
+15. Wind direction, degrees Magnetic
+16. M
+17. Wind speed, knots
+18. N
+19. Wind speed, meters/second
+20. M
+*/
+    gps_mask_t mask= 0;
+    return mask;
+}
+
 
 /*
 === MTW - Mean Temperature of Water ===
@@ -931,6 +1215,55 @@ static gps_mask_t processMTW(int c UNUSED, char *field[],
     return mask;
 }
 
+static gps_mask_t processMWD(int c UNUSED, char *field[] UNUSED,
+    struct gps_device_t *session UNUSED)
+{
+    /*
+    === MWD - Wind Direction and Angle ===
+    ------------------------------------------------------------------------------
+            1  2  3  4  5  6  7  8
+            |  |  |  |  |  |  |  |
+    $--MWD,x.x,T,x.x,M,x.x,N,x.x,M*hh<CR><LF>
+    ------------------------------------------------------------------------------
+    The direction of where wind comes from true from north, speed true from north.
+
+    1. Wind direction, true to north in degrees
+    2. T
+    3. Wind direction, magnetic to north in degrees
+    4. M
+    5. Wind speed, knots
+    6. N
+    7. Wind speed, meters/second
+    8. M
+    */
+
+    gps_mask_t mask= ONLINE_SET;
+
+    if ((field[1][1] != '\0') && (strcmp(field[2], "T") == 0)) {
+        session->gpsdata.environment.wind[wind_true_north].angle = safe_atof(field[1]);
+        mask |= (ENVIRONMENT_SET);
+        session->gpsdata.environment.set |= ENV_WIND_TRUE_NORTH_ANGLE_PSET;
+    }
+    if ((field[3][1] != '\0') && (strcmp(field[4], "M") == 0)) {
+        session->gpsdata.environment.wind[wind_magnetic_north].angle = safe_atof(field[3]);
+        mask |= (ENVIRONMENT_SET);
+        session->gpsdata.environment.set |= ENV_WIND_MAGN_ANGLE_PSET;
+    }
+    if ((field[5][1] != '\0') && (strcmp(field[6], "N") == 0)) {
+        session->gpsdata.environment.wind[wind_true_north].speed = safe_atof(field[5])* KNOTS_TO_MPS;
+        mask |= (ENVIRONMENT_SET);
+        session->gpsdata.environment.set |= ENV_WIND_TRUE_NORTH_SPEED_PSET;
+    }
+    if ((field[7][1] != '\0') && (strcmp(field[8], "M") == 0)) {
+        session->gpsdata.environment.wind[wind_magnetic_north].speed = safe_atof(field[7]);
+        mask |= (ENVIRONMENT_SET);
+        session->gpsdata.environment.set |= ENV_WIND_MAGN_ANGLE_PSET;
+    }
+
+
+    return mask;
+}
+
 /*
 === MWV - Wind Speed and Angle ===
 
@@ -955,7 +1288,6 @@ static gps_mask_t processMWV(int c UNUSED, char *field[],
 // #define ENV_WIND_APPARENT_SPEED_PSET	(1llu<< 1), wind.apparent.speed
 // #define ENV_WIND_APPARENT_ANGLE_PSET	(1llu<< 2), wind.apparent.angle
     gps_mask_t mask= ONLINE_SET;
-    session->gpsdata.navigation.set = 0;
     double d = 0.0;
 
     if(strcmp(field[5], "A") != 0) {
@@ -963,36 +1295,48 @@ static gps_mask_t processMWV(int c UNUSED, char *field[],
     }
 
     if(strcmp(field[4], "K") == 0) {
-        d = 1.0 / KNOTS_TO_KPH;
+        d = 1.0 / MPS_TO_KPH;
     } else if(strcmp(field[4], "M") == 0) {
-        d = 1.0 / KNOTS_TO_MPS;
-    } else if(strcmp(field[4], "N") == 0) {
         d = 1.0;
+    } else if(strcmp(field[4], "N") == 0) {
+        d = 1.0 * KNOTS_TO_MPS;
+    } else if(strcmp(field[4], "S") == 0) {
+        d = 1.0 / MPS_TO_SMPH;
     }
 
-    if(strcmp(field[2], "T") == 0) {
+    if(strcmp(field[2], "R") == 0) {
         if (field[1][0] != '\0') {
-            session->gpsdata.environment.wind.apparent.angle = safe_atof(field[1]);
-            mask |= (NAVIGATION_SET);
-            session->gpsdata.navigation.set |= ENV_WIND_APPARENT_ANGLE_PSET;
+            session->gpsdata.environment.wind[wind_apparent].angle = safe_atof(field[1]);
+            mask |= (ENVIRONMENT_SET);
+            session->gpsdata.environment.set |= ENV_WIND_APPARENT_ANGLE_PSET;
         }
         if (field[3][0] != '\0') {
-            session->gpsdata.environment.wind.apparent.speed = safe_atof(field[3]) * d;
-            mask |= (NAVIGATION_SET);
-            session->gpsdata.navigation.set |= ENV_WIND_APPARENT_SPEED_PSET;
+            session->gpsdata.environment.wind[wind_apparent].speed = safe_atof(field[3]) * d;
+            mask |= (ENVIRONMENT_SET);
+            session->gpsdata.environment.set |= ENV_WIND_APPARENT_SPEED_PSET;
         }
-    } else if(strcmp(field[2], "R") == 0) {
+    } else if(strcmp(field[2], "T") == 0) {
         if (field[1][0] != '\0') {
-            session->gpsdata.environment.wind.true_north.angle = safe_atof(field[1]);
-            mask |= (NAVIGATION_SET);
-            session->gpsdata.navigation.set |= ENV_WIND_TRUE_GROUND_ANGLE_PSET;
+            session->gpsdata.environment.wind[wind_true_to_boat].angle = safe_atof(field[1]);
+            mask |= (ENVIRONMENT_SET);
+            session->gpsdata.environment.set |= ENV_WIND_TRUE_TO_BOAT_ANGLE_PSET;
         }
         if (field[3][0] != '\0') {
-            session->gpsdata.environment.wind.true_north.speed = safe_atof(field[3]) * d;
-            mask |= (NAVIGATION_SET);
-            session->gpsdata.navigation.set |= ENV_WIND_TRUE_GROUND_SPEED_PSET;
+            session->gpsdata.environment.wind[wind_true_to_boat].speed = safe_atof(field[3]) * d;
+            mask |= (ENVIRONMENT_SET);
+            session->gpsdata.environment.set |= ENV_WIND_TRUE_TO_BOAT_SPEED_PSET;
         }
     }
+
+    gpsd_report(session->context->debug, LOG_DATA,
+		"NMEA 0183 MWV:\n");
+
+    gpsd_report(session->context->debug, LOG_IO,
+		"               awa= %0.2f, aws= %0.2f m/s, twa= %0.2f, tws= %0.2f m/s, \n",
+                session->gpsdata.environment.wind[wind_apparent].angle,
+                session->gpsdata.environment.wind[wind_apparent].speed,
+                session->gpsdata.environment.wind[wind_true_to_boat].angle,
+                session->gpsdata.environment.wind[wind_true_to_boat].speed);
 
     return mask;
 }
@@ -1006,7 +1350,7 @@ static gps_mask_t processMWV(int c UNUSED, char *field[],
  $--ROT,x.x,A*hh<CR><LF>
 ------------------------------------------------------------------------------
 
-Field Number: 
+Field Number:
 
 1. Rate Of Turn, degrees per minute, "-" means bow turns to port
 2. Status, A means data is valid
@@ -1035,7 +1379,7 @@ static gps_mask_t processROT(int c UNUSED, char *field[],
  $--RSA,x.x,A,x.x,A*hh<CR><LF>
 ------------------------------------------------------------------------------
 
-Field Number: 
+Field Number:
 
 1. Starboard (or single) rudder sensor, "-" means Turn To Port
 2. Status, A means data is valid
@@ -1065,7 +1409,7 @@ static gps_mask_t processRSA(int c UNUSED, char *field[],
  $--VHW,x.x,T,x.x,M,x.x,N,x.x,K*hh<CR><LF>
 ------------------------------------------------------------------------------
 
-Field Number: 
+Field Number:
 
 1. Degress True
 2. T = True
@@ -1078,7 +1422,7 @@ Field Number:
 9. Checksum
 
 <<GLOBALSAT>> describes a different format in which the first three
-fields are water-temperature measurements.  It's not clear which 
+fields are water-temperature measurements.  It's not clear which
 is correct.
 */
 static gps_mask_t processVHW(int c UNUSED, char *field[],
@@ -1098,14 +1442,19 @@ static gps_mask_t processVHW(int c UNUSED, char *field[],
         session->gpsdata.navigation.set = NAV_HDG_MAGN_PSET;
     }
     if ((field[5][0] != '\0') && (strcmp(field[6], "N") == 0)) {
-        session->gpsdata.navigation.speed_thru_water = safe_atof(field[5]);
-        mask |= (NAVIGATION_SET);
-        session->gpsdata.navigation.set = NAV_STW_PSET;
+
+        mask |=
+            nav_set_speed_through_water_in_knots(safe_atof(field[5]), session);
+
     } else if ((field[7][0] != '\0') && (strcmp(field[8], "K") == 0)) {
-        session->gpsdata.navigation.speed_thru_water = safe_atof(field[7]) / KNOTS_TO_KPH;
-        mask |= (NAVIGATION_SET);
-        session->gpsdata.navigation.set = NAV_STW_PSET;
+        mask |=
+            nav_set_speed_through_water_in_knots(safe_atof(field[7]) / KNOTS_TO_KPH, session);
+
     }
+
+    gpsd_report(session->context->debug, LOG_IO,
+		"STW %lf.\n",
+                session->gpsdata.navigation.speed_thru_water);
     return mask;
 }
 
@@ -1118,7 +1467,7 @@ static gps_mask_t processVHW(int c UNUSED, char *field[],
  $--VLW,x.x,N,x.x,N*hh<CR><LF>
 ------------------------------------------------------------------------------
 
-Field Number: 
+Field Number:
 
 1. Total cumulative distance
 2. N = Nautical Miles
@@ -1156,7 +1505,7 @@ static gps_mask_t processVLW(int c UNUSED, char *field[],
  $--VTG,x.x,T,x.x,M,x.x,N,x.x,K,m,*hh<CR><LF>
 ------------------------------------------------------------------------------
 
-Field Number: 
+Field Number:
 
 1. Track Degrees
 2. T = True
@@ -1176,23 +1525,19 @@ static gps_mask_t processVTG(int c UNUSED, char *field[],
     // NAV_COG_PSET, course_over_ground
     gps_mask_t mask= ONLINE_SET;
     if ((field[1][0] != '\0') && (strcmp(field[2], "T") == 0)) {
-        session->gpsdata.navigation.course_over_ground = safe_atof(field[1]);
+        session->gpsdata.navigation.course_over_ground[compass_true] = safe_atof(field[1]);
         mask |= (NAVIGATION_SET);
-        session->gpsdata.navigation.set = NAV_COG_PSET;
+        session->gpsdata.navigation.set = NAV_COG_TRUE_PSET;
     } else if ((field[3][0] != '\0') && (strcmp(field[4], "M") == 0)) {
-        session->gpsdata.navigation.course_over_ground = safe_atof(field[3]);
+        session->gpsdata.navigation.course_over_ground[compass_magnetic] = safe_atof(field[3]);
         mask |= (NAVIGATION_SET);
-        session->gpsdata.navigation.set = NAV_COG_PSET;
+        session->gpsdata.navigation.set = NAV_COG_MAGN_PSET;
     }
 
     if ((field[5][0] != '\0') && (strcmp(field[6], "N") == 0)) {
-        session->gpsdata.navigation.speed_over_ground = safe_atof(field[5]);
-        mask |= (NAVIGATION_SET);
-        session->gpsdata.navigation.set = NAV_SOG_PSET;
+        mask |= nav_set_speed_over_ground_in_knots(safe_atof(field[5]), session);
     } else if ((field[7][0] != '\0') && (strcmp(field[8], "K") == 0)) {
-        session->gpsdata.navigation.speed_over_ground = safe_atof(field[7])/KNOTS_TO_KPH;
-        mask |= (NAVIGATION_SET);
-        session->gpsdata.navigation.set = NAV_SOG_PSET;
+        mask |= nav_set_speed_over_ground_in_knots(safe_atof(field[7])/KNOTS_TO_KPH, session);
     }
 
     return mask;
@@ -1207,7 +1552,7 @@ static gps_mask_t processVTG(int c UNUSED, char *field[],
  $--VWR,x.x,a,x.x,N,x.x,M,x.x,K*hh<CR><LF>
 ------------------------------------------------------------------------------
 
-Field Number: 
+Field Number:
 
 1. Wind direction magnitude in degrees
 2. Wind direction Left/Right of bow
@@ -1229,28 +1574,38 @@ static gps_mask_t processVWR(int c UNUSED, char *field[],
 
     if (field[1][0] != '\0') {
         if (strcmp(field[2], "R") == 0) {
-            session->gpsdata.environment.wind.apparent.angle = safe_atof(field[1]);
+            session->gpsdata.environment.wind[wind_apparent].angle = safe_atof(field[1]);
             mask |= (ENVIRONMENT_SET);
-            session->gpsdata.navigation.set = ENV_WIND_APPARENT_ANGLE_PSET;
+            session->gpsdata.environment.set = ENV_WIND_APPARENT_ANGLE_PSET;
         } else if (strcmp(field[2], "L") == 0) {
-            session->gpsdata.environment.wind.apparent.angle = 360.0 - safe_atof(field[1]);
+            session->gpsdata.environment.wind[wind_apparent].angle = 360.0 - safe_atof(field[1]);
             mask |= (ENVIRONMENT_SET);
-            session->gpsdata.navigation.set = ENV_WIND_APPARENT_ANGLE_PSET;
+            session->gpsdata.environment.set = ENV_WIND_APPARENT_ANGLE_PSET;
         }
     }
     if ((field[3][0] != '\0') && strcmp(field[4], "N") == 0) {
-        session->gpsdata.environment.wind.apparent.speed = safe_atof(field[3]);
+        session->gpsdata.environment.wind[wind_apparent].speed = safe_atof(field[3]) * KNOTS_TO_MPS;
         mask |= (ENVIRONMENT_SET);
-        session->gpsdata.navigation.set = ENV_WIND_APPARENT_SPEED_PSET;
+        session->gpsdata.environment.set |= ENV_WIND_APPARENT_SPEED_PSET;
     } else if ((field[5][0] != '\0') && strcmp(field[6], "M") == 0) {
-        session->gpsdata.environment.wind.apparent.speed = safe_atof(field[5]) / KNOTS_TO_MPS;
+        session->gpsdata.environment.wind[wind_apparent].speed = safe_atof(field[5]);
         mask |= (ENVIRONMENT_SET);
-        session->gpsdata.navigation.set = ENV_WIND_APPARENT_SPEED_PSET;
+        session->gpsdata.environment.set |= ENV_WIND_APPARENT_SPEED_PSET;
     } else if ((field[7][0] != '\0') && strcmp(field[8], "K") == 0) {
-        session->gpsdata.environment.wind.apparent.speed = safe_atof(field[7]) / KNOTS_TO_KPH;
+        session->gpsdata.environment.wind[wind_apparent].speed = safe_atof(field[7]) / MPS_TO_KPH;
         mask |= (ENVIRONMENT_SET);
-        session->gpsdata.navigation.set = ENV_WIND_APPARENT_SPEED_PSET;
+        session->gpsdata.environment.set |= ENV_WIND_APPARENT_SPEED_PSET;
     }
+
+    gpsd_report(session->context->debug, LOG_DATA,
+		"NMEA 0183 VWR:\n");
+
+    gpsd_report(session->context->debug, LOG_IO,
+		"               awa= %0.2f, aws= %0.2f m/s\n",
+                session->gpsdata.environment.wind[wind_apparent].angle,
+                session->gpsdata.environment.wind[wind_apparent].speed);
+
+
     return mask;
 }
 
@@ -1263,7 +1618,7 @@ static gps_mask_t processVWR(int c UNUSED, char *field[],
  $--XTE,A,A,x.x,a,N,m,*hh<CR><LF>
 ------------------------------------------------------------------------------
 
-Field Number: 
+Field Number:
 
 1. Status
      - V = LORAN-C Blink or SNR warning
@@ -1284,11 +1639,11 @@ static gps_mask_t processXTE(int c UNUSED, char *field[],
     gps_mask_t mask= ONLINE_SET;
 
     if ((field[3][0] != '\0') && strcmp(field[5], "N") == 0) {
-        session->gpsdata.navigation.xte = safe_atof(field[3]) / METERS_TO_NM;
+        session->gpsdata.waypoint.xte = safe_atof(field[3]) / METERS_TO_NM;
         mask |= (NAVIGATION_SET);
-        session->gpsdata.navigation.set = NAV_XTE_PSET;
-    }    
-    
+        session->gpsdata.waypoint.set = WPY_XTE_PSET;
+    }
+
     return mask;
 }
 
@@ -1591,8 +1946,13 @@ static gps_mask_t processMTK3301(int c UNUSED, char *field[],
  *
  **************************************************************************/
 
+gps_mask_t nmea_parse(char *sentence, struct gps_device_t * session) {
+
+    return nmea_parse_len(sentence, strlen(sentence), session);
+}
+
 /*@ -mayaliasunique @*/
-gps_mask_t nmea_parse(char *sentence, struct gps_device_t * session)
+gps_mask_t nmea_parse_len(char *sentence, size_t sentence_len, struct gps_device_t * session)
 /* parse an NMEA sentence, unpack it into a session structure */
 {
     typedef gps_mask_t(*nmea_decoder) (int count, char *f[],
@@ -1625,26 +1985,34 @@ gps_mask_t nmea_parse(char *sentence, struct gps_device_t * session)
 	     * 4. The mode is changed back to NMEA, resulting in an
 	     *    infinite loop.
 	     */
-	{"RMC", 8,  false, processGPRMC},
+    // HSC, MDA, MWD, RPM, VBW, VDR,
+    {"APA", 10, false, processAPA},
+    {"APB", 14, false, processAPB},
+    {"DBT", 7,  false, processDBT},
+    {"DPT", 2,  false, processDPT},
 	{"GGA", 13, false, processGPGGA},
+    {"GLL", 7,  false, processGPGLL},
 	{"GST", 8,  false, processGPGST},
-	{"GLL", 7,  false, processGPGLL},
 	{"GSA", 17, false, processGPGSA},
 	{"GSV", 0,  false, processGPGSV},
-	{"ZDA", 4,  false, processGPZDA},
 	{"GBS", 7,  false, processGPGBS},
+    {"HDG", 3,  false, processHDG},
+    {"HDM", 1,  false, processHDM},
     {"HDT", 1,  false, processHDT},
-	{"DBT", 7,  true,  processDBT},
-	{"DPT", 2,  true,  processDPT},
-	{"MTW", 1,  true,  processMTW},
-	{"MWV", 4,  true,  processMWV},
-	{"ROT", 1,  true,  processROT},
-	{"RSA", 3,  true,  processRSA},
-	{"VHW", 8,  true,  processVHW},
-	{"VLW", 4,  true,  processVLW},
-	{"VTG", 8,  true,  processVTG},	
-	{"VWR", 8,  true,  processVWR},	
-	{"XTE", 5,  true,  processXTE},	
+    {"MDA", 20, false, processMDA},
+    {"MTW", 1,  false, processMTW},
+    {"MWD", 8,  false, processMWD},
+    {"MWV", 4,  false, processMWV},
+    {"RMC", 8,  false, processGPRMC},
+    {"RMB", 13, false, processRMB},
+	{"ROT", 1,  false, processROT},
+	{"RSA", 3,  false, processRSA},
+	{"VHW", 8,  false, processVHW},
+	{"VLW", 4,  false, processVLW},
+	{"VTG", 8,  false, processVTG},
+	{"VWR", 8,  false, processVWR},
+	{"XTE", 5,  false, processXTE},
+    {"ZDA", 4,  false, processGPZDA},
 #ifdef TNT_ENABLE
 	{"PTNTHTM", 9, false, processTNTHTM},
 #endif /* TNT_ENABLE */
@@ -1674,7 +2042,7 @@ gps_mask_t nmea_parse(char *sentence, struct gps_device_t * session)
      * legal limit for NMEA, so we can cope by just tossing out overlong
      * packets.  This may be a generic bug of all Garmin chipsets.
      */
-    if (strlen(sentence) > NMEA_MAX) {
+    if (sentence_len > NMEA_MAX) {
 	gpsd_report(session->context->debug, LOG_WARN,
 		    "Overlong packet of %zd chars rejected.\n",
 		    strlen(sentence));
@@ -1751,7 +2119,7 @@ gps_mask_t nmea_parse(char *sentence, struct gps_device_t * session)
     /* timestamp recording for fixes happens here */
     if ((retval & TIME_SET) != 0) {
         session->newdata.time = gpsd_utc_resolve(session,
-					   &session->driver.nmea.date, 
+					   &session->driver.nmea.date,
 					   session->driver.nmea.subseconds);
 	/*
 	 * WARNING: This assumes time is always field 0, and that field 0

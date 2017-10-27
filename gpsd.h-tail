@@ -174,18 +174,29 @@ struct gps_packet_t {
     unsigned int frm_7dflag;
     unsigned int frm_offset;
     unsigned int frm_length;
+    unsigned int frm_read;
+    unsigned int frm_version;
+    unsigned int frm_port;
+
+    unsigned int frm_reserved;
+
+    unsigned int frm_act_checksum;
+    unsigned int frm_shall_checksum;
+
     unsigned int state;
     size_t length;
     unsigned char inbuffer[MAX_PACKET_LENGTH*2+1];
     size_t inbuflen;
     unsigned /*@observer@*/char *inbufptr;
     /* outbuffer needs to be able to hold 4 GPGSV records at once */
-#define MAX_OUT_BUF_RECORDS 4
-    unsigned int  out_count;
-    unsigned int  out_type[MAX_OUT_BUF_RECORDS];
-    unsigned int  out_offset[MAX_OUT_BUF_RECORDS];
-    unsigned int  out_len[MAX_OUT_BUF_RECORDS];
-    unsigned char outbuffer[MAX_PACKET_LENGTH*2+1];
+
+#define MAX_OUT_BUF_RECORDS 312 // something safe above MAX_PACKET_LENGTH*2+1 / 3
+    uint16_t   out_count;
+    uint8_t   out_type[MAX_OUT_BUF_RECORDS];
+    uint8_t   out_new_version[MAX_OUT_BUF_RECORDS];
+    uint16_t  out_offset[MAX_OUT_BUF_RECORDS];
+    uint16_t  out_len[MAX_OUT_BUF_RECORDS];
+    uint8_t   outbuffer[MAX_PACKET_LENGTH*2+1];
     size_t outbuflen;
     unsigned long char_counter;		/* count characters processed */
     unsigned long retry_counter;	/* count sniff retries */
@@ -473,6 +484,7 @@ struct ntrip_stream_t
 struct gps_device_t {
 /* session object, encapsulates all global state */
     struct gps_data_t gpsdata;
+
     /*@relnull@*/const struct gps_type_t *device_type;
     unsigned int driver_index;		/* numeric index of current driver */
     unsigned int drivers_identified;	/* bitmask; what drivers have we seen? */
@@ -681,27 +693,38 @@ struct gps_device_t {
 	    int pps_offset_ns;
 	} oncore;
 #endif /* ONCORE_ENABLE */
-#ifdef NMEA2000_ENABLE
-	struct {
-	    unsigned int can_msgcnt;
-	    unsigned int can_net;
-	    unsigned int unit;
-	    unsigned int unit_valid;
-	    int mode;
-	    unsigned int mode_valid;
-	    unsigned int idx;
+#if defined(NMEA2000_ENABLE)||defined(VYSPI_ENABLE)
+        struct {
+            unsigned int can_msgcnt;
+            unsigned int can_net;
+            unsigned int unit;
+            unsigned int unit_valid;
+            int mode;
+            unsigned int mode_valid;
+            unsigned int idx;
 //	    size_t ptr;
-	    size_t fast_packet_len;
-	    int type;
-	    void *workpgn;
-	    void *pgnlist;
-	    unsigned char sid[8];
-	} nmea2000;
+            size_t fast_packet_len;
+            int type;
+            void *workpgn;
+            void *pgnlist;
+
+            unsigned char sid[8];
+            uint16_t manufactureid;
+            uint32_t deviceid;
+            uint8_t own_src_id;
+
+            uint8_t enable_writing;
+
+        } nmea2000;
 #endif /* NMEA2000_ENABLE */
 #ifdef VYSPI_ENABLE
-      struct {
-	uint32_t last_pgn;
-      } vyspi;
+        struct {
+            uint32_t last_pgn;
+            uint8_t prio;
+            uint8_t src;
+            uint8_t dest;
+
+        } vyspi;
 #endif /* VYSPI_ENABLE */
 #ifdef SEATALK_ENABLE
 	struct {
@@ -817,6 +840,8 @@ extern void packet_discard(struct gps_packet_t *lexer);
 extern void packet_accept(struct gps_packet_t *lexer, int packet_type);
 
 extern gps_mask_t nmea_parse(char *, struct gps_device_t *);
+extern gps_mask_t nmea_parse_len(char *sentence, size_t sentence_len, 
+                      struct gps_device_t * session);
 extern ssize_t nmea_write(struct gps_device_t *, char *, size_t);
 extern ssize_t nmea_send(struct gps_device_t *, const char *, ... );
 extern void nmea_add_checksum(char *);
@@ -878,9 +903,6 @@ extern gps_mask_t gpsd_interpret_subframe(struct gps_device_t *, unsigned int,
 				uint32_t[]);
 extern gps_mask_t gpsd_interpret_subframe_raw(struct gps_device_t *,
 				unsigned int, uint32_t[]);
-#ifdef VYSPI_ENABLE
-extern /*@ observer @*/ const char *gpsd_vyspidump(struct gps_device_t *);
-#endif 
 extern /*@ observer @*/ const char *gpsd_hexdump(/*@out@*/char *, size_t,
 						 /*@null@*/char *, size_t);
 extern /*@ observer @*/ const char *gpsd_packetdump(/*@out@*/char *, size_t,
@@ -910,8 +932,9 @@ extern void nmea_navigation_dump(struct gps_device_t *session,  /*@out@*/char[],
 extern int nmea_environment_dump(struct gps_device_t *session, int num, /*@out@*/char[], size_t);
 extern unsigned int ais_binary_encode(struct ais_t *ais, /*@out@*/unsigned char *bits, int flag);
 
-extern gps_mask_t signalk_update_dump(const struct gps_device_t *, 
-                                /*@out@*/char[], size_t);
+extern gps_mask_t signalk_update_dump(struct gps_device_t *, 
+                                      const struct vessel_t * vessel_t,
+                                      /*@out@*/char[], size_t);
 
 extern void ntpshm_context_init(struct gps_context_t *);
 extern void ntpshm_session_init(struct gps_device_t *);
@@ -1013,6 +1036,7 @@ extern int gpsd_open(struct gps_device_t *);
 extern int gpsd_activate(struct gps_device_t *, const int);
 extern void gpsd_deactivate(struct gps_device_t *);
 
+#define AWAIT_TIMEOUT	2
 #define AWAIT_GOT_INPUT	1
 #define AWAIT_NOT_READY	0
 #define AWAIT_FAILED	-1
@@ -1066,7 +1090,7 @@ void gpsd_report(const int, const int, const char *, ...);
 void gpsd_external_report(const int, const int, const char *, ...);
 #endif
 
-int config_parse(struct interface_t *, struct gps_device_t *);
+int config_parse(struct interface_t *, struct vessel_t *, struct gps_device_t *);
 
 #ifdef S_SPLINT_S
 extern struct protoent *getprotobyname(const char *);

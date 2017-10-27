@@ -24,6 +24,7 @@
 /* little-endian access */
 #define getles16(buf, off)	((int16_t)(((uint16_t)getub((buf),   (off)+1) << 8) | (uint16_t)getub((buf), (off))))
 #define getleu16(buf, off)	((uint16_t)(((uint16_t)getub((buf), (off)+1) << 8) | (uint16_t)getub((buf), (off))))
+#define getleu24(buf, off)	((uint16_t)(((uint16_t)getub((buf), (off)+2) << 16) | (uint16_t)getleu16((buf), (off))))
 #define getles32(buf, off)	((int32_t)(((uint16_t)getleu16((buf),  (off)+2) << 16) | (uint16_t)getleu16((buf), (off))))
 #define getleu32(buf, off)	((uint32_t)(((uint16_t)getleu16((buf),(off)+2) << 16) | (uint16_t)getleu16((buf), (off))))
 #define getles64(buf, off)	((int64_t)(((uint64_t)getleu32(buf, (off)+4) << 32) | getleu32(buf, (off))))

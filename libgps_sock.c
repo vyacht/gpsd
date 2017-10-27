@@ -351,7 +351,7 @@ int gps_unpack(char *buf, struct gps_data_t *gpsdata)
 				/* designed before we split eph into epx+epy */
 				nf.epx = nf.epy = DEFAULT(eph) / sqrt(2);
 				nf.epv = DEFAULT(epv);
-				gpsdata->navigation.course_over_ground = DEFAULT(track);
+				gpsdata->navigation.course_over_ground[compass_true] = DEFAULT(track);
 				gpsdata->navigation.speed_over_ground = DEFAULT(speed);
 				nf.climb = DEFAULT(climb);
 				gpsdata->navigation.epd = DEFAULT(epd);
@@ -372,9 +372,9 @@ int gps_unpack(char *buf, struct gps_data_t *gpsdata)
 				    gpsdata->set |= HERR_SET;
 				if (isnan(nf.epv) == 0)
 				    gpsdata->set |= VERR_SET;
-				if (isnan(gpsdata->navigation.course_over_ground) == 0) {
+				if (isnan(gpsdata->navigation.course_over_ground[compass_true]) == 0) {
 				    gpsdata->set |= NAVIGATION_SET;
-				    gpsdata->navigation.set = NAV_COG_PSET;
+				    gpsdata->navigation.set = NAV_COG_TRUE_PSET;
 				}
 				if (isnan(gpsdata->navigation.eps) == 0) {
 				    gpsdata->set |= NAVIGATION_SET;

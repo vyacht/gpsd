@@ -545,9 +545,11 @@ ssize_t gpsd_serial_write(struct gps_device_t * session,
     ssize_t status;
     int error = 0;
     bool ok;
+/*
     if (session == NULL ||
 	session->context == NULL || session->context->readonly)
 	return 0;
+*/
     status = write(session->gpsdata.gps_fd, buf, len);
     ok = (status == (ssize_t) len);
     if(!ok) error = errno;

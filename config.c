@@ -29,6 +29,19 @@ static struct uci_context *uci_ctx;
 static int uci_debuglevel = 0;
 struct uci_context * config_init(void);
 
+struct interface_t * 
+config_next_free_interface(struct interface_t *);
+void
+config_add_boat_section(struct uci_package * pkg, 
+                        struct uci_ptr * ptr,
+                        bool add_section,
+                        struct vessel_t * vessel);
+void
+config_handle_boat_section(struct vessel_t * vessel);
+void
+config_parse_boat_section(struct uci_section * s, struct vessel_t * vessel);
+
+
 #define DEFAULT_UDP_BROADCAST_PORT 2000
 
 static void
@@ -124,7 +137,6 @@ config_port_by_portname(struct gps_device_t * devices, const char * name) {
         
         devp++;
 	}
-
 	return NULL;
 }
 
@@ -172,6 +184,8 @@ config_parse_interface_option(struct device_port_t * port, const char * name, st
 		      "type: %s\n", o->v.string);
 
       strcpy(port->type_str, o->v.string);
+
+
       
 	} else if(strcmp(name, "speed") == 0) {
 		
@@ -182,6 +196,10 @@ config_parse_interface_option(struct device_port_t * port, const char * name, st
 
 }
 
+/*
+ * returns the next free interface from the 
+ * list of interfaces
+ */
 struct interface_t * 
 config_next_free_interface(struct interface_t * ints) {
 
@@ -244,6 +262,11 @@ config_parse_proto_interface(struct interface_t * intf,
     }
 }
 
+/*
+ * config_ifaddrs() is used when no ip address or broadcast address
+ * was defined. It walks through all network interfaces addresses
+ * and adds them as separate gpsd interfaces individually.
+ */
 static int config_ifaddrs(struct interface_t * intfs,
                           struct uci_section *section, const char * name) {
 
@@ -341,13 +364,36 @@ config_parse_interface(struct interface_t * ints, struct gps_device_t *devices,
 
     int16_t portno  = -1;
     
-	gpsd_report(uci_debuglevel, LOG_INF, 
+    gpsd_report(uci_debuglevel, LOG_INF, 
 				"parsing interface section %s\n", name); 
 	
-	const char *devname = NULL;
-	devname = uci_lookup_option_string(uci_ctx, s, "device");
+    const char *devname = NULL;
+    /*
+    sprintf(buf, "gpsd.%s.device", name);
 
-	if (!devname) {
+    if (uci_lookup_ptr(uci_ctx, &ptr, buf, true) != UCI_OK) {
+        gpsd_report(uci_debuglevel, LOG_INF, 
+                    "Error looking up %s in section %s\n", buf, name); 
+        return;
+    }
+    
+    */
+    devname = uci_lookup_option_string(uci_ctx, s, "device");
+
+    const char *enabled = NULL;
+    enabled = uci_lookup_option_string(uci_ctx, s, "enabled");
+
+    if(enabled) {
+        int ne = atoi(enabled);
+        if((ne == 0) || (strcmp(enabled, "false") == 0)) {
+            // section is disabled, we ignore it
+            gpsd_report(uci_debuglevel, LOG_INF, 
+                        "Ignoring disabled section %s\n", name); 
+            return;
+        }
+    }
+
+    if (!devname) {
         /*
          * no device option found, so this is either a udp interface or wrong
          */
@@ -377,7 +423,6 @@ config_parse_interface(struct interface_t * ints, struct gps_device_t *devices,
             it = config_next_free_interface(ints);
             if(it)
                 config_parse_proto_interface(it, s, name);
-
             it->bcast.sin_addr.s_addr = 
                 it->ipaddr.sin_addr.s_addr;
             it->bcast.sin_port = htons(it->port);
@@ -386,12 +431,12 @@ config_parse_interface(struct interface_t * ints, struct gps_device_t *devices,
         return;
     }
     
-	const char *portnos = NULL;
-	portnos = uci_lookup_option_string(uci_ctx, s, "port");
+    const char *portnos = NULL;
+    portnos = uci_lookup_option_string(uci_ctx, s, "port");
 
     if(portnos) {
         portno = atol(portnos);
-        if((portno < 0) || (portno >= 4)) {
+        if((portno < 0) || (portno > 4)) {
             gpsd_report(uci_debuglevel, LOG_ERROR, 
                         "interface %s with illegal port number %s\n", name, portnos); 
             return;
@@ -401,7 +446,8 @@ config_parse_interface(struct interface_t * ints, struct gps_device_t *devices,
     if((strlen(devname) <= 8) || (strncmp(devname, "vyspi://", 8) != 0)) {
         if(portno > -1) {
             gpsd_report(uci_debuglevel, LOG_ERROR, 
-                        "interface %s contains port configuration %s for non-vyspi device\n", name, portnos); 
+                        "interface %s contains port configuration %s for non-vyspi device\n", 
+                        name, portnos); 
             return;
         }
     }
@@ -439,16 +485,17 @@ config_parse_interface(struct interface_t * ints, struct gps_device_t *devices,
     // assign the short name
     if(name) {
         gpsd_report(uci_debuglevel, LOG_INF, 
-                    "interface name %s for device %s and port %d\n", name, devp->gpsdata.dev.path, portno); 
+                    "interface name %s for device %s and port %d\n", 
+                    name, devp->gpsdata.dev.path, portno); 
         strcpy(port->name, name);
     }
         
 	// parse and assign all options
-	struct uci_element *e;
-	uci_foreach_element(&s->options, e) {
-		struct uci_option *o = uci_to_option(e);
+	struct uci_element *el;
+	uci_foreach_element(&s->options, el) {
+		struct uci_option *o = uci_to_option(el);
 
-		config_parse_interface_option(port, e->name, o);
+		config_parse_interface_option(port, el->name, o);
 	}
 }
 
@@ -529,16 +576,18 @@ config_parse_forward(struct gps_device_t *devices, struct uci_section *s) {
 void
 config_add_boat_section(struct uci_package * pkg, 
                         struct uci_ptr * ptr,
-                        bool add_section) {
+                        bool add_section,
+                        struct vessel_t * vessel) {
 
     struct uci_section * section = NULL;
     int ret = UCI_OK;
     uuid_t uuid;
+    char uuid_str[37];
 
     // generate
     uuid_generate_time_safe(uuid);
+    
     // unparse (to string)
-    char uuid_str[37]; // ex. "1b4e28ba-2fa1-11d2-883f-0016d3cca427" + "\0"
     uuid_unparse_lower(uuid, uuid_str);
 
     if(add_section) {
@@ -565,11 +614,109 @@ config_add_boat_section(struct uci_package * pkg,
         ptr->section = section->e.name;
     }
 
-    /* if section is not added then ptr already
-       should have the details about the section */
+    // if section is not added then ptr already
+    //   should have the details about the section 
 
     ptr->option  = "uuid";
     ptr->value   = uuid_str;
+
+    ret = uci_set(uci_ctx, ptr);
+    if(ret == UCI_OK) {
+        gpsd_report(uci_debuglevel, LOG_INF, 
+                    "saving new values\n");
+        uci_save(uci_ctx, ptr->p);
+    }
+
+    strncpy(vessel->uuid, uuid_str, MAX_UUID_STR_LEN);
+    uci_commit(uci_ctx, &pkg, false);
+}
+
+void
+config_parse_boat_section(struct uci_section * s, struct vessel_t * vessel) {
+
+	struct uci_element *e;
+
+    vessel->uuid[0] = '\0';
+    vessel->mmsi = 0;
+    vessel->name[0] = '\0';
+
+	uci_foreach_element(&s->options, e) {
+
+		struct uci_option *o = uci_to_option(e);
+
+        if (!o || o->type != UCI_TYPE_STRING)
+            continue;
+
+        if(strcmp(e->name, "uuid") == 0) {
+            strncpy(vessel->uuid, o->v.string, MAX_UUID_STR_LEN);
+            gpsd_report(uci_debuglevel, LOG_INF, 
+                        "uuid %s\n", vessel->uuid);
+        } else if (strcmp(e->name, "mmsi") == 0) {
+            if(o->v.string)
+                vessel->mmsi = atoi(o->v.string);
+            gpsd_report(uci_debuglevel, LOG_INF, 
+                        "mmsi %09u\n", vessel->mmsi);
+        } else if (strcmp(e->name, "name") == 0) {
+            strncpy(vessel->name, o->v.string, MAX_VESSELNAME_STR_LEN);
+        }
+    }
+}
+
+void
+config_add_n2k_section(struct uci_package * pkg, 
+                        struct uci_ptr * ptr,
+                        bool add_section,
+                        struct gps_device_t *device) {
+
+    struct uci_section * section = NULL;
+    int ret = UCI_OK;
+
+    device->driver.nmea2000.manufactureid = 135;
+    device->driver.nmea2000.deviceid = 123456;
+
+    if(add_section) {
+        char buf2[32];
+
+        // , , section type, 
+        uci_add_section(uci_ctx, pkg, "nmea2000", &section);
+        gpsd_report(uci_debuglevel, LOG_INF, 
+                    "added section %s %s\n",
+                    section->type, section->e.name);
+
+        strcpy(buf2, "gpsd.");
+        strcat(buf2, section->e.name);
+        if (uci_lookup_ptr(uci_ctx, ptr, buf2, true) != UCI_OK) {
+            gpsd_report(uci_debuglevel, LOG_ERROR, 
+                        "config error when looking up new section %s\n",
+                        buf2);
+            return;
+        }
+
+        // section was created with default name, rename
+        ptr->value = "n2k";
+        ret = uci_rename(uci_ctx, ptr);
+        ptr->section = section->e.name;
+    }
+
+    // if section is not added then ptr already
+    //   should have the details about the section 
+
+    char buf[10];
+
+    ptr->option  = "manufacture";
+    snprintf(buf, 10, "%u",     device->driver.nmea2000.manufactureid);
+    ptr->value = buf;
+
+    ret = uci_set(uci_ctx, ptr);
+    if(ret == UCI_OK) {
+        gpsd_report(uci_debuglevel, LOG_INF, 
+                    "saving new values\n");
+        uci_save(uci_ctx, ptr->p);
+    }
+
+    ptr->option  = "deviceid";
+    snprintf(buf, 10, "%u",     device->driver.nmea2000.deviceid);
+    ptr->value = buf;
 
     ret = uci_set(uci_ctx, ptr);
     if(ret == UCI_OK) {
@@ -582,7 +729,43 @@ config_add_boat_section(struct uci_package * pkg,
 }
 
 void
-config_handle_boat_section() {
+config_parse_n2k_section(struct uci_section * s, struct gps_device_t *device) {
+
+	struct uci_element *e;
+
+    device->driver.nmea2000.manufactureid = 135;
+    device->driver.nmea2000.deviceid = 123456;
+
+    // own src id was set in gpsd_init
+
+	uci_foreach_element(&s->options, e) {
+
+		struct uci_option *o = uci_to_option(e);
+
+        if (!o || o->type != UCI_TYPE_STRING)
+            continue;
+
+        if(strcmp(e->name, "manufacture") == 0) {
+            device->driver.nmea2000.manufactureid = atol(o->v.string);
+        } else if (strcmp(e->name, "deviceid") == 0) {
+            device->driver.nmea2000.deviceid = atol(o->v.string);
+        } else if (strcmp(e->name, "srcid") == 0) {
+            // src id - this is more optional
+            device->driver.nmea2000.own_src_id = atol(o->v.string);
+            gpsd_report(uci_debuglevel, LOG_INF, 
+                        "NMEA 2000 own source address %u\n", device->driver.nmea2000.own_src_id);
+        } else if (strcmp(e->name, "enable_writing") == 0) {
+            // src id - this is more optional
+            device->driver.nmea2000.enable_writing = atol(o->v.string);
+            if(device->driver.nmea2000.enable_writing)
+                gpsd_report(uci_debuglevel, LOG_INF, 
+                            "NMEA 2000 enabled for writing.\n");
+        }
+    }
+}
+
+void
+config_handle_boat_section(struct vessel_t * vessel) {
 
     struct uci_package * pkg = NULL;
     struct uci_ptr ptr;
@@ -598,6 +781,7 @@ config_handle_boat_section() {
         gpsd_report(uci_debuglevel, LOG_ERROR, 
                     "config error when looking up section %s\n",
                     buf2);
+        uci_unload(uci_ctx, pkg);
         return;
     }
 
@@ -607,17 +791,59 @@ config_handle_boat_section() {
     case UCI_TYPE_SECTION:
         printf("section %s %s\n", ptr.s->type, e->name);
         // configuration.boat section found - but no option
-        config_add_boat_section(pkg, &ptr, false);
+        config_add_boat_section(pkg, &ptr, false, vessel);
         break;
     case UCI_TYPE_OPTION:
-        // option found, all ok
-        printf("option %s\n", ptr.option);
+        // option found, all ok, parse all options
+        config_parse_boat_section(ptr.s, vessel);
         break;
     default:
         // configuration.boat section not found - need to add it
-        config_add_boat_section(pkg, &ptr, true);
+        config_add_boat_section(pkg, &ptr, true, vessel);
         break;
     }
+    uci_unload(uci_ctx, pkg);
+}
+
+void
+config_handle_n2k_section(struct gps_device_t *device) {
+
+    struct uci_package * pkg = NULL;
+    struct uci_ptr ptr;
+    char buf2[32];
+
+    if (uci_load(uci_ctx, "gpsd", &pkg)) {
+        gpsd_report(uci_debuglevel, LOG_ERROR, 
+                    "failed to open config file\n"); 
+    }
+
+    strcpy(buf2, "gpsd.n2k.manufacture");
+    if (uci_lookup_ptr(uci_ctx, &ptr, buf2, true) != UCI_OK) {
+        gpsd_report(uci_debuglevel, LOG_ERROR, 
+                    "config error when looking up section %s\n",
+                    buf2);
+        uci_unload(uci_ctx, pkg);
+        return;
+    }
+
+    struct uci_element *e;
+    e = ptr.last;
+    switch(e->type) {
+    case UCI_TYPE_SECTION:
+        printf("section %s %s\n", ptr.s->type, e->name);
+        // configuration.boat section found - but no option
+        config_add_n2k_section(pkg, &ptr, false, device);
+        break;
+    case UCI_TYPE_OPTION:
+        // option found, all ok, parse all options
+        config_parse_n2k_section(ptr.s, device);
+        break;
+    default:
+        // configuration.boat section not found - need to add it
+        config_add_n2k_section(pkg, &ptr, true, device);
+        break;
+    }
+    uci_unload(uci_ctx, pkg);
 }
 
 struct uci_context *
@@ -661,6 +887,7 @@ config forward
  */
 
 int config_parse(struct interface_t * interfaces, 
+                 struct vessel_t * vessel,
                  struct gps_device_t *devices) {
 	
 	struct uci_package *uci_network;
@@ -702,7 +929,8 @@ int config_parse(struct interface_t * interfaces,
 
     uci_unload(uci_ctx, uci_network);
 
-    config_handle_boat_section();
+    config_handle_boat_section(vessel);
+    config_handle_n2k_section(devices);
 
 	uci_free_context (uci_ctx);
 

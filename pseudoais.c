@@ -121,7 +121,6 @@ static void ais_binary_to_ascii(unsigned char *bits, unsigned int len)
     return;
 }
 
-
 /*@-compdef -mustdefine@*/
 unsigned int ais_binary_encode(struct ais_t *ais,
 			       unsigned char *bits,
@@ -144,71 +143,71 @@ unsigned int ais_binary_encode(struct ais_t *ais,
         ais_addbits(bits,  38,  4, (uint64_t)ais->type1.status);
         ais_addbits(bits,  42,  8, (uint64_t)ais->type1.turn);
         ais_addbits(bits,  50, 10, (uint64_t)ais->type1.speed);
-	ais_addbits(bits,  60,  1, (uint64_t)ais->type1.accuracy);
-	ais_addbits(bits,  61, 28, (uint64_t)ais->type1.lon);
-	ais_addbits(bits,  89, 27, (uint64_t)ais->type1.lat);
-	ais_addbits(bits, 116, 12, (uint64_t)ais->type1.course);
-	ais_addbits(bits, 128,  9, (uint64_t)ais->type1.heading);
-	ais_addbits(bits, 137,  6, (uint64_t)ais->type1.second);
-	ais_addbits(bits, 143,  2, (uint64_t)ais->type1.maneuver);
+        ais_addbits(bits,  60,  1, (uint64_t)ais->type1.accuracy);
+        ais_addbits(bits,  61, 28, (uint64_t)ais->type1.lon);
+        ais_addbits(bits,  89, 27, (uint64_t)ais->type1.lat);
+        ais_addbits(bits, 116, 12, (uint64_t)ais->type1.course);
+        ais_addbits(bits, 128,  9, (uint64_t)ais->type1.heading);
+        ais_addbits(bits, 137,  6, (uint64_t)ais->type1.second);
+        ais_addbits(bits, 143,  2, (uint64_t)ais->type1.maneuver);
 /*	ais_addbits(bits, 145,  3, (uint64_t)ais->type1.spare); */
-	ais_addbits(bits, 148,  1, (uint64_t)ais->type1.raim);
-	ais_addbits(bits, 149, 19, (uint64_t)ais->type1.radio);
-	len = 149 + 19;
+        ais_addbits(bits, 148,  1, (uint64_t)ais->type1.raim);
+        ais_addbits(bits, 149, 19, (uint64_t)ais->type1.radio);
+        len = 149 + 19;
 	break;
     case 4: 	/* Base Station Report */
     case 11:	/* UTC/Date Response */
         ais_addbits(bits,  38, 14, (uint64_t)ais->type4.year);
-	ais_addbits(bits,  52,  4, (uint64_t)ais->type4.month);
-	ais_addbits(bits,  56,  5, (uint64_t)ais->type4.day);
-	ais_addbits(bits,  61,  5, (uint64_t)ais->type4.hour);
-	ais_addbits(bits,  66,  6, (uint64_t)ais->type4.minute);
-	ais_addbits(bits,  72,  6, (uint64_t)ais->type4.second);
-	ais_addbits(bits,  78,  1, (uint64_t)ais->type4.accuracy);
-	ais_addbits(bits,  79, 28, (uint64_t)ais->type4.lon);
-	ais_addbits(bits, 107, 27, (uint64_t)ais->type4.lat);
-	ais_addbits(bits, 134,  4, (uint64_t)ais->type4.epfd);
+        ais_addbits(bits,  52,  4, (uint64_t)ais->type4.month);
+        ais_addbits(bits,  56,  5, (uint64_t)ais->type4.day);
+        ais_addbits(bits,  61,  5, (uint64_t)ais->type4.hour);
+        ais_addbits(bits,  66,  6, (uint64_t)ais->type4.minute);
+        ais_addbits(bits,  72,  6, (uint64_t)ais->type4.second);
+        ais_addbits(bits,  78,  1, (uint64_t)ais->type4.accuracy);
+        ais_addbits(bits,  79, 28, (uint64_t)ais->type4.lon);
+        ais_addbits(bits, 107, 27, (uint64_t)ais->type4.lat);
+        ais_addbits(bits, 134,  4, (uint64_t)ais->type4.epfd);
 /*	ais_addbits(bits, 138, 10, (uint64_t)ais->type4.spare); */
-	ais_addbits(bits, 148,  1, (uint64_t)ais->type4.raim);
-	ais_addbits(bits, 149, 19, (uint64_t)ais->type4.radio);
-	len = 149 + 19;
+        ais_addbits(bits, 148,  1, (uint64_t)ais->type4.raim);
+        ais_addbits(bits, 149, 19, (uint64_t)ais->type4.radio);
+        len = 149 + 19;
         break;
     case 5:     /* Ship static and voyage related data */
         ais_addbits(bits,  38,  2, (uint64_t)ais->type5.ais_version);
-	ais_addbits(bits,  40, 30, (uint64_t)ais->type5.imo);
-	ais_addchar(bits,  70,  7,           ais->type5.callsign);
-	ais_addchar(bits, 112, 20,           ais->type5.shipname);
-	ais_addbits(bits, 232,  8, (uint64_t)ais->type5.shiptype);
-	ais_addbits(bits, 240,  9, (uint64_t)ais->type5.to_bow);
-	ais_addbits(bits, 249,  9, (uint64_t)ais->type5.to_stern);
-	ais_addbits(bits, 258,  6, (uint64_t)ais->type5.to_port);
-	ais_addbits(bits, 264,  6, (uint64_t)ais->type5.to_starboard);
-	ais_addbits(bits, 270,  4, (uint64_t)ais->type5.epfd);
-	ais_addbits(bits, 274,  4, (uint64_t)ais->type5.month);
-	ais_addbits(bits, 278,  5, (uint64_t)ais->type5.day);
-	ais_addbits(bits, 283,  5, (uint64_t)ais->type5.hour);
-	ais_addbits(bits, 288,  6, (uint64_t)ais->type5.minute);
-	ais_addbits(bits, 294,  8, (uint64_t)ais->type5.draught);
-	ais_addchar(bits, 302, 20,           ais->type5.destination);
-	ais_addbits(bits, 422,  1, (uint64_t)ais->type5.dte);
+        ais_addbits(bits,  40, 30, (uint64_t)ais->type5.imo);
+        ais_addchar(bits,  70,  7,           ais->type5.callsign);
+        ais_addchar(bits, 112, 20,           ais->type5.shipname);
+        ais_addbits(bits, 232,  8, (uint64_t)ais->type5.shiptype);
+        ais_addbits(bits, 240,  9, (uint64_t)ais->type5.to_bow);
+        ais_addbits(bits, 249,  9, (uint64_t)ais->type5.to_stern);
+        ais_addbits(bits, 258,  6, (uint64_t)ais->type5.to_port);
+        ais_addbits(bits, 264,  6, (uint64_t)ais->type5.to_starboard);
+        ais_addbits(bits, 270,  4, (uint64_t)ais->type5.epfd);
+        ais_addbits(bits, 274,  4, (uint64_t)ais->type5.month);
+        ais_addbits(bits, 278,  5, (uint64_t)ais->type5.day);
+        ais_addbits(bits, 283,  5, (uint64_t)ais->type5.hour);
+        ais_addbits(bits, 288,  6, (uint64_t)ais->type5.minute);
+        ais_addbits(bits, 294,  8, (uint64_t)ais->type5.draught);
+        ais_addchar(bits, 302, 20,           ais->type5.destination);
+        ais_addbits(bits, 422,  1, (uint64_t)ais->type5.dte);
 /*      ais_addbits(bits, 423,  1, (uint64_t)ais->type5.spare); */
-	len = 423 + 1;
+        len = 423 + 1;
         break;	
     case 9:     /* Standard SAR Aircraft Position Report */
         ais_addbits(bits,  38, 12, (uint64_t)ais->type9.alt);
-	ais_addbits(bits,  50, 10, (uint64_t)ais->type9.speed);
-	ais_addbits(bits,  60,  1, (uint64_t)ais->type9.accuracy);
-	ais_addbits(bits,  61, 28, (uint64_t)ais->type9.lon);
-	ais_addbits(bits,  89, 27, (uint64_t)ais->type9.lat);
-	ais_addbits(bits, 116, 12, (uint64_t)ais->type9.course);
-	ais_addbits(bits, 128,  6, (uint64_t)ais->type9.second);
-	ais_addbits(bits, 134,  8, (uint64_t)ais->type9.regional);
-	ais_addbits(bits, 142,  1, (uint64_t)ais->type9.dte);
+        ais_addbits(bits,  50, 10, (uint64_t)ais->type9.speed);
+        ais_addbits(bits,  60,  1, (uint64_t)ais->type9.accuracy);
+        ais_addbits(bits,  61, 28, (uint64_t)ais->type9.lon);
+        ais_addbits(bits,  89, 27, (uint64_t)ais->type9.lat);
+        ais_addbits(bits, 116, 12, (uint64_t)ais->type9.course);
+        ais_addbits(bits, 128,  6, (uint64_t)ais->type9.second);
+        ais_addbits(bits, 134,  8, (uint64_t)ais->type9.regional);
+        ais_addbits(bits, 142,  1, (uint64_t)ais->type9.dte);
 /*	ais_addbits(bits, 143,  3, (uint64_t)ais->type9.spare); */
-	ais_addbits(bits, 146,  1, (uint64_t)ais->type9.assigned);
-	ais_addbits(bits, 147,  1, (uint64_t)ais->type9.raim);
-	ais_addbits(bits, 148, 19, (uint64_t)ais->type9.radio);
-	len = 148 + 19;
+        ais_addbits(bits, 146,  1, (uint64_t)ais->type9.assigned);
+        ais_addbits(bits, 147,  1, (uint64_t)ais->type9.raim);
+        ais_addbits(bits, 148, 19, (uint64_t)ais->type9.radio);
+        len = 148 + 19;
         break;
     case 18:	/* Standard Class B CS Position Report */
       	ais_addbits(bits,  38,  8, (uint64_t)ais->type18.reserved);

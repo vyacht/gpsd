@@ -1,0 +1,38 @@
+issues identified:
+
+* vyn / nmea2000.c:
+
+- fast packages could be interrupted by other fast transmissions or single packages
+- there is no error tracking for that even
+- see to avoid double pgn in stm32 - sort also for faster bisect search
+- can't see any delays - but obviously errors
+- all instruments and sentence types found on screen
+
+
+* AIS
+
+- 2 part AIS messages will likely never be put together
+- should set MMSI to get own position for N2K,
+  this requires having access to vessel data when parsing N2K ais header
+- tables with ships on screen
+
+- type24_queue->index seems to never be set to 0
+- storing name data is a bit weird in anyways in 129809, context and AIVDM channels
+(these last 2 solved - gpsd_init does it by setting whole sturct to 0)
+
+
+* test
+
+- stats on home screen
+- test link on home screen
+- input state on screen
+- stats and config into test-out
+
+* ease of use
+
+- help to detect and mount and use
+- setup button for Navionics UDP
+
+* STM32
+
+- in queue it looks like push can actually push beyond tail (probably corrupting quite a few messages)

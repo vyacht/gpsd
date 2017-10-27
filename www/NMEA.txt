@@ -1284,6 +1284,41 @@ Field Number:
 13. Time Difference 5 Signal Status
 14. Checksum
 
+=== MDA - Meteorological Composite ===
+
+Barometric pressure, air and water temperature, humidity, dew point and wind speed and direction relative to the surface of the earth.
+The use of $--MTW, $--MWV and $--XDR is recommended.
+
+------------------------------------------------------------------------------
+         1  2  3  4  5  6  7  8  9  10  11 12 13 14 15 16 17 18 19 20 
+         |  |  |  |  |  |  |  |  |   |   |  |  |  |  |  |  |  |  |  | 
+ $--MDA,x.x,I,x.x,B,x.x,C,x.x,C,x.x,x.x,x.x,C,x.x,T,x.x,M,x.x,N,x.x,M*hh<CR><LF>
+------------------------------------------------------------------------------
+
+Field Number:
+
+1.  Barometric pressure, inches of mercury
+2.  I
+3.  Barometric pressure, bars
+4.  B
+5.  Air temperature, degrees C
+6.  C
+7.  Water temperature, degrees C
+8.  C
+9.  Relative humidity, percent
+10. Absolute humidity, percent
+11. Dew point, degrees C
+12. C
+13. Wind direction, degrees True
+14. T
+15. Wind direction, degrees Magnetic
+16. M
+17. Wind speed, knots
+18. N
+19. Wind speed, meters/second
+20. M
+
+
 === MSK - Control for a Beacon Receiver ===
 
 ------------------------------------------------------------------------------
