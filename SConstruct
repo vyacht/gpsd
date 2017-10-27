@@ -834,6 +834,7 @@ libgpsd_sources = [
     "geoid.c",
     "isgps.c",
     "libgpsd_core.c",
+    "ring_buffer.c",
     "navigation.c",
     "net_dgpsip.c",
     "net_gnss_dispatch.c",
