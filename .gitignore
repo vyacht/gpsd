@@ -1,4 +1,7 @@
 # Binaries
+hostcmd
+readpgns
+testn2k
 gpsd
 xgps
 rtcmdecode
