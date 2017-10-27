@@ -173,6 +173,11 @@ static struct PGN pgnlist[] = {
 
 };
 
+ssize_t vyspi_write_with_protocol(struct gps_device_t *session,
+                                  enum frm_type_t frm_type,
+                                  const uint8_t *buf,
+                                  const size_t len,
+                                  const uint8_t protocol_version);
 
 // some functions from packet.c we only use here
 extern void packet_accept(struct gps_packet_t *lexer, int packet_type);
@@ -382,9 +387,6 @@ static void vyspi_send_product_information(struct gps_device_t *session) {
     char software_version[32];
 
     uint8_t bu[134 + 7];
-    uint8_t frm[256];
-
-    uint16_t len;
 
     sprintf(software_version, "%s", VERSION);
 
@@ -405,8 +407,7 @@ static void vyspi_send_product_information(struct gps_device_t *session) {
     set8leu8(bu, 0x01, 140);             // stole load from NGW-1
 
     // using protocol version 1
-    len = frm_toHDLC8(frm, 255, FRM_TYPE_NMEA2000, 1, bu, 134 + 7);
-    gpsd_serial_write(session, (const char *)frm, len);
+    vyspi_write_with_protocol(session, FRM_TYPE_NMEA2000, bu, 134 + 7, 1);
 
     gpsd_report(session->context->debug, LOG_IO,
                 "                   NMEA 2000 ISO - sent product information from src= %u\n",
@@ -416,9 +417,6 @@ static void vyspi_send_product_information(struct gps_device_t *session) {
 static void vyspi_send_pgn_list(struct gps_device_t *session) {
 
     uint8_t bu[223];
-    uint8_t frm[256];
-
-    uint16_t len;
     uint16_t l1, l2;
     uint8_t r;
 
@@ -447,8 +445,7 @@ static void vyspi_send_pgn_list(struct gps_device_t *session) {
         }
 
         // using protocol version 1
-        len = frm_toHDLC8(frm, 255, FRM_TYPE_NMEA2000, 1, bu, 8+l2*3);
-        gpsd_serial_write(session, (const char *)frm, len);
+        vyspi_write_with_protocol(session, FRM_TYPE_NMEA2000, bu, 8+l2*3, 1);
 
         pgn.pgn = 126464;
         print_data(session->context, bu, 8+l2*3, &pgn);
@@ -492,7 +489,6 @@ static void vyspi_claim_our_source_addr(struct gps_device_t *session)
 {
         // make a claim back with lower ecu name and same src addr
         uint8_t cmd[64];
-        uint8_t frm[255];
         uint16_t len;
 
         if(session->driver.nmea2000.own_src_id >= 240)
@@ -505,8 +501,7 @@ static void vyspi_claim_our_source_addr(struct gps_device_t *session)
                          session);
 
         // using protocol version 1
-        len = frm_toHDLC8(frm, 255, FRM_TYPE_NMEA2000, 1, cmd, len);
-        gpsd_serial_write(session, (const char *)frm, len);
+        vyspi_write_with_protocol(session, FRM_TYPE_NMEA2000, cmd, len, 1);
 
         gpsd_report(session->context->debug, LOG_IO,
                 "                   NMEA 2000 ISO - claimed source src= %u\n",
@@ -526,7 +521,6 @@ static void vyspi_addr_claim_call(struct gps_device_t *session)
 
     // make an iso claim address call to enumerate nodes out there
     uint8_t cmd[64];
-    uint8_t frm[255];
     size_t len = 0;
 
     len = crt_059904(cmd, 64,
@@ -540,8 +534,7 @@ static void vyspi_addr_claim_call(struct gps_device_t *session)
                 "NMEA 2000 ISO - making an address claim call.\n");
 
     // using protocol version 1
-    len = frm_toHDLC8(frm, 255, FRM_TYPE_NMEA2000, 1, cmd, len);
-    gpsd_serial_write(session, (const char *)frm, len);
+    vyspi_write_with_protocol(session, FRM_TYPE_NMEA2000, cmd, len, 1);
 }
 
 /*
@@ -4590,10 +4583,11 @@ int vy_port2cmd(struct device_port_t * vy, uint8_t *cmd) {
 }
 
 
-ssize_t vyspi_write(struct gps_device_t *session,
-                    enum frm_type_t frm_type,
-                    const uint8_t *buf,
-                    const size_t len)
+ssize_t vyspi_write_with_protocol(struct gps_device_t *session,
+                                  enum frm_type_t frm_type,
+                                  const uint8_t *buf,
+                                  const size_t len,
+                                  const uint8_t protocol_version)
 /* pass low-level data to devices straight through */
 {
     gpsd_report(session->context->debug, LOG_INF,
@@ -4604,18 +4598,27 @@ ssize_t vyspi_write(struct gps_device_t *session,
     if(len == 0)
         return 0;
 
-    size_t frmlen =
-        frm_toHDLC8(frm, 255, frm_type,
-                    session->gpsdata.dev.protocol_version, buf, len);
-
+    size_t frmlen = frm_toHDLC8(frm, 255, frm_type, protocol_version, buf, len);
     gpsd_serial_write(session, (const char *)frm, frmlen);
 
     return len;
 }
 
+ssize_t vyspi_write(struct gps_device_t *session,
+                    enum frm_type_t frm_type,
+                    const uint8_t *buf,
+                    const size_t len)
+/* pass low-level data to devices straight through */
+{
+    return vyspi_write_with_protocol(session, frm_type, buf, len,
+                              session->gpsdata.dev.protocol_version);
+}
+
 #ifndef S_SPLINT_S
 
 int vyspi_init(struct gps_device_t *session) {
+
+    int i = 0;
 
     gpsd_report(session->context->debug, LOG_INF,
                     "initializing configuration for device '%s'.\n",
@@ -4629,8 +4632,6 @@ int vyspi_init(struct gps_device_t *session) {
     }
 
     uint8_t cmd[255];
-    uint8_t frm[255];
-    uint8_t i = 0;
     size_t len = 0;
 
     for (i = 0; i < session->gpsdata.dev.port_count; i++) {
@@ -4641,9 +4642,7 @@ int vyspi_init(struct gps_device_t *session) {
                     "setting port configuration for port '%d'.\n",
                     session->gpsdata.dev.portlist[i].no);
 
-        len = frm_toHDLC8(frm, 255, FRM_TYPE_CMD, session->gpsdata.dev.protocol_version, cmd, 10);
-        gpsd_serial_write(session, (const char *)frm, len);
-
+        vyspi_write(session, FRM_TYPE_CMD, cmd, 10);
     }
 
     // send start command to stm32
@@ -4656,8 +4655,7 @@ int vyspi_init(struct gps_device_t *session) {
                 "NMEA 2000 - enable writing - requesting new frame protocol.\n");
         memcpy(cmd, "vers", 4);
         cmd[4] = 2;
-        len = frm_toHDLC8(frm, 255, FRM_TYPE_CMD, session->gpsdata.dev.protocol_version, cmd, 5);
-        gpsd_serial_write(session, (const char *)frm, len);
+        vyspi_write(session, FRM_TYPE_CMD, cmd, 5);
     }
 
     memcpy(cmd, "n2kl", 4);
@@ -4668,8 +4666,7 @@ int vyspi_init(struct gps_device_t *session) {
     set8leu32(cmd, 129040, 13);
     set8leu32(cmd, 129029, 17);
 
-    len = frm_toHDLC8(frm, 255, FRM_TYPE_CMD, session->gpsdata.dev.protocol_version, cmd, 21);
-    gpsd_serial_write(session, (const char *)frm, len);
+    vyspi_write(session, FRM_TYPE_CMD, cmd, 21);
 
     memcpy(cmd, "n2kl", 4);
     cmd[4] = 3;
@@ -4679,22 +4676,20 @@ int vyspi_init(struct gps_device_t *session) {
     set8leu32(cmd, 129041, 13);  // ATON
     set8leu32(cmd, 130850, 17);  // Simnet AP Command
 
-    len = frm_toHDLC8(frm, 255, FRM_TYPE_CMD, session->gpsdata.dev.protocol_version, cmd, 17);
-    gpsd_serial_write(session, (const char *)frm, len);
+    vyspi_write(session, FRM_TYPE_CMD, cmd, 17);
 
     memcpy(cmd, "strt", 4);
-    len = frm_toHDLC8(frm, 255, FRM_TYPE_CMD, session->gpsdata.dev.protocol_version, cmd, 4);
-    gpsd_serial_write(session, (const char *)frm, len);
+    vyspi_write(session, FRM_TYPE_CMD, cmd, 4);
 
-    memcpy(cmd, "stty", 4);
-    cmd[4] = 0; 
-    cmd[5] = PORT_TYPE_HOST;
-    set8leu32(cmd, 921600, 6);
+    /*
+      memcpy(cmd, "stty", 4);
+      cmd[4] = 0; 
+      cmd[5] = PORT_TYPE_HOST;
+      set8leu32(cmd, 921600, 6);
+      vyspi_write(session, FRM_TYPE_CMD, cmd, 10);
 
-    len = frm_toHDLC8(frm, 255, FRM_TYPE_CMD, session->gpsdata.dev.protocol_version, cmd, 10);
-    gpsd_serial_write(session, (const char *)frm, len);
-
-    vyspi_set_serial(session, (speed_t)B921600);
+      vyspi_set_serial(session, (speed_t)B921600);
+    */
 
     return 0;
 }
