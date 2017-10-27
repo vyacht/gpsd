@@ -1213,7 +1213,6 @@ timebase = env.Command(target="timebase.h",
 env.AlwaysBuild(timebase)
 
 env.Textfile(target="gpsd_config.h", source=confdefs)
-env.Textfile(target="gpsd.h", source=[File("gpsd.h-head"), File("gpsd_config.h"), File("gpsd.h-tail")])
 
 env.Command(target="gps_maskdump.c", source=["maskaudit.py", "gps.h", "gpsd.h"], action='''
     rm -f $TARGET &&\
@@ -1236,7 +1235,7 @@ else:
 revision='#define REVISION "%s"\n' %(rev.strip(),)
 env.Textfile(target="revision.h", source=[revision])
 
-generated_sources = ['packet_names.h', 'timebase.h', 'gpsd.h', "ais_json.i",
+generated_sources = ['packet_names.h', 'timebase.h', "ais_json.i",
                      'gps_maskdump.c', 'revision.h', 'gpsd.php']
 
 # leapseconds.cache is a local cache for information on leapseconds issued
