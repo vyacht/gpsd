@@ -24,13 +24,13 @@
 # * Coveraging mode: gcc "-coverage" flag requires a hack for building the python bindings
 
 # Release identification begins here
-gpsd_version = "3.30"
+gpsd_version = "3.31"
 
 # library version
-libgps_version_current   = 30
+libgps_version_current   = 31
 libgps_version_revision  = 0
 libgps_version_age       = 0
-libgpsd_version_current  = 30
+libgpsd_version_current  = 31
 libgpsd_version_revision = 0
 libgpsd_version_age      = 0
 
