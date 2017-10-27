@@ -1,0 +1,38 @@
+
+config gpsd 'core'
+	option port '2947'
+	option listen_globally 'true'
+	option enabled 'true'
+	list device 'udp://127.255.255.255:2000'
+
+config interface 'port1'
+	option device 'udp://127.255.255.255:2000'
+	option input 'ACCEPT'
+	option output 'ACCEPT'
+
+config interface 'port2'
+	option device 'udp://127.255.255.255:2000'
+	option input 'ACCEPT'
+
+config forward
+	option src 'port1'
+	option dest 'port1'
+
+config forward
+	option src 'port2'
+	option dest 'port1'
+
+config interface 'udp1'
+	option proto 'udp'
+	option port '2000'
+	option enabled 'true'
+
+config configuration 'boat'
+	option uuid c0d79334-4e25-4245-8892-54e8ccc8021d
+	option mmsi '001234566'
+
+config nmea2000 'n2k'
+	option manufacture '135'
+	option deviceid '123456'
+	option enable_writing 1
+
