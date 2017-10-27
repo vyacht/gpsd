@@ -610,7 +610,7 @@ static uint16_t crt_060928(uint8_t bufp[], size_t len,
     set8leu64(bufp, ECU_name, 7);
 
     gpsd_report(session->context->debug, LOG_DATA,
-                "creating pgn %6d with ecu name %llu:\n", 60928, ECU_name);
+                "creating pgn %6d with ecu name %lu:\n", 60928, ECU_name);
 
     return 8+7;
 }
