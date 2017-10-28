@@ -802,74 +802,73 @@ libgpsd_version = "%d.%d.%d" %(libgpsd_version_soname, libgpsd_version_age, libg
 
 libgps_sources = [
     "ais_json.c",
-    "bits.c",
-    "daemon.c",
-    "gpsutils.c",
-    "gpsdclient.c",
-    "gps_maskdump.c",
-    "hex.c",
+    "bits.cc",
+    "daemon.cc",
+    "gpsutils.cc",
+    "gpsdclient.cc",
+    "gps_maskdump.cc",
+    "hex.cc",
     "json.c",
-    "libgps_core.c",
-    "libgps_dbus.c",
+    "libgps_core.cc",
+    "libgps_dbus.cc",
     "libgps_json.c",
-    "libgps_shm.c",
-    "libgps_sock.c",
-    "netlib.c",
-    "ring_buffer.c",
+    "libgps_shm.cc",
+    "libgps_sock.cc",
+    "netlib.cc",
+    "ring_buffer.cc",
     "rtcm2_json.c",
     "rtcm3_json.c",
     "shared_json.c",
-    "strl.c",
-    "getsid.c",
+    "strl.cc",
+    "getsid.cc",
 ]
 
 if env['libgpsmm']:
     libgps_sources.append("libgpsmm.cpp")
 
 libgpsd_sources = [
-    "bsd_base64.c",
-    "crc24q.c",
-    "config.c",
+    "bsd_base64.cc",
+    "crc24q.cc",
+    "config.cc",
     "gpsd_json.c",
-    "geoid.c",
-    "isgps.c",
-    "libgpsd_core.c",
-    "ring_buffer.c",
-    "navigation.c",
-    "net_dgpsip.c",
-    "net_gnss_dispatch.c",
-    "net_ntrip.c",
-    "ppsthread.c",
-    "packet.c",
-    "pseudonmea.c",
-    "pseudon2k.c",
-    "pseudoais.c",
-    "serial.c",
-    "signalk.c",
-    "subframe.c",
-    "timebase.c",
-    "timeutil.c",
-    "websocket.c",
-    "drivers.c",
-    "driver_ais.c",
-    "driver_evermore.c",
-    "driver_garmin.c",
-    "driver_garmin_txt.c",
-    "driver_geostar.c",
-    "driver_italk.c",
-    "driver_navcom.c",
-    "driver_nmea0183.c",
-    "driver_nmea2000.c",
-    "driver_oncore.c",
-    "driver_rtcm2.c",
-    "driver_rtcm3.c",
-    "driver_seatalk.c",
-    "driver_sirf.c",
-    "driver_superstar2.c",
-    "driver_tsip.c",
-    "driver_ubx.c",
-    "driver_vyspi.c", "frame.c", "utils.c",
-    "driver_zodiac.c",
+    "geoid.cc",
+    "isgps.cc",
+    "libgpsd_core.cc",
+    "navigation.cc",
+    "net_dgpsip.cc",
+    "net_gnss_dispatch.cc",
+    "net_ntrip.cc",
+    "ppsthread.cc",
+    "packet.cc",
+    "pseudonmea.cc",
+    "pseudon2k.cc",
+    "pseudoais.cc",
+    "serial.cc",
+    "signalk.cc",
+    "subframe.cc",
+    "timebase.cc",
+    "timeutil.cc",
+    "websocket.cc",
+    "drivers.cc",
+    "driver_ais.cc",
+    "driver_evermore.cc",
+    "driver_garmin.cc",
+    "driver_garmin_txt.cc",
+    "driver_geostar.cc",
+    "driver_italk.cc",
+    "driver_navcom.cc",
+    "driver_nmea0183.cc",
+    "driver_nmea2000.cc",
+    "driver_oncore.cc",
+    "driver_rtcm2.cc",
+    "driver_rtcm3.cc",
+    "driver_seatalk.cc",
+    "driver_sirf.cc",
+    "driver_superstar2.cc",
+    "driver_tsip.cc",
+    "driver_ubx.cc",
+    "driver_vyspi.cc", "frame.cc", "utils.cc",
+    "driver_zodiac.cc",
 ]
 
 # Cope with scons's failure to set SONAME in its builtins.
@@ -969,7 +968,7 @@ compiled_gpslib = Library(env=env,
                           sources=libgps_sources,
                           version=libgps_version,
                           parse_flags=dbus_libs + rtlibs)
-env.Clean(compiled_gpslib, "gps_maskdump.c")
+env.Clean(compiled_gpslib, "gps_maskdump.cc")
 
 compiled_gpsdlib = Library(env=env,
                            target="gpsd",
@@ -1010,34 +1009,34 @@ gpsdlibs = ["-lgpsd"] + usblibs + bluezlibs + gpslibs + uci_libs + uuid_libs + d
 
 # Source groups
 
-gpsd_sources = ['gpsd.c','ntpshm.c','shmexport.c','dbusexport.c']
+gpsd_sources = ['gpsd.cc','ntpshm.cc','shmexport.cc','dbusexport.cc']
 
 if env['systemd']:
-    gpsd_sources.append("sd_socket.c")
+    gpsd_sources.append("sd_socket.cc")
 
 gpssim_sources = [
-    'gpssim.c',
-    'nmea2000.c'
+    'gpssim.cc',
+    'nmea2000.cc'
     ]
 
 testn2k_sources = [
-    'testn2k.c'
+    'testn2k.cc'
     ]
 
 hostcmd_sources = [
-    'hostcmd.c'
+    'hostcmd.cc'
     ]
 
 gpsmon_sources = [
-    'gpsmon.c',
-    'monitor_italk.c',
-    'monitor_nmea.c',
-    'monitor_oncore.c',
-    'monitor_sirf.c',
-    'monitor_superstar2.c',
-    'monitor_tnt.c',
-    'monitor_ubx.c',
-    'monitor_garmin.c',
+    'gpsmon.cc',
+    'monitor_italk.cc',
+    'monitor_nmea.cc',
+    'monitor_oncore.cc',
+    'monitor_sirf.cc',
+    'monitor_superstar2.cc',
+    'monitor_tnt.cc',
+    'monitor_ubx.cc',
+    'monitor_garmin.cc',
     ]
 
 ## Production programs
@@ -1048,20 +1047,20 @@ gpsd = gpsd_env.Program('gpsd', gpsd_sources,
                         parse_flags = gpsdlibs)
 env.Depends(gpsd, [compiled_gpsdlib, compiled_gpslib])
 
-gpsdecode = env.Program('gpsdecode', ['gpsdecode.c'], parse_flags=gpsdlibs)
+gpsdecode = env.Program('gpsdecode', ['gpsdecode.cc'], parse_flags=gpsdlibs)
 env.Depends(gpsdecode, [compiled_gpsdlib, compiled_gpslib])
 
-gpsctl = env.Program('gpsctl', ['gpsctl.c'], parse_flags=gpsdlibs)
+gpsctl = env.Program('gpsctl', ['gpsctl.cc'], parse_flags=gpsdlibs)
 env.Depends(gpsctl, [compiled_gpsdlib, compiled_gpslib])
 
-gpsdctl = env.Program('gpsdctl', ['gpsdctl.c'], parse_flags=gpslibs)
+gpsdctl = env.Program('gpsdctl', ['gpsdctl.cc'], parse_flags=gpslibs)
 env.Depends(gpsdctl, compiled_gpslib)
 
 gpsmon = env.Program('gpsmon', gpsmon_sources,
                      parse_flags=gpsdlibs + ncurseslibs + ['-lm'])
 env.Depends(gpsmon, [compiled_gpsdlib, compiled_gpslib])
 
-gpspipe = env.Program('gpspipe', ['gpspipe.c'], parse_flags=gpslibs)
+gpspipe = env.Program('gpspipe', ['gpspipe.cc'], parse_flags=gpslibs)
 env.Depends(gpspipe, compiled_gpslib)
 
 gpssim = env.Program('gpssim', gpssim_sources,
@@ -1076,19 +1075,19 @@ testn2k = env.Program('testn2k', testn2k_sources,
                      parse_flags=gpsdlibs + ncurseslibs + ['-lm'])
 env.Depends(testn2k, [compiled_gpsdlib, compiled_gpslib])
 
-gps2udp = env.Program('gps2udp', ['gps2udp.c'], parse_flags=gpslibs)
+gps2udp = env.Program('gps2udp', ['gps2udp.cc'], parse_flags=gpslibs)
 env.Depends(gps2udp, compiled_gpslib)
 
-gpxlogger = env.Program('gpxlogger', ['gpxlogger.c'], parse_flags=gpslibs)
+gpxlogger = env.Program('gpxlogger', ['gpxlogger.cc'], parse_flags=gpslibs)
 env.Depends(gpxlogger, compiled_gpslib)
 
-lcdgps = env.Program('lcdgps', ['lcdgps.c'], parse_flags=gpslibs)
+lcdgps = env.Program('lcdgps', ['lcdgps.cc'], parse_flags=gpslibs)
 env.Depends(lcdgps, compiled_gpslib)
 
-cgps = env.Program('cgps', ['cgps.c'], parse_flags=gpslibs + ncurseslibs)
+cgps = env.Program('cgps', ['cgps.cc'], parse_flags=gpslibs + ncurseslibs)
 env.Depends(cgps, compiled_gpslib)
 
-readpgns = env.Program('readpgns', ['readpgns.c'], parse_flags=gpsdlibs)
+readpgns = env.Program('readpgns', ['readpgns.cc'], parse_flags=gpsdlibs)
 env.Depends(gpsdecode, [compiled_gpsdlib, compiled_gpslib])
 
 binaries = [gpsd, gpsdecode, gpsctl, gpsdctl, gpspipe, gpssim, gps2udp, gpxlogger, hostcmd, testn2k, lcdgps, readpgns]
@@ -1096,21 +1095,21 @@ if env["ncurses"]:
     binaries += [cgps, gpsmon]
 
 # Test programs
-test_float = env.Program('test_float', ['test_float.c'])
-test_geoid = env.Program('test_geoid', ['test_geoid.c'], parse_flags=gpsdlibs)
+test_float = env.Program('test_float', ['test_float.cc'])
+test_geoid = env.Program('test_geoid', ['test_geoid.cc'], parse_flags=gpsdlibs)
 env.Depends(test_geoid, [compiled_gpsdlib, compiled_gpslib])
-test_json = env.Program('test_json', ['test_json.c'], parse_flags=gpslibs)
+test_json = env.Program('test_json', ['test_json.cc'], parse_flags=gpslibs)
 env.Depends(test_json, compiled_gpslib)
-test_mkgmtime = env.Program('test_mkgmtime', ['test_mkgmtime.c'], parse_flags=gpslibs)
+test_mkgmtime = env.Program('test_mkgmtime', ['test_mkgmtime.cc'], parse_flags=gpslibs)
 env.Depends(test_mkgmtime, compiled_gpslib)
-test_trig = env.Program('test_trig', ['test_trig.c'], parse_flags=["-lm"])
-test_packet = env.Program('test_packet', ['test_packet.c'], parse_flags=gpsdlibs)
+test_trig = env.Program('test_trig', ['test_trig.cc'], parse_flags=["-lm"])
+test_packet = env.Program('test_packet', ['test_packet.cc'], parse_flags=gpsdlibs)
 env.Depends(test_packet, [compiled_gpsdlib, compiled_gpslib])
-test_bits = env.Program('test_bits', ['test_bits.c'], parse_flags=gpslibs)
+test_bits = env.Program('test_bits', ['test_bits.cc'], parse_flags=gpslibs)
 env.Depends(test_bits, [compiled_gpsdlib, compiled_gpslib])
 test_gpsmm = env.Program('test_gpsmm', ['test_gpsmm.cpp'], parse_flags=gpslibs)
 env.Depends(test_gpsmm, compiled_gpslib)
-test_libgps = env.Program('test_libgps', ['test_libgps.c'], parse_flags=gpslibs)
+test_libgps = env.Program('test_libgps', ['test_libgps.cc'], parse_flags=gpslibs)
 env.Depends(test_libgps, compiled_gpslib)
 testprogs = [test_float, test_trig, test_bits, test_packet,
              test_mkgmtime, test_geoid, test_libgps]
@@ -1130,9 +1129,9 @@ else:
     # Build Python binding
     #
     python_extensions = {
-        "gps" + os.sep + "packet" : ["gpspacket.c", "packet.c", "isgps.c",
-                                        "driver_rtcm2.c", "strl.c", "hex.c", "crc24q.c"],
-        "gps" + os.sep + "clienthelpers" : ["gpsclient.c", "geoid.c", "gpsdclient.c", "strl.c"]
+        "gps" + os.sep + "packet" : ["gpspacket.cc", "packet.cc", "isgps.cc",
+                                        "driver_rtcm2.cc", "strl.cc", "hex.cc", "crc24q.cc"],
+        "gps" + os.sep + "clienthelpers" : ["gpsclient.cc", "geoid.cc", "gpsdclient.cc", "strl.cc"]
     }
 
     python_env = env.Clone()
@@ -1214,7 +1213,7 @@ env.AlwaysBuild(timebase)
 
 env.Textfile(target="gpsd_config.h", source=confdefs)
 
-env.Command(target="gps_maskdump.c", source=["maskaudit.py", "gps.h", "gpsd.h"], action='''
+env.Command(target="gps_maskdump.cc", source=["maskaudit.py", "gps.h", "gpsd.h"], action='''
     rm -f $TARGET &&\
         $PYTHON $SOURCE -c $SRCDIR >$TARGET &&\
         chmod a-w $TARGET''')
@@ -1236,7 +1235,7 @@ revision='#define REVISION "%s"\n' %(rev.strip(),)
 env.Textfile(target="revision.h", source=[revision])
 
 generated_sources = ['packet_names.h', 'timebase.h', "ais_json.i",
-                     'gps_maskdump.c', 'revision.h', 'gpsd.php']
+                     'gps_maskdump.cc', 'revision.h', 'gpsd.php']
 
 # leapseconds.cache is a local cache for information on leapseconds issued
 # by the U.S. Naval observatory. It gets kept in the repository so we can
@@ -1487,18 +1486,18 @@ splint_table = [
     ('splint-libgps',libgps_sources,'user-side libraries', ['-exportlocal',
                                                             '-fileextensions',
                                                             '-redef']),
-    ('splint-cgps',['cgps.c'],'cgps', ['-exportlocal']),
-    ('splint-gpsctl',['gpsctl.c'],'gpsctl', ['']),
-    ('splint-gpsdctl',['gpsdctl.c'],'gpsdctl', ['']),
+    ('splint-cgps',['cgps.cc'],'cgps', ['-exportlocal']),
+    ('splint-gpsctl',['gpsctl.cc'],'gpsctl', ['']),
+    ('splint-gpsdctl',['gpsdctl.cc'],'gpsdctl', ['']),
     ('splint-gpsmon',gpsmon_sources,'gpsmon', ['-exportlocal']),
-    ('splint-gpspipe',['gpspipe.c'],'gpspipe', ['']),
-    ('splint-gps2udp',['gps2udp.c'],'gps2udp', ['']),
-    ('splint-gpsdecode',['gpsdecode.c'],'gpsdecode', ['']),
-    ('splint-gpxlogger',['gpxlogger.c'],'gpxlogger', ['']),
-    ('splint-test_packet',['test_packet.c'],'test_packet test harness', ['']),
-    ('splint-test_mkgmtime',['test_mkgmtime.c'],'test_mkgmtime test harness', ['']),
-    ('splint-test_geoid',['test_geoid.c'],'test_geoid test harness', ['']),
-    ('splint-test_json',['test_json.c'],'test_json test harness', ['']),
+    ('splint-gpspipe',['gpspipe.cc'],'gpspipe', ['']),
+    ('splint-gps2udp',['gps2udp.cc'],'gps2udp', ['']),
+    ('splint-gpsdecode',['gpsdecode.cc'],'gpsdecode', ['']),
+    ('splint-gpxlogger',['gpxlogger.cc'],'gpxlogger', ['']),
+    ('splint-test_packet',['test_packet.cc'],'test_packet test harness', ['']),
+    ('splint-test_mkgmtime',['test_mkgmtime.cc'],'test_mkgmtime test harness', ['']),
+    ('splint-test_geoid',['test_geoid.cc'],'test_geoid test harness', ['']),
+    ('splint-test_json',['test_json.cc'],'test_json test harness', ['']),
     ]
 
 for (target,sources,description,params) in splint_table:
@@ -1507,7 +1506,7 @@ for (target,sources,description,params) in splint_table:
 # Putting in all these -U flags speeds up cppcheck and allows it to look
 # at configurations we actually care about.
 Utility("cppcheck", ["gpsd.h", "packet_names.h"],
-        "cppcheck -U__UNUSED__ -UUSE_QT -US_SPLINT_S -U__COVERITY__ -U__future__ -ULIMITED_MAX_CLIENTS -ULIMITED_MAX_DEVICES -UAF_UNSPEC -UINADDR_ANY -UFIXED_PORT_SPEED -UFIXED_STOP_BITS -U_WIN32 -U__CYGWIN__ -UPATH_MAX -UHAVE_STRLCAT -UHAVE_STRLCPY -UIPTOS_LOWDELAY -UIPV6_TCLASS -UTCP_NODELAY -UTIOCMIWAIT --template gcc --enable=all --inline-suppr --suppress='*:driver_proto.c' --force $SRCDIR")
+        "cppcheck -U__UNUSED__ -UUSE_QT -US_SPLINT_S -U__COVERITY__ -U__future__ -ULIMITED_MAX_CLIENTS -ULIMITED_MAX_DEVICES -UAF_UNSPEC -UINADDR_ANY -UFIXED_PORT_SPEED -UFIXED_STOP_BITS -U_WIN32 -U__CYGWIN__ -UPATH_MAX -UHAVE_STRLCAT -UHAVE_STRLCPY -UIPTOS_LOWDELAY -UIPV6_TCLASS -UTCP_NODELAY -UTIOCMIWAIT --template gcc --enable=all --inline-suppr --suppress='*:driver_proto.cc' --force $SRCDIR")
 
 # Experimental check with clang analyzer
 Utility("scan-build", ["gpsd.h", "packet_names.h"],
@@ -1524,7 +1523,7 @@ Utility("xmllint", glob.glob("*.xml"),
 # Use deheader to remove headers not required.  If the statistics line
 # ends with other than '0 removed' there's work to be done.
 Utility("deheader", generated_sources, [
-    'deheader -x cpp -x contrib -x gpspacket.c -x gpsclient.c -x monitor_proto.c -i gpsd_config.h -i gpsd.h -m "MORECFLAGS=\'-Werror -Wfatal-errors -DDEBUG -DPPS_ENABLE\' scons -Q"',
+    'deheader -x cpp -x contrib -x gpspacket.cc -x gpsclient.cc -x monitor_proto.cc -i gpsd_config.h -i gpsd.h -m "MORECFLAGS=\'-Werror -Wfatal-errors -DDEBUG -DPPS_ENABLE\' scons -Q"',
         ])
 
 # Perform all local code-sanity checks (but not the Coverity scan).
@@ -1905,8 +1904,8 @@ webclean = env.Clean(www, [])
 distclean = env.Alias('distclean', [clean, testclean, webclean])
 
 # Tags for Emacs and vi
-misc_sources = ['cgps.c', 'gpsctl.c', 'gpsdctl.c', 'gpspipe.c',
-                'gps2udp.c', 'gpsdecode.c', 'gpxlogger.c']
+misc_sources = ['cgps.cc', 'gpsctl.cc', 'gpsdctl.cc', 'gpspipe.cc',
+                'gps2udp.cc', 'gpsdecode.cc', 'gpxlogger.cc']
 sources = libgpsd_sources + libgps_sources \
           + gpsd_sources + gpsmon_sources + misc_sources
 env.Command('TAGS', sources, ['etags ' + " ".join(sources)])
@@ -1916,7 +1915,7 @@ env.Command('TAGS', sources, ['etags ' + " ".join(sources)])
 # We need to be in the actual project repo (i.e. not doing a -Y build)
 # for these productions to work.
 
-if os.path.exists("gpsd.c") and os.path.exists(".gitignore"):
+if os.path.exists("gpsd.cc") and os.path.exists(".gitignore"):
     distfiles = _getoutput(r"git ls-files | grep -v '^www/'").split()
     if ".gitignore" in distfiles:
         distfiles.remove(".gitignore")
