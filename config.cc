@@ -592,7 +592,7 @@ config_add_boat_section(struct uci_package * pkg,
     char uuid_str[37];
 
     // generate
-    uuid_generate_time_safe(uuid);
+    uuid_generate_time(uuid);
     
     // unparse (to string)
     uuid_unparse_lower(uuid, uuid_str);
