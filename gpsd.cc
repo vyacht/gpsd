@@ -339,6 +339,7 @@ static socket_t filesock(char *filename)
 static struct vessel_t vessel;
 
 static struct gps_device_t devices[MAXDEVICES];
+struct data_central_t data_central;
 
 static void adjust_max_fd(int fd, bool on)
 /* track the largest fd currently in use */
@@ -962,6 +963,7 @@ bool gpsd_add_device(const char *device_name, bool flag_nowait)
     for (devp = devices; devp < devices + MAXDEVICES; devp++)
         if (!allocated_device(devp)) {
             gpsd_init(devp, &context, device_name);
+            devp->data_central = &data_central;
 #ifdef NTPSHM_ENABLE
             ntpshm_session_init(devp);
 #endif /* NTPSHM_ENABLE */

@@ -46,6 +46,7 @@
 void gpsd_init_ports(struct gps_device_t *session);
 void gpsd_waypoint_clear(struct waypoint_navigation_t *);
 void gpsd_environment_clear(struct environment_t * env);
+void gpsd_clear_gpsdata(struct gps_data_t * gpsdata);
 
 #if defined(PPS_ENABLE)
 static pthread_mutex_t report_mutex;
@@ -339,6 +340,34 @@ void gpsd_init_ports(struct gps_device_t *session) {
     }
 }
 
+void gpsd_clear_gpsdata(struct gps_data_t * gpsdata) {
+
+    uint16_t e = 0;
+
+    gps_clear_fix(&gpsdata->fix);
+
+    gpsdata->set = 0;
+    gps_clear_dop(&gpsdata->dop);
+    gpsdata->epe = NAN;
+
+
+    gpsd_environment_clear(&gpsdata->environment);
+    gpsd_waypoint_clear(&gpsdata->waypoint);
+
+    // we start out with protocol version 0 and upgrade if stm32 supports it
+    gpsdata->dev.protocol_version = 0;
+    gpsdata->dev.node_state = node_init;
+
+    /* necessary in case we start reading in the middle of a GPGSV sequence */
+    gpsd_zero_satellites(gpsdata);
+
+    // init source addresses
+    for(e = 0; e < 256; e++) {
+        gpsdata->ecu_names[e] = 0;
+        gpsdata->src_addr_seen[0] = 0;
+    }
+}
+
 void gpsd_init(struct gps_device_t *session, struct gps_context_t *context,
 	       const char *device)
 /* initialize GPS polling */
@@ -349,28 +378,27 @@ void gpsd_init(struct gps_device_t *session, struct gps_context_t *context,
     /* clear the private data union */
     memset(&session->driver, '\0', sizeof(session->driver));
 
+    gpsd_clear_gpsdata(&session->gpsdata);
 
     /*@ -mayaliasunique @*/
     if (device != NULL)
-	(void)strlcpy(session->gpsdata.dev.path, device,
-		      sizeof(session->gpsdata.dev.path));
-    /*@ -mustfreeonly @*/
-    session->device_type = NULL;	/* start by hunting packets */
-    session->observed = 0;
-    session->sourcetype = source_unknown;	/* gpsd_open() sets this */
-    session->servicetype = service_unknown;	/* gpsd_open() sets this */
-    /*@ -temptrans @*/
-    session->context = context;
-    /*@ +temptrans @*/
-    /*@ +mayaliasunique @*/
-    /*@ +mustfreeonly @*/
-    gps_clear_fix(&session->gpsdata.fix);
-    gps_clear_fix(&session->newdata);
-    gps_clear_fix(&session->oldfix);
-    session->gpsdata.set = 0;
-    gps_clear_dop(&session->gpsdata.dop);
-    session->gpsdata.epe = NAN;
-    session->mag_var = NAN;
+        (void)strlcpy(session->gpsdata.dev.path, device,
+            sizeof(session->gpsdata.dev.path));
+
+        /*@ -mustfreeonly @*/
+        session->device_type = NULL;	/* start by hunting packets */
+        session->observed = 0;
+        session->sourcetype = source_unknown;	/* gpsd_open() sets this */
+        session->servicetype = service_unknown;	/* gpsd_open() sets this */
+        /*@ -temptrans @*/
+        session->context = context;
+        /*@ +temptrans @*/
+        /*@ +mayaliasunique @*/
+        /*@ +mustfreeonly @*/
+        gps_clear_fix(&session->newdata);
+        gps_clear_fix(&session->oldfix);
+
+        session->mag_var = NAN;
 
     for(n = 0; n < AIVDM_CHANNELS; n++) {
         session->driver.aivdm.context[n].type24_queue.index = 0;
@@ -382,22 +410,8 @@ void gpsd_init(struct gps_device_t *session, struct gps_context_t *context,
 
     gpsd_init_ports(session);
 
-    gpsd_environment_clear(&session->gpsdata.environment);
-    gpsd_waypoint_clear(&session->gpsdata.waypoint);
-
-    // we start out with protocol version 0 and upgrade if stm32 supports it
-    session->gpsdata.dev.protocol_version = 0;
-    session->gpsdata.bytes_send = 0;
-
     session->driver.nmea2000.own_src_id = 0xff; // use this as null
     session->driver.nmea2000.enable_writing = 0x00;
-
-    session->gpsdata.dev.node_state = node_init;
-    // init source addresses
-    for(e = 0; e < 256; e++) {
-        session->gpsdata.ecu_names[e] = 0;
-        session->gpsdata.src_addr_seen[0] = 0;
-    }
 
 #ifdef TIMING_ENABLE
     session->sor = 0.0;
@@ -405,8 +419,6 @@ void gpsd_init(struct gps_device_t *session, struct gps_context_t *context,
 #endif /* TIMING_ENABLE */
     /* tty-level initialization */
     gpsd_tty_init(session);
-    /* necessary in case we start reading in the middle of a GPGSV sequence */
-    gpsd_zero_satellites(&session->gpsdata);
 
     /* initialize things for the packet parser */
     packet_reset(&session->packet);
@@ -1563,6 +1575,9 @@ gps_mask_t gpsd_poll(struct gps_device_t *session)
             "transfer mask on %s: %02x\n", session->gpsdata.tag, session->gpsdata.set); */
         gps_merge_fix(&session->gpsdata.fix,
                       session->gpsdata.set, &session->newdata);
+
+        dc_merge(session->data_central, session);
+
 #ifdef CHEAPFLOATS_ENABLE
         gpsd_error_model(session, &session->gpsdata.fix, &session->oldfix);
 #endif /* CHEAPFLOATS_ENABLE */

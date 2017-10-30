@@ -27,6 +27,7 @@
 
 #include "bits.h"
 #include "nmea2000.h"
+#include "test_utils.h"
 
 #include <assert.h>
 
@@ -749,8 +750,7 @@ int nmea0183_clean(char * dest, int destlen, char * src, int srclen) {
 
 int main(int argc, char**argv) {
 
-    uint8_t frmType = 255;
-//    uint8_t frm[255];
+    enum frm_type_t frmType = FRM_TYPE_MAX;
 
     uint8_t opts = 0;
     int interval = 1;
@@ -859,7 +859,7 @@ int main(int argc, char**argv) {
         }
     }
 
-    if(frmType == 255) {
+    if(frmType == FRM_TYPE_MAX) {
         printf("No or wrong frame type given (-t [n2k | seatalk | nmea0183 | cmd])\n");
         exit(1);
     }
@@ -874,22 +874,8 @@ int main(int argc, char**argv) {
     context.readonly = 0;
     session.context = &context;
 
-    const struct gps_type_t **dp;
-    int pt = 0;
-
-    if(frmType == FRM_TYPE_NMEA0183)
-        pt = NMEA_PACKET;
-    else if(frmType == FRM_TYPE_NMEA2000)
-        pt = VYSPI_PACKET;
-
-    for (dp = gpsd_drivers; *dp; dp++) {
-        if(pt == (*dp)->packet_type) {
-            session.device_type = *dp;
-        }
-    }
-
+    set_device_type(&session, frmType);
     nmea2000_init();
-
 
     sinlen = sizeof(struct sockaddr_in);
     memset(&sock_in, 0, sinlen);

@@ -179,7 +179,7 @@ static void visibilize(/*@out@*/char *buf2, size_t len2, const char *buf)
 }
 
 /*@-compdef -mustdefine@*/
-static void cond_hexdump(/*@out@*/char *buf2, size_t len2, 
+static void cond_hexdump(/*@out@*/char *buf2, size_t len2,
 			 const char *buf, size_t len)
 /* pass through visibilized if all printable, hexdump otherwise */
 {
@@ -276,7 +276,7 @@ static void announce_log(/*@in@*/ const char *fmt, ...)
     va_start(ap, fmt);
     (void)vsnprintf(buf, sizeof(buf) - 5, fmt, ap);
     va_end(ap);
- 
+
    if (packetwin != NULL) {
 	report_lock();
 	(void)wattrset(packetwin, A_BOLD);
@@ -693,7 +693,7 @@ static void complain(const char *fmt, ...)
 
 /*****************************************************************************
  *
- * Main sequence 
+ * Main sequence
  *
  *****************************************************************************/
 
@@ -718,7 +718,7 @@ static void gpsmon_hook(struct gps_device_t *device, gps_mask_t changed UNUSED)
 	    buf[0] = '\0';
 	} else {
 	    /*@-type@*/ /* splint is confused about struct timespec */
-	    double timedelta = timespec_diff_ns(noclobber.timedrift.real, 
+	    double timedelta = timespec_diff_ns(noclobber.timedrift.real,
 						noclobber.timedrift.clock) * 1e-9;
 	    if (!curses_active)
 		(void)fprintf(stderr,
@@ -827,7 +827,7 @@ static bool do_command(const char *line)
 		/* *INDENT-ON* */
 	    } else
 		complain
-		    ("Device type %s has no rate switcher", 
+		    ("Device type %s has no rate switcher",
 		     switcher->type_name);
 	}
 #endif /* RECONFIGURE_ENABLE */
@@ -895,7 +895,7 @@ static bool do_command(const char *line)
 		(void)usleep(50000);
 	    } else
 		complain
-		    ("Device type %s has no mode switcher", 
+		    ("Device type %s has no mode switcher",
 		     switcher->type_name);
 	}
 	break;
@@ -1019,7 +1019,7 @@ static bool do_command(const char *line)
 	    if (st < 0)
 		complain("Invalid hex string (error %d)", st);
 	    else if (session.device_type->control_send == NULL)
-		complain("Device type %s has no control-send method.", 
+		complain("Device type %s has no control-send method.",
 			 session.device_type->type_name);
 	    else if (!monitor_control_send(buf, (size_t) st))
 		complain("Control send failed.");
@@ -1203,13 +1203,13 @@ int main(int argc, char **argv)
 
     if (serial) {
 	assert(source.device != NULL);	/* clue to splint */
-	(void) strlcpy(session.gpsdata.dev.path, 
-		       source.device, 
+	(void) strlcpy(session.gpsdata.dev.path,
+		       source.device,
 		       sizeof(session.gpsdata.dev.path));
     } else {
 	assert(source.server != NULL);	/* clue to splint */
 	if (strstr(source.server, "//") == 0)
-	    (void) strlcpy(session.gpsdata.dev.path, 
+	    (void) strlcpy(session.gpsdata.dev.path,
 			   "tcp://",
 			   sizeof(session.gpsdata.dev.path));
 	else
@@ -1283,7 +1283,7 @@ int main(int argc, char **argv)
 	} else if (!curses_init())
 	    goto quit;
 
-	for (;;) 
+	for (;;)
 	{
 #ifdef EFDS
 	    fd_set efds;

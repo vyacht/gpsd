@@ -508,6 +508,7 @@ enum ntrip_conn_state_t {
 struct gps_device_t {
 /* session object, encapsulates all global state */
     struct gps_data_t gpsdata;
+    struct data_central_t * data_central;
 
     /*@relnull@*/const struct gps_type_t *device_type;
     unsigned int driver_index;		/* numeric index of current driver */

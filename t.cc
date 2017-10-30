@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <ctype.h>
 #include <string.h>
+#include <math.h>
 
 #include "gps.h"
 #include "bits.h"
@@ -189,49 +190,57 @@ int test_safeatof() {
         "123333"
 	};
     int i = 0;
-    
-    for(i = 0; i < 4; i++) 
+
+    for(i = 0; i < 4; i++)
 	printf("%f\n", safe_atof(t[i]));
     return 0;
 }
 
-#define DEFAULT_GPSD_PORT "2947"
+static double degtodm(double angle)
+/* decimal degrees to GPS-style, degrees first followed by minutes */
+{
+    double fraction, integer;
+    fraction = modf(angle, &integer);
+    return floor(angle) * 100 + fraction * 60;
+}
 
-int test_testport() {
+void test_seatalk_lat_lon() {
 
-    const char * teststr[] = {
-        "gpsd://server:port",
-        "gpsd://server:1212",
-        "gpsd://server",
-    };
-    int i= 0;
+    uint8_t bu[] = {0x58, 0x05, 0x32, 0xb1, 0xac, 0x01, 0x5d, 0x45};
+    //uint8_t bu[] = {0x51, 0x02, 0x01, 0x86, 0x0f, 0x00, 0x00, 0x00};
 
-    for(i = 0; i < 3; i++) {
-    
-        if (strncmp(teststr[i], "gpsd://", 7) == 0) {
-            
-            char server[strlen(teststr[i])+1], *pport;
-            char port[strlen(teststr[i]+1)];
-        
-            (void)strlcpy(server, teststr[i] + 7, sizeof(server));
+    double lat = 0;
+    double lon = 0;
 
-            port[0] = '\0';
-            if ((pport = strchr(server, ':')) == NULL) {
-                strcpy(port, DEFAULT_GPSD_PORT);
-            } else {
-                *pport++ = '\0';
-                strcpy(port, pport);
-            }
+    if(bu[0] == 0x58) {
+        lat        = bu[2] +  (bu[3] * 256 + bu[4])/100000.0/0.6;
+        lon       = bu[5] + ( bu[6] * 256 + bu[7])/100000.0/0.6;
+        /*@+type@*/
+        if( (bu[1] >> 4) & 0x01 ) {
+            lat *= -1.0; // south
+        }
+        if( ((bu[1] >> 4) & 0x02) == 0 ) {
+            lon *= -1.0; // west
+        }
+    } else if(bu[0] == 0x51) {
 
-            printf("%s : %s\n", server, port);
+        uint16_t mm = getleu16(bu, 3);
+
+        /*@-type@*//* splint has a bug here */
+        lon       = bu[2] + (mm & 0x7fFF)/10000.0/0.6;
+        /*@+type@*/
+        if( (mm & 0x8000) == 0 ) {
+            lon *= -1.0;
         }
     }
+
+    printf("lat: %f, lon = %010.4f\n", degtodm(fabs(lat)), degtodm(fabs(lon)));
 }
 
 int main(int argc, char * argv[]) {
 //    test_read0183end();
 //    test_safeatof();
-    test_testport();
+  test_seatalk_lat_lon();
 }
 
 //18eaff01,59904,p:06,s:01,d:ff,x:00 ee 00 00 00 00 00 00

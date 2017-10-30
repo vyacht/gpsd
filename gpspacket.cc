@@ -49,9 +49,6 @@ typedef struct {
 	struct gps_packet_t lexer;
 } LexerObject;
 
-//PyTypeObject Lexer_Type;
-
-
 
 /* Lexer methods */
 

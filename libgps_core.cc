@@ -17,6 +17,7 @@
 #include "gpsd.h"
 #include "libgps.h"
 #include "gps_json.h"
+#include "navigation.h"
 
 #ifdef LIBGPS_DEBUG
 int libgps_debuglevel = 0;

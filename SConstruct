@@ -830,6 +830,7 @@ libgpsd_sources = [
     "bsd_base64.cc",
     "crc24q.cc",
     "config.cc",
+    "data_central.cc",
     "gpsd_json.c",
     "geoid.cc",
     "isgps.cc",
@@ -847,7 +848,6 @@ libgpsd_sources = [
     "signalk.cc",
     "subframe.cc",
     "timebase.cc",
-    "timeutil.cc",
     "websocket.cc",
     "drivers.cc",
     "driver_ais.cc",
@@ -869,6 +869,9 @@ libgpsd_sources = [
     "driver_ubx.cc",
     "driver_vyspi.cc", "frame.cc", "utils.cc",
     "driver_zodiac.cc",
+    "vy_data.cc",
+    "timeutil.cc",
+    "test_utils.cc",
 ]
 
 # Cope with scons's failure to set SONAME in its builtins.
@@ -1067,6 +1070,10 @@ gpssim = env.Program('gpssim', gpssim_sources,
                      parse_flags=gpsdlibs + ncurseslibs + ['-lm'])
 env.Depends(gpssim, [compiled_gpsdlib, compiled_gpslib])
 
+testdriver = env.Program('testdriver', ['test_driver.cc', 'test_utils.cc'],
+                     parse_flags=gpsdlibs + ncurseslibs + ['-lm'])
+env.Depends(testdriver, [compiled_gpsdlib, compiled_gpslib])
+
 hostcmd = env.Program('hostcmd', hostcmd_sources,
                      parse_flags=gpsdlibs + ncurseslibs + ['-lm'])
 env.Depends(hostcmd, [compiled_gpsdlib, compiled_gpslib])
@@ -1090,7 +1097,10 @@ env.Depends(cgps, compiled_gpslib)
 readpgns = env.Program('readpgns', ['readpgns.cc'], parse_flags=gpsdlibs)
 env.Depends(gpsdecode, [compiled_gpsdlib, compiled_gpslib])
 
-binaries = [gpsd, gpsdecode, gpsctl, gpsdctl, gpspipe, gpssim, gps2udp, gpxlogger, hostcmd, testn2k, lcdgps, readpgns]
+
+
+binaries = [gpsd, gpsdecode, gpsctl, gpsdctl, gpspipe, gpssim,
+    testdriver, gps2udp, gpxlogger, hostcmd, testn2k, lcdgps, readpgns]
 if env["ncurses"]:
     binaries += [cgps, gpsmon]
 
