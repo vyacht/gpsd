@@ -63,18 +63,18 @@ static const char versionField[]     = "Sec-WebSocket-Version: ";
 static const char version[]          = "13";
 static const char secret[]           = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
 
-enum wsFrameType { 
+enum wsFrameType {
+    WS_TEXT_FRAME        = 0x01,
+    WS_BINARY_FRAME      = 0x02,
+    WS_CLOSING_FRAME     = 0x08,
+    WS_PING_FRAME        = 0x09,
+    WS_PONG_FRAME        = 0x0A,
+    WS_PREFLIGHTED_FRAME = 0x0B,
     WS_EMPTY_FRAME       = 0xF0,
     WS_ERROR_FRAME       = 0xF1,
     WS_INCOMPLETE_FRAME  = 0xF2,
-    WS_TEXT_FRAME        = 0x01,
-    WS_BINARY_FRAME      = 0x02,
-    WS_PING_FRAME        = 0x09,
-    WS_PONG_FRAME        = 0x0A,
     WS_OPENING_FRAME     = 0xF3,
     WS_GET_FRAME         = 0xF4,
-    WS_CLOSING_FRAME     = 0x08,
-    WS_PREFLIGHTED_FRAME = 0x0B
 };
     
 enum wsState {
@@ -105,9 +105,8 @@ struct handshake {
      * @param hs Cleared with nullHandshake() handshake structure
      * @return Type of parsed frame
      */
-    enum wsFrameType wsParseHandshake(const uint8_t *inputFrame, size_t inputLength,
-                                      struct handshake *hs);
-	
+    enum wsFrameType wsParseHandshake(const uint8_t *inputFrame, struct handshake *hs);
+
     /**
      * @param hs Filled handshake structure
      * @param outFrame Pointer to frame buffer
@@ -123,7 +122,7 @@ struct handshake {
      * @param outLength Length of out frame buffer. Return length of out frame
      * @param frameType [WS_TEXT_FRAME] frame type to build
      */
-    void wsMakeFrame(const char *data, size_t dataLength,
+    void wsMakeFrame(const uint8_t *data, size_t dataLength,
                      uint8_t *outFrame, size_t *outLength, enum wsFrameType frameType);
 
     /**
@@ -135,7 +134,7 @@ struct handshake {
      * @return Type of parsed frame
      */
     enum wsFrameType wsParseInputFrame(const uint8_t *inputFrame, const size_t inputLength,
-                                       uint8_t **dataPtr, size_t *dataLength);
+                                       uint8_t *dataPtr, size_t dataLength);
 
     /**
      * @param hs NULL handshake structure

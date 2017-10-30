@@ -30,9 +30,6 @@
 
 #include <assert.h>
 
-extern const struct gps_type_t driver_nmea0183;
-extern const struct gps_type_t driver_vyspi;
-
 #define PORT 2000
 uint8_t protocol_version = 1;
 
@@ -173,7 +170,7 @@ int earth_position_from_distance(double lat1, double lon1,
 }
 
 ssize_t gpsd_write(struct gps_device_t *session,
-                   const char *buf,
+                   const uint8_t *buf,
                    const size_t len)
 /* pass low-level data to devices straight through */
 {
@@ -226,7 +223,7 @@ static int wrap_and_send_0183(struct gps_device_t *session, char * bufp, uint8_t
 
         if(usb_dev[0] != '\0') {
 
-            gpsd_write(session, buf, strlen(buf));
+            gpsd_write(session, (uint8_t *)buf, strlen(buf));
 
         } else {
 
@@ -389,7 +386,7 @@ uint8_t * parse_report2_line(struct gps_device_t *session, char * line,
                         while(strchr(hexchar, *end)) end++;
                         strncpy(buffer, subtoken, end - subtoken); buffer[end - subtoken] = 0;
 
-                        *binlen = gpsd_hexpack(buffer, (char *)binbuf, binbuflen);
+                        *binlen = gpsd_hexpack(buffer, binbuf, binbuflen);
                         startbin = binbuf;
 
                         gpsd_report(session->context->debug, LOG_SPIN,
@@ -756,7 +753,6 @@ int main(int argc, char**argv) {
 //    uint8_t frm[255];
 
     uint8_t opts = 0;
-    int yes = 1;
     int interval = 1;
     int batch_mode = 0;
     char c;
@@ -764,6 +760,7 @@ int main(int argc, char**argv) {
     char message[2048];
     int loglevel = 5;
     char filename[255];
+    int yes = 1;
 
 
     struct gps_device_t session;
@@ -877,10 +874,18 @@ int main(int argc, char**argv) {
     context.readonly = 0;
     session.context = &context;
 
-    if(frmType == FRM_TYPE_NMEA0183) {
-        session.device_type = &driver_nmea0183;
-    } else if(frmType == FRM_TYPE_NMEA2000) {
-        session.device_type = &driver_vyspi;
+    const struct gps_type_t **dp;
+    int pt = 0;
+
+    if(frmType == FRM_TYPE_NMEA0183)
+        pt = NMEA_PACKET;
+    else if(frmType == FRM_TYPE_NMEA2000)
+        pt = VYSPI_PACKET;
+
+    for (dp = gpsd_drivers; *dp; dp++) {
+        if(pt == (*dp)->packet_type) {
+            session.device_type = *dp;
+        }
     }
 
     nmea2000_init();
@@ -1022,7 +1027,7 @@ int main(int argc, char**argv) {
 
             if(frmType == FRM_TYPE_NMEA2000) {
 
-                msgll = gpsd_hexpack(token, (char *)bin, 1024);
+                msgll = gpsd_hexpack(token, bin, 1024);
 
                 pgn = getleu32(bin, 0);
                 printf("pgn = %u\n", pgn);
@@ -1034,7 +1039,7 @@ int main(int argc, char**argv) {
                 gpsd_report(session.context->debug, LOG_IO,
                             "Cleaning %s\n", token);
 
-                msgll = nmea0183_clean(bin, 1024, token, strlen(token));
+                msgll = nmea0183_clean((char *)bin, 1024, token, strlen(token));
                 print_data(session.context, bin, msgll + 5);
 
                 gpsd_report(session.context->debug, LOG_IO,

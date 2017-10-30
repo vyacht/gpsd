@@ -53,7 +53,7 @@ static bool curses_active;
 static WINDOW *statwin, *cmdwin;
 /*@null@*/ static WINDOW *packetwin;
 /*@null@*/ static FILE *logfile;
-static char *type_name;
+static const char *type_name;
 static size_t promptlen = 0;
 struct termios cooked, rare;
 struct fixsource_t source;
@@ -588,12 +588,12 @@ static void packet_log(const char *fmt, ...)
 }
 #endif /* PPS_ENABLE */
 
-void gpsd_throttled_report(const int errlevel, const char * buf) {}
+void gpsd_throttled_report(const int errlevel UNUSED, const char * buf UNUSED) {}
 void gpsd_report(const int debuglevel, const int errlevel, const char *fmt, ...)
 /* our version of the logger */
 {
-    char buf[BUFSIZ]; 
-    char *err_str;
+    char buf[BUFSIZ];
+    const char *err_str;
 
     switch ( errlevel ) {
     case LOG_ERROR:
@@ -639,12 +639,12 @@ void gpsd_report(const int debuglevel, const int errlevel, const char *fmt, ...)
 	va_end(ap);
     }
 }
-void gpsd_external_report(const int debuglevel, const int errlevel,
-			  const char *fmt, ...) {
+void gpsd_external_report(const int debuglevel UNUSED, const int errlevel UNUSED,
+			  const char *fmt UNUSED, ...) {
 }
 
 ssize_t gpsd_write(struct gps_device_t *session,
-		   const char *buf,
+		   const uint8_t *buf,
 		   const size_t len)
 /* pass low-level data to devices, echoing it to the log window */
 {
@@ -671,7 +671,7 @@ bool monitor_control_send( /*@in@*/ unsigned char *buf, size_t len)
 
 static bool monitor_raw_send( /*@in@*/ unsigned char *buf, size_t len)
 {
-    ssize_t st = gpsd_write(&session, (char *)buf, len);
+    ssize_t st = gpsd_write(&session, buf, len);
     return (st > 0 && (size_t) st == len);
 }
 #endif /* CONTROLSEND_ENABLE */
@@ -915,7 +915,7 @@ static bool do_command(const char *line)
 	    char parity = session.gpsdata.dev.parity;
 	    unsigned int stopbits =
 		(unsigned int)session.gpsdata.dev.stopbits;
-	    char *modespec;
+	    const char *modespec;
 	    const struct gps_type_t *switcher = session.device_type;
 
 	    if (fallback != NULL && fallback->speed_switcher != NULL)
@@ -1015,7 +1015,7 @@ static bool do_command(const char *line)
 	    complain("Only available in low-level mode.");
 	else {
 	    /*@ -compdef @*/
-	    int st = gpsd_hexpack(arg, (char *)buf, strlen(arg));
+	    int st = gpsd_hexpack(arg, buf, strlen(arg));
 	    if (st < 0)
 		complain("Invalid hex string (error %d)", st);
 	    else if (session.device_type->control_send == NULL)
@@ -1032,7 +1032,7 @@ static bool do_command(const char *line)
 	    complain("Only available in low-level mode.");
 	else {
 	    /*@ -compdef @*/
-	    ssize_t len = (ssize_t) gpsd_hexpack(arg, (char *)buf, strlen(arg));
+	    ssize_t len = (ssize_t) gpsd_hexpack(arg, buf, strlen(arg));
 	    if (len < 0)
 		complain("Invalid hex string (error %d)", len);
 	    else if (!monitor_raw_send(buf, (size_t) len))

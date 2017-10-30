@@ -23,8 +23,8 @@
 
 #define DEFAULT_GPSD_TEST_SOCKET	"/tmp/gpsd.sock"
 
-static char *control_socket = DEFAULT_GPSD_SOCKET;
-static char *gpsd_options = "";
+static const char *control_socket = DEFAULT_GPSD_SOCKET;
+static const char *gpsd_options = "";
 
 static int gpsd_control(char *action, char *argument)
 /* pass a command to gpsd; start the daemon if not already running */

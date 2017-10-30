@@ -1402,7 +1402,7 @@ static void find_pgn(struct can_frame *frame, struct gps_device_t *session)
 	if (source_unit == session->driver.nmea2000.unit) {
 	    PGN *work;
 	    if (session->driver.nmea2000.pgnlist != NULL) {
-	        work = search_pgnlist(source_pgn, session->driver.nmea2000.pgnlist);
+	        work = search_pgnlist(source_pgn, (PGN *)session->driver.nmea2000.pgnlist);
 	    } else {
 	        PGN *pgnlist;
 

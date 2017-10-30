@@ -15,13 +15,12 @@ representations to libgps structures.
 #include <stdlib.h>
 #include <stddef.h>
 
-#include "gpsd_config.h"
-#include "gps.h"
+#include "gpsd.h"
 #include "json.h"
 #ifdef SOCKET_EXPORT_ENABLE
 
 /* FIXME: kluges because we don't want to include gpsd.h here */
-extern int gpsd_hexpack(/*@in@*/const char *, /*@out@*/char *, size_t);
+extern int gpsd_hexpack(/*@in@*/const char *, /*@out@*/uint8_t *, size_t);
 int json_ais_read(const char *, char *, size_t, struct ais_t *,
 		  /*@null@*/const char **);
 

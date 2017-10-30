@@ -53,6 +53,10 @@
 
  */
 
+# ifdef __cplusplus
+extern "C" {
+# endif
+
 // frame state
 enum {
   FRM_GND       = 0, // ground and initial state, waiting for 7e
@@ -135,5 +139,8 @@ uint16_t frm_toHDLC16(uint16_t * dest,
 		      uint8_t * src, 
 		      uint16_t srclen);
 
+# ifdef __cplusplus
+}
+# endif
 
 #endif // _FRM_H_

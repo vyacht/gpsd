@@ -15,7 +15,7 @@
 /*
   helper to calculate the unused elements in a rb
  */
-static inline unsigned int rb_unused(rb_t *rb)
+static inline unsigned int rb_unused(const rb_t *rb)
 {
         return (rb->mask + 1) - (rb->in - rb->out);
 }
@@ -40,7 +40,7 @@ void rb_reset(rb_t * rb)
  * rb_size - returns the size of the rb in elements
  * @rb: address of the rb to be used
  */
-unsigned int rb_size(rb_t * rb)
+unsigned int rb_size(const rb_t * rb)
 {
     return ((rb)->mask + 1);
 }
@@ -49,7 +49,7 @@ unsigned int rb_size(rb_t * rb)
  * rb_len - returns the number of used elements in the rb
  * @rb: address of the rb to be used
  */
-unsigned int rb_len(rb_t * rb)
+unsigned int rb_len(const rb_t * rb)
 {
     // two usigned will not make this negative 
     // even if in or out overflow as long as in is ahead of out
@@ -60,7 +60,7 @@ unsigned int rb_len(rb_t * rb)
  * krb_is_empty - returns true if the rb is empty
  * @rb: address of the rb to be used
  */
-int rb_is_empty(rb_t * rb)
+int rb_is_empty(const rb_t * rb)
 {
      return rb->in == rb->out;
 }
@@ -69,7 +69,7 @@ int rb_is_empty(rb_t * rb)
  * rb_is_full - returns true if the rb is full
  * @rb: address of the rb to be used
  */
-int rb_is_full(rb_t * rb)
+int rb_is_full(const rb_t * rb)
 {
      return rb_len(rb) > rb->mask;
 }
@@ -78,7 +78,7 @@ int rb_is_full(rb_t * rb)
  * rb_capacity - returns the number free space for new elements
  * @rb: address of the rb to be used
  */
-unsigned int rb_free(rb_t * rb)
+unsigned int rb_free(const rb_t * rb)
 {
      return rb_unused(rb);
 }
@@ -98,9 +98,9 @@ int rb_put(rb_t * rb, double val, uint32_t msec)
         return ret;
 }
 
-int rb_peek_n(rb_t * rb, uint32_t n, double * val, uint32_t * msec)
-{  
-    int ret;   
+int rb_peek_n(const rb_t * rb, uint32_t n, double * val, uint32_t * msec)
+{
+    int ret;
     ret = !rb_is_empty(rb) && (n < rb_len(rb));
     if (ret) { 
         *val =

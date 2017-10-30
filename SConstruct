@@ -117,7 +117,7 @@ boolopts = (
     ("tsip",          False,  "Trimble TSIP support"),
     ("ublox",         False,  "u-blox Protocol support"),
     ("fury",          False,  "Jackson Labs Fury and Firefly support"),
-    ("nmea2000",      True,   "NMEA2000/CAN support"),
+    ("nmea2000",      False,   "NMEA2000/CAN support"),
     ("seatalk",       True,   "Seatalk support"),
     # Non-GPS protocols
     ("vyspi",         True,  "VYSPI support"),

@@ -40,7 +40,7 @@ gpsclient_gpsd_units(PyObject *self UNUSED, PyObject *args)
 static PyObject *
 gpsclient_wgs84_separation(PyObject *self UNUSED, PyObject *args)
 {
-    const double lat, lon;
+    double lat, lon;
     double sep;
 
     if (!PyArg_ParseTuple(args, "dd", &lat, &lon))
@@ -52,7 +52,7 @@ gpsclient_wgs84_separation(PyObject *self UNUSED, PyObject *args)
 static PyObject *
 gpsclient_maidenhead(PyObject *self UNUSED, PyObject *args)
 {
-    const double lat, lon;
+    double lat, lon;
     char *gs;
 
     if (!PyArg_ParseTuple(args, "dd", &lat, &lon))
@@ -80,7 +80,7 @@ PyDoc_STRVAR(module_doc,
 ");
 
 /* banishes a pointless compiler warning */
-extern PyMODINIT_FUNC initclienthelpers(void);
+PyMODINIT_FUNC initclienthelpers(void);
 
 PyMODINIT_FUNC
 // cppcheck-suppress unusedFunction 

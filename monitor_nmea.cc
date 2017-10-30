@@ -345,7 +345,7 @@ static void nmea_wrap(void)
     (void)delwin(gprmcwin);
 }
 
-const struct monitor_object_t nmea_mmt = {
+extern const struct monitor_object_t nmea_mmt = {
     .initialize = nmea_initialize,
     .update = nmea_update,
     .command = NULL,
@@ -481,7 +481,7 @@ const struct monitor_object_t fv18_mmt = {
 #ifdef GPSCLOCK_ENABLE
 extern const struct gps_type_t driver_gpsclock;
 
-const struct monitor_object_t gpsclock_mmt = {
+extern const struct monitor_object_t gpsclock_mmt = {
     .initialize = nmea_initialize,
     .update = nmea_update,
     .command = NULL,
@@ -507,7 +507,7 @@ const struct monitor_object_t mtk3301_mmt = {
 #ifdef AIVDM_ENABLE
 extern const struct gps_type_t driver_aivdm;
 
-const struct monitor_object_t aivdm_mmt = {
+extern const struct monitor_object_t aivdm_mmt = {
     .initialize = nmea_initialize,
     .update = nmea_update,
     .command = NULL,

@@ -7,6 +7,7 @@
 
 #include "gpsd.h"
 #include "timeutil.h"
+#include "ring_buffer.h"
 #include "navigation.h"
 
 static void

@@ -243,7 +243,7 @@ int main(int argc, char **argv)
 
                 t = time(NULL);
                 while (s == 0) {
-		    char *newfname = realloc(fname, fnamesize);
+		    char *newfname = (char *)realloc(fname, fnamesize);
 		    if (newfname == NULL) {
 			syslog(LOG_ERR, "realloc failed.");
 			goto bailout;

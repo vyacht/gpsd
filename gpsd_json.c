@@ -35,9 +35,9 @@ PERMISSIONS
  */
 /* the map of device class names */
 struct classmap_t {
-    char	*name;
-    int		typemask;
-    int		packetmask;
+    const char *name;
+    int     typemask;
+    int     packetmask;
 };
 #define CLASSMAP_NITEMS	5
 
@@ -1434,7 +1434,7 @@ void json_aivdm_dump(const struct ais_t *ais,
     bool structured;
     int i;
 
-    static char *nav_legends[] = {
+    static const char *nav_legends[] = {
 	"Under way using engine",
 	"At anchor",
 	"Not under command",
@@ -1453,7 +1453,7 @@ void json_aivdm_dump(const struct ais_t *ais,
 	"Not defined",
     };
 
-    static char *epfd_legends[] = {
+    static const char *epfd_legends[] = {
 	"Undefined",
 	"GPS",
 	"GLONASS",
@@ -1467,7 +1467,7 @@ void json_aivdm_dump(const struct ais_t *ais,
 
 #define EPFD_DISPLAY(n) (((n) < (unsigned int)NITEMS(epfd_legends)) ? epfd_legends[n] : "INVALID EPFD")
 
-    static char *ship_type_legends[100] = {
+    static const char *ship_type_legends[100] = {
 	"Not available",
 	"Reserved for future use",
 	"Reserved for future use",
@@ -3385,7 +3385,7 @@ void json_aivdm_dump(const struct ais_t *ais,
 	break;
     case 24:			/* Class B CS Static Data Report */
 	if (ais->type24.part != both) {
-	    static char *partnames[] = {"AB", "A", "B"};
+	    static const char *partnames[] = {"AB", "A", "B"};
 	    (void)snprintf(buf + strlen(buf), buflen - strlen(buf),
 			   "\"part\":\"%s\",",
 			   json_stringify(buf1, sizeof(buf1),

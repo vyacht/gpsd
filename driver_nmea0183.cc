@@ -1959,7 +1959,7 @@ gps_mask_t nmea_parse_len(char *sentence, size_t sentence_len, struct gps_device
 				       struct gps_device_t * session);
     static struct
     {
-	char *name;
+	const char *name;
 	int nf;			/* minimum number of fields required to parse */
 	bool cycle_continue;	/* cycle continuer? */
 	nmea_decoder decoder;
@@ -2224,11 +2224,11 @@ void nmea_add_checksum(char *sentence)
     char c, *p = sentence;
 
     if (*p == '$' || *p == '!') {
-	p++;
+        p++;
     }
     while (((c = *p) != '*') && (c != '\0')) {
-	sum ^= c;
-	p++;
+        sum ^= c;
+        p++;
     }
     *p++ = '*';
     (void)snprintf(p, 5, "%02X\r\n", (unsigned)sum);
@@ -2239,12 +2239,12 @@ ssize_t nmea_write(struct gps_device_t *session, char *buf, size_t len UNUSED)
 {
     (void)strlcpy(session->msgbuf, buf, sizeof(session->msgbuf));
     if (session->msgbuf[0] == '$') {
-	(void)strlcat(session->msgbuf, "*", sizeof(session->msgbuf));
-	nmea_add_checksum(session->msgbuf);
+        (void)strlcat(session->msgbuf, "*", sizeof(session->msgbuf));
+        nmea_add_checksum(session->msgbuf);
     } else
-	(void)strlcat(session->msgbuf, "\r\n", sizeof(session->msgbuf));
+        (void)strlcat(session->msgbuf, "\r\n", sizeof(session->msgbuf));
     session->msgbuflen = strlen(session->msgbuf);
-    return gpsd_write(session, session->msgbuf, session->msgbuflen);
+    return gpsd_write(session, (uint8_t *)session->msgbuf, session->msgbuflen);
 }
 
 ssize_t nmea_send(struct gps_device_t * session, const char *fmt, ...)

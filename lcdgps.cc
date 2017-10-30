@@ -61,14 +61,14 @@
 /* Prototypes. */
 ssize_t sockreadline(int sockd,void *vptr,size_t maxlen);
 ssize_t sockwriteline(int sockd,const void *vptr,size_t n);
-int send_lcd(char *buf);
+int send_lcd(const char *buf);
 
 static struct fixsource_t source;
 static struct gps_data_t gpsdata;
 static float altfactor = METERS_TO_FEET;
 static float speedfactor = MPS_TO_MPH;
-static char *altunits = "ft";
-static char *speedunits = "mph";
+static const char *altunits = "ft";
+static const char *speedunits = "mph";
 double avgclimb, climb[CLIMB];
 
 /* Global socket descriptor for LCDd. */
@@ -79,7 +79,7 @@ ssize_t sockreadline(int sockd,void *vptr,size_t maxlen) {
   ssize_t n;
   char    c,*buffer;
 
-  buffer=vptr;
+  buffer= (char *)vptr;
 
   for (n = 1; n < (ssize_t)maxlen; n++) {
     ssize_t rc;
@@ -110,7 +110,7 @@ ssize_t sockwriteline(int sockd,const void *vptr,size_t n) {
   size_t      nleft;
   const char *buffer;
 
-  buffer=vptr;
+  buffer=(char *)vptr;
   nleft=n;
 
   while (nleft>0) {
@@ -129,7 +129,7 @@ ssize_t sockwriteline(int sockd,const void *vptr,size_t n) {
 }
 
 /* send a command to the LCD */
-int send_lcd(char *buf) {
+int send_lcd(const char *buf) {
 
   int res;
   char rcvbuf[256];
@@ -185,7 +185,7 @@ static void update_lcd(struct gps_data_t *gpsdata)
 
   /* Fill in the latitude and longitude. */
   if (gpsdata->fix.mode >= MODE_2D) {
-    int track;
+    double track;
     char *s;
 
     s = deg_to_str(deg_type,  fabs(gpsdata->fix.latitude));
@@ -198,10 +198,10 @@ static void update_lcd(struct gps_data_t *gpsdata)
 
     /* As a pilot, a heading of "0" gives me the heebie-jeebies (ie, 0
        == "invalid heading data", 360 == "North"). */
-    track=(int)(gpsdata->navigation.course_over_ground);
-    if (track == 0) track = 360;
+    track=gpsdata->navigation.course_over_ground[compass_true];
+    if (track == 0.0) track = 360.0;
 
-    snprintf(tmpbuf, 254, "widget_set gpsd three 1 3 {%.1f %s %d deg}\n",
+    snprintf(tmpbuf, 254, "widget_set gpsd three 1 3 {%.1f %s %f deg}\n",
              gpsdata->navigation.speed_over_ground*speedfactor, speedunits,
              track);
     send_lcd(tmpbuf);

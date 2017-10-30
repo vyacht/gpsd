@@ -48,7 +48,6 @@
 #include <netinet/in.h>
 #include <net/if.h>            /* IFF_LOOPBACK */
 
-#include "gpsd_config.h"
 
 #include "gpsd.h"
 #include "sockaddr.h"
@@ -62,11 +61,11 @@
 #include "timeutil.h"
 #include "signalk.h"
 #include "pseudon2k.h"
+#include "websocket.h"
 
 #if defined(SYSTEMD_ENABLE)
 #include "sd_socket.h"
 #endif
-#include "websocket.h"
 
 /*
  * The name of a tty device from which to pick up whatever the local
@@ -194,7 +193,7 @@ static void onsig(int sig)
 }
 
 ssize_t gpsd_write(struct gps_device_t *session,
-       const char *buf,
+       const uint8_t *buf,
        const size_t len)
 /* pass low-level data to devices straight through */
 {
@@ -374,7 +373,7 @@ static void adjust_max_fd(int fd, bool on)
 #define IPTOS_LOWDELAY 0x10
 #endif
 
-static socket_t passivesock_af(int af, char *service, char *tcp_or_udp, char * bcast, int qlen)
+static socket_t passivesock_af(int af, const char *service, const char *tcp_or_udp, char * bcast, int qlen)
 /* bind a passive command socket for the daemon */
 {
     volatile socket_t s;
@@ -390,7 +389,7 @@ static socket_t passivesock_af(int af, char *service, char *tcp_or_udp, char * b
     int sin_len = 0;
     int type, proto, one = 1;
     in_port_t port;
-    char *af_str = "";
+    const char *af_str = "";
     int yes = 1;
     const int dscp = IPTOS_LOWDELAY; /* Prioritize packet */
     INVALIDATE_SOCKET(s);
@@ -555,7 +554,7 @@ static socket_t passivesock_af(int af, char *service, char *tcp_or_udp, char * b
 }
 
 /* *INDENT-OFF* */
-static int passivesocks(char *service, char *tcp_or_udp,
+static int passivesocks(const char *service, const char *tcp_or_udp,
     int qlen, /*@out@*/socket_t socks[])
 {
     int numsocks = AFCOUNT;
@@ -648,7 +647,7 @@ struct subscriber_t
     enum wsState state;
     enum wsFrameType frameType;
 };
-ssize_t throttled_write(struct subscriber_t *sub, const char *buf, size_t len);
+ssize_t throttled_write(struct subscriber_t *sub, const uint8_t *buf, size_t len);
 
 #define LIMITED_MAX_CLIENTS 16
 #ifdef LIMITED_MAX_CLIENTS
@@ -751,7 +750,7 @@ static bool isWebsocket(struct subscriber_t *sub) {
 }
 
 static const char * getProtocolName(struct subscriber_t *sub) {
-    char *protocol_table[] = {
+    const char *protocol_table[] = {
         "tcp", "ws", "http"
     };
     if((sub->policy.protocol > 0) && (sub->policy.protocol <= http))
@@ -759,7 +758,7 @@ static const char * getProtocolName(struct subscriber_t *sub) {
     return "";
 }
 
-static ssize_t throttled_write_(struct subscriber_t *sub, const char *buf,
+static ssize_t throttled_write_(struct subscriber_t *sub, const uint8_t *buf,
            size_t len)
 /* write to client -- throttle if it's gone or we're close to buffer overrun */
 {
@@ -773,7 +772,7 @@ static ssize_t throttled_write_(struct subscriber_t *sub, const char *buf,
                         sub_index(sub),
                         buf);
         else {
-            const char *cp; char buf2[MAX_PACKET_LENGTH * 3];
+            const uint8_t *cp; char buf2[MAX_PACKET_LENGTH * 3];
             buf2[0] = '\0';
             for (cp = buf; cp < buf + len; cp++)
                 (void)snprintf(buf2 + strlen(buf2),
@@ -790,7 +789,7 @@ static ssize_t throttled_write_(struct subscriber_t *sub, const char *buf,
 #if defined(PPS_ENABLE)
     gpsd_acquire_reporting_lock();
 #endif /* PPS_ENABLE */
-    status = send(sub->fd, buf, len, 0);
+    status = send(sub->fd, (const void *)buf, len, 0);
 #if defined(PPS_ENABLE)
     gpsd_release_reporting_lock();
 
@@ -819,7 +818,7 @@ static ssize_t throttled_write_(struct subscriber_t *sub, const char *buf,
     return status;
 }
 
-ssize_t throttled_write(struct subscriber_t *sub, const char *buf,
+ssize_t throttled_write(struct subscriber_t *sub, const uint8_t *buf,
            size_t len) {
     if(isWebsocket(sub)) {
       uint8_t reply[GPS_JSON_RESPONSE_MAX + 1];
@@ -857,7 +856,7 @@ void gpsd_throttled_report(const int errlevel, const char * buf) {
       continue;
 
     if(errlevel <= sub->policy.loglevel) {
-      (void)throttled_write(sub, buf, strlen(buf));
+      (void)throttled_write(sub, (const uint8_t *)buf, strlen(buf));
     }
   }
 }
@@ -878,7 +877,7 @@ static void notify_watchers(struct gps_device_t *device,
     for (sub = subscribers; sub < subscribers + MAXSUBSCRIBERS; sub++)
     if (sub->active != 0 && subscribed(sub, device)) {
         if ((onjson && sub->policy.json) || (onpps && sub->policy.pps))
-    (void)throttled_write(sub, buf, strlen(buf));
+    (void)throttled_write(sub, (const uint8_t *)buf, strlen(buf));
     }
 }
 #endif /* SOCKET_EXPORT_ENABLE */
@@ -1104,7 +1103,7 @@ static void handle_control(int sfd, char *buf)
                 } else {
         int st;
                     /* NOTE: this destroys the original buffer contents */
-                    st = gpsd_hexpack(eq, eq, len);
+                    st = gpsd_hexpack(eq, (uint8_t *)eq, len);
                     if (st <= 0) {
                         gpsd_report(context.debug, LOG_INF,
                                     "<= control(%d): invalid hex string (error %d).\n",
@@ -1384,7 +1383,7 @@ static int gpsd_device_rejects(struct gps_device_t * devp) {
 
 static void gpsd_device_write(struct gps_device_t * srcdev,
                               enum frm_type_t frm_type,
-      const char *buf, size_t len) {
+      const uint8_t *buf, size_t len) {
 
     struct gps_device_t *devp;
     for (devp = devices; devp < devices + MAXDEVICES; devp++) {
@@ -1423,7 +1422,7 @@ static void gpsd_device_write(struct gps_device_t * srcdev,
     }
 }
 
-static void gpsd_udp_write(const char *buf, size_t len) {
+static void gpsd_udp_write(const uint8_t *buf, size_t len) {
 
     struct interface_t * it;
     for (it = interfaces; it < interfaces + MAXINTERFACES; it++) {
@@ -1449,11 +1448,9 @@ static void gpsd_udp_write(const char *buf, size_t len) {
 }
 
 static ssize_t handle_websocket_request(struct subscriber_t *sub,
-    const char *buf,
-    char *reply, size_t replylen)
+    const uint8_t *buf,
+    uint8_t *reply, size_t replylen)
 {
-    uint8_t *data = NULL;
-    size_t dataSize = 0;
     size_t len = 0;
 
     struct handshake hs;
@@ -1464,11 +1461,11 @@ static ssize_t handle_websocket_request(struct subscriber_t *sub,
     if (sub->state == WS_STATE_OPENING) {
         gpsd_report(context.debug, LOG_INF,
                     "Handling a HTTP handshake.\n");
-        sub->frameType = wsParseHandshake((uint8_t *)buf, 0, &hs);
+        sub->frameType = wsParseHandshake((uint8_t *)buf, &hs);
         if(sub->frameType == WS_PREFLIGHTED_FRAME) {
 
-            // TODO preper timestamp
-            len = snprintf(reply, replylen,
+            // TODO proper timestamp
+            len = snprintf((char *)reply, replylen,
                            "HTTP/1.1 204 No Content\r\n"
                            "X-Powered-By: Express\r\n"
                            "Access-Control-Allow-Origin: *\r\n"
@@ -1478,11 +1475,13 @@ static ssize_t handle_websocket_request(struct subscriber_t *sub,
                            "Connection: keep-alive\r\n\r\n");
 
             gpsd_report(context.debug, LOG_INF,
-                        "returning OPTIONS: %s\n", reply);
+                        "returning OPTIONS: %s\n", (char *)reply);
             return throttled_write(sub, reply, len);
         }
     } else {
-        sub->frameType = wsParseInputFrame(buf, 0, &data, &dataSize);
+        uint8_t data[BUFSIZ];
+        size_t dataSize = BUFSIZ;
+        sub->frameType = wsParseInputFrame(buf, 0, data, dataSize);
         gpsd_report(context.debug, LOG_INF,
                     "incoming frame with %s\n", data);
     }
@@ -1498,7 +1497,7 @@ static ssize_t handle_websocket_request(struct subscriber_t *sub,
                     "Error in incoming frame\n");
 
         if (sub->state == WS_STATE_OPENING) {
-            len = snprintf(reply, replylen,
+            len = snprintf((char *)reply, replylen,
                            "HTTP/1.1 400 Bad Request\r\n"
                            "%s%s\r\n\r\n",
                            versionField,
@@ -1619,7 +1618,7 @@ static ssize_t handle_websocket_request(struct subscriber_t *sub,
                 else
                     signalk_full_dump(devices, &vessel, content, contentlen);
 
-                len = snprintf(reply, replylen,
+                len = snprintf((char *)reply, replylen,
                                "HTTP/1.1 200 OK\r\n"
                                "Content-Length: %lu\r\n"
                                "Connection: close\r\n"
@@ -1627,7 +1626,7 @@ static ssize_t handle_websocket_request(struct subscriber_t *sub,
                                "Content-Type: application/json\r\n\r\n%s",
                                strlen(content), content);
                 gpsd_report(context.debug, LOG_INF,
-                            "returning GET (%lu): %s\n", replylen, reply);
+                            "returning GET (%lu): %s\n", replylen, (char *)reply);
 
                 sub->policy.protocol  = http;
 
@@ -1648,7 +1647,7 @@ static ssize_t handle_websocket_request(struct subscriber_t *sub,
             sub->frameType = WS_INCOMPLETE_FRAME;
             gpsd_report(context.debug, LOG_INF,
                         "answering handshake to %sclient: %s\n",
-                        "ws", reply);
+                        "ws", (char *)reply);
             return status;
         }
     } else {
@@ -1659,13 +1658,11 @@ static ssize_t handle_websocket_request(struct subscriber_t *sub,
                 return -1;
             } else {
                 len = replylen;
-                wsMakeFrame((const char *)NULL, 0, reply, &len, WS_CLOSING_FRAME);
+                wsMakeFrame((const uint8_t *)NULL, 0, reply, &len, WS_CLOSING_FRAME);
                 throttled_write(sub, reply, len);
                 return -1;
             }
         } else if (sub->frameType == WS_TEXT_FRAME) {
-            len = replylen;
-            wsMakeFrame("echo", 6, reply, &len, WS_TEXT_FRAME);
             sub->frameType = WS_INCOMPLETE_FRAME;
             return 0; // throttled_write(sub, reply, len);
         }
@@ -1731,8 +1728,8 @@ static void handle_request(struct subscriber_t *sub,
                     if (allocated_device(devp)) {
                         (void)awaken(devp);
                         if (devp->sourcetype == source_gpsd) {
-                            (void)gpsd_write(devp, "?", 1);
-                            (void)gpsd_write(devp, start, (size_t)(end-start));
+                            (void)gpsd_write(devp, (const uint8_t *)"?", 1);
+                            (void)gpsd_write(devp, (const uint8_t *)start, (size_t)(end-start));
                         }
                     }
                 } else {
@@ -1746,8 +1743,8 @@ static void handle_request(struct subscriber_t *sub,
                         goto bailout;
                     } else if (awaken(devp)) {
                         if (devp->sourcetype == source_gpsd) {
-                            (void)gpsd_write(devp, "?", 1);
-                            (void)gpsd_write(devp, start, (size_t)(end-start));
+                            (void)gpsd_write(devp, (const uint8_t *)"?", 1);
+                            (void)gpsd_write(devp, (const uint8_t *)start, (size_t)(end-start));
                         }
                     } else {
                         (void)snprintf(reply, replylen,
@@ -2022,11 +2019,11 @@ const char /*@ observer @*/ *gpsd_canboatdump(char *scbuf, size_t scbuflen,
 static void raw_report_write(struct subscriber_t *sub, struct gps_device_t *device) {
 
     if (TEXTUAL_PACKET_TYPE(device->packet.type)
-    && (sub->policy.raw > 0 || sub->policy.nmea)) {
-    (void)throttled_write(sub,
-      (char *)device->packet.outbuffer,
-      device->packet.outbuflen);
-    return;
+        && (sub->policy.raw > 0 || sub->policy.nmea)) {
+            (void)throttled_write(sub,
+                device->packet.outbuffer,
+                device->packet.outbuflen);
+            return;
     }
 
     if ((VYSPI_PACKET == device->packet.type)
@@ -2038,7 +2035,7 @@ static void raw_report_write(struct subscriber_t *sub, struct gps_device_t *devi
             if((device->packet.out_type[cnt] == FRM_TYPE_AIS)
                || (FRM_TYPE_NMEA0183 == device->packet.out_type[cnt])) {
                 (void)throttled_write(sub,
-                                      (char *)(device->packet.outbuffer + device->packet.out_offset[cnt]),
+                                      (device->packet.outbuffer + device->packet.out_offset[cnt]),
                                       device->packet.out_len[cnt]);
                 gpsd_report(context.debug, LOG_DATA,
                             "<= RAWREPORT write vyspi %s - len=%d\n",
@@ -2054,7 +2051,7 @@ static void raw_report_write(struct subscriber_t *sub, struct gps_device_t *devi
      */
     if (sub->policy.raw > 1) {
         (void)throttled_write(sub,
-                              (char *)device->packet.outbuffer,
+                              device->packet.outbuffer,
                               device->packet.outbuflen);
         return;
     }
@@ -2064,16 +2061,16 @@ static void raw_report_write(struct subscriber_t *sub, struct gps_device_t *devi
 #endif
     if (device->packet.type == VYSPI_PACKET) {
         if(sub->policy.canboat == 1) {
-            const char * hd =
-                gpsd_canboatdump(device->msgbuf, sizeof(device->msgbuf),
-                                 device);
-            (void)throttled_write(sub, (char *)hd, strlen(hd));
+            const uint8_t * hd =
+                (const uint8_t *)gpsd_canboatdump(device->msgbuf,
+                        sizeof(device->msgbuf), device);
+            (void)throttled_write(sub, hd, strlen((char *)hd));
         }
         if (sub->policy.raw == 1) {
-            const char *hd = gpsd_vyspidump(device);
-            if(strlen(hd) > 0) {
+            const uint8_t * hd = (const uint8_t *)gpsd_vyspidump(device);
+            if(strlen((char *)hd) > 0) {
                 (void)strlcat((char *)hd, "\r\n", sizeof(device->msgbuf));
-                (void)throttled_write(sub, (char *)hd, strlen(hd));
+                (void)throttled_write(sub, hd, strlen((char *)hd));
             }
         }
     } else {
@@ -2081,12 +2078,11 @@ static void raw_report_write(struct subscriber_t *sub, struct gps_device_t *devi
          * Maybe the user wants a binary packet hexdumped.
          */
         if (sub->policy.raw == 1) {
-            const char *hd =
-            gpsd_hexdump(device->msgbuf, sizeof(device->msgbuf),
-                         (char *)device->packet.outbuffer,
-                         device->packet.outbuflen);
+            const uint8_t *hd =
+                (const uint8_t *)gpsd_hexdump(device->msgbuf, sizeof(device->msgbuf),
+                         (char *)device->packet.outbuffer, device->packet.outbuflen);
             (void)strlcat((char *)hd, "\r\n", sizeof(device->msgbuf));
-            (void)throttled_write(sub, (char *)hd, strlen(hd));
+            (void)throttled_write(sub, hd, strlen((char *)hd));
         }
     }
 #endif /* BINARY_ENABLE */
@@ -2118,9 +2114,9 @@ static void raw_report(struct gps_device_t *device)
     if (TEXTUAL_PACKET_TYPE(device->packet.type))  {
 
         (void)gpsd_device_write(device, FRM_TYPE_NMEA0183,
-                                (char *)device->packet.outbuffer,
+                                device->packet.outbuffer,
                                 device->packet.outbuflen);
-        (void)gpsd_udp_write((char *)device->packet.outbuffer,
+        (void)gpsd_udp_write(device->packet.outbuffer,
                              device->packet.outbuflen);
         return;
     }
@@ -2133,9 +2129,9 @@ static void raw_report(struct gps_device_t *device)
                || (FRM_TYPE_NMEA0183 == device->packet.out_type[cnt])) {
 
                 (void)gpsd_device_write(device,  FRM_TYPE_NMEA0183,
-                                        (char *)(device->packet.outbuffer + device->packet.out_offset[cnt]),
+                                        (device->packet.outbuffer + device->packet.out_offset[cnt]),
                                         device->packet.out_len[cnt]);
-                (void)gpsd_udp_write((char *)(device->packet.outbuffer + device->packet.out_offset[cnt]),
+                (void)gpsd_udp_write((device->packet.outbuffer + device->packet.out_offset[cnt]),
                                      device->packet.out_len[cnt]);
             }
         }
@@ -2162,13 +2158,13 @@ static void pseudonmea_write(gps_mask_t changed,
             continue;
         if (sub->policy.watcher && sub->policy.nmea) {
             if (changed & DATA_IS) {
-                (void)throttled_write(sub, buf, len);
+                (void)throttled_write(sub, (uint8_t *)buf, len);
             }
         }
     }
     if (changed & DATA_IS) {
-    gpsd_device_write(device, FRM_TYPE_NMEA0183, buf, len);
-        (void)gpsd_udp_write((char *)buf, len);
+        gpsd_device_write(device, FRM_TYPE_NMEA0183, (uint8_t *)buf, len);
+        (void)gpsd_udp_write((uint8_t *)buf, len);
     }
 }
 
@@ -2329,7 +2325,7 @@ static void signalk_report(gps_mask_t changed,
                 gpsd_external_report(context.debug, LOG_INF,
                                      "signalk update: %s\n",
                                      buf);
-                (void)throttled_write(sub, buf, strlen(buf));
+                (void)throttled_write(sub, (uint8_t *)buf, strlen(buf));
             }
         }
     }
@@ -2381,7 +2377,7 @@ static void all_reports(struct gps_device_t *device, gps_mask_t changed)
 /* *INDENT-OFF* */
         if (dp->device_type->rtcm_writer != NULL) {
     if (dp->device_type->rtcm_writer(dp,
-         (const char *)device->packet.outbuffer,
+         device->packet.outbuffer,
          device->packet.outbuflen) == 0)
         gpsd_report(context.debug, LOG_ERROR,
     "Write to RTCM sink failed\n");
@@ -2558,7 +2554,7 @@ static void all_reports(struct gps_device_t *device, gps_mask_t changed)
          device, &sub->policy,
          buf, sizeof(buf));
         if (buf[0] != '\0')
-    (void)throttled_write(sub, buf, strlen(buf));
+    (void)throttled_write(sub, (const uint8_t *)buf, strlen(buf));
 
     }
         }
@@ -2599,15 +2595,13 @@ static int handle_gpsd_request(struct subscriber_t *sub, const char *buf)
     struct subscriber_t *othersub = NULL;
 
     reply[0] = '\0';
-    if (((strncmp(buf, "GET ", 4) == 0) || (strncmp(buf, "OPTIONS ", 8) == 0))
+    if (((strncmp((char *)buf, "GET ", 4) == 0)
+        || (strncmp((char *)buf, "OPTIONS ", 8) == 0))
         || isWebsocket(sub)) {
         // switching to web socket mode
         // handle_websocket_request does its own writes
-        gpsd_report(context.debug, LOG_PROG,
-                    "handle web socket request\n");
-        return handle_websocket_request(sub, buf,
-                                        reply + strlen(reply),
-                                        sizeof(reply) - strlen(reply));
+        gpsd_report(context.debug, LOG_PROG, "handle web socket request\n");
+        return handle_websocket_request(sub, (uint8_t *)buf, (uint8_t *)reply, sizeof(reply));
 
     } else {
         if (buf[0] == '?') {
@@ -2616,11 +2610,8 @@ static int handle_gpsd_request(struct subscriber_t *sub, const char *buf)
                 if (isspace(*buf))
                     end = buf + 1;
                 else {
-                    handle_request(sub, buf, &end,
-                                   reply + strlen(reply),
-                                   sizeof(reply) - strlen(reply));
-                    return (int)throttled_write(sub, reply, strlen(reply));
-
+                    handle_request(sub, buf, &end, reply, sizeof(reply));
+                    return (int)throttled_write(sub, (uint8_t *)reply, strlen(reply));
                 }
             }
         } else if (buf[0] == '$') {
@@ -2628,7 +2619,7 @@ static int handle_gpsd_request(struct subscriber_t *sub, const char *buf)
             strncpy(reply, buf, strlen(buf));
             if(strlen(buf) > 5) {
                 reply[1] = 'G'; reply[2] = 'P';
-                gpsd_device_write(NULL, FRM_TYPE_NMEA0183, reply, strlen(reply));
+                gpsd_device_write(NULL, FRM_TYPE_NMEA0183, (uint8_t *)reply, strlen(reply));
             }
 
             handle_gpsd_cleanstring(buf, reply);
@@ -2638,7 +2629,7 @@ static int handle_gpsd_request(struct subscriber_t *sub, const char *buf)
                 if (othersub == NULL || othersub->active == 0
                     || !(othersub->policy.protocol == websocket) || !(othersub->policy.nmea))
                         continue;
-                throttled_write(othersub, reply, strlen(reply));
+                throttled_write(othersub, (uint8_t *)reply, strlen(reply));
             }
         }
     }
@@ -2828,7 +2819,7 @@ int main(int argc, char *argv[])
 {
     /* some of these statics suppress -W warnings due to longjmp() */
 #ifdef SOCKET_EXPORT_ENABLE
-    static char *gpsd_service = NULL;	/* this static pacifies splint */
+    const char *gpsd_service = NULL;	/* this static pacifies splint */
     struct subscriber_t *sub;
 #endif /* SOCKET_EXPORT_ENABLE */
 #ifdef CONTROL_SOCKET_ENABLE

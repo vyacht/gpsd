@@ -449,7 +449,7 @@ close:
 }
 
 /*@ -branchstate -nullpass @*/
-int ntrip_open(struct gps_device_t *device, char *caster)
+int ntrip_open(struct gps_device_t *device, const char *caster)
     /* open a connection to a Ntrip broadcaster */
 {
     char *amp, *colon, *slash;

@@ -248,7 +248,7 @@ int gps_mainloop(struct gps_data_t *gpsdata, int timeout,
     return status;
 }
 
-extern const char /*@observer@*/ *gps_errstr(const int err)
+const char /*@observer@*/ *gps_errstr(const int err)
 {
     /*
      * We might add our own error codes in the future, e.g for
@@ -292,8 +292,12 @@ void libgps_dump_state(struct gps_data_t *collect)
     if (collect->set & ALTITUDE_SET)
 	(void)fprintf(debugfp, "ALTITUDE: altitude: %lf  U: climb: %lf\n",
 		      collect->fix.altitude, collect->fix.climb);
-    if ((collect->set & NAVIGATION_SET) && (collect->navigation.set & NAV_SOG_PSET))
-    	(void)fprintf(debugfp, "SPEED: %lf\n", collect->navigation.speed_over_ground);
+    if (collect->set & NAVIGATION_SET) {
+        if (collect->navigation.set & NAV_SOG_PSET)
+            (void)fprintf(debugfp, "SPEED: %lf\n", collect->navigation.speed_over_ground);
+        if (collect->navigation.set & NAV_COG_TRUE_PSET)
+            (void)fprintf(debugfp, "TRACK: %lf\n", collect->navigation.course_over_ground[compass_true]);
+    }
     if ((collect->set & NAVIGATION_SET) && (collect->navigation.set & NAV_COG_TRUE_PSET))
     	(void)fprintf(debugfp, "TRACK: track: %lf\n", collect->navigation.course_over_ground[compass_true]);
     if (collect->set & CLIMB_SET)

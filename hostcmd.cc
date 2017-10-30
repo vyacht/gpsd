@@ -44,7 +44,7 @@ void gpsd_external_report(const int debuglevel UNUSED, const int errlevel UNUSED
 }
 
 ssize_t gpsd_write(struct gps_device_t *session,
-		   const char *buf,
+		   const uint8_t *buf,
 		   const size_t len)
 /* pass low-level data to devices, echoing it to the log window */
 {
@@ -54,7 +54,6 @@ ssize_t gpsd_write(struct gps_device_t *session,
 void init(int USB) {
 
   struct termios tty;
-  struct termios tty_old;
   memset (&tty, 0, sizeof tty);
 
   /* Error Handling */
@@ -89,7 +88,6 @@ void init(int USB) {
 
 int make_n2k() {
 
-    volatile int i = 0;
     uint32_t extid = 0, pgn = 128267;
     uint8_t  daddr = 0xff;
     uint8_t  saddr = 0x1e;
@@ -107,7 +105,7 @@ int make_n2k() {
         pgn = (pgn&0x1ff00) | (daddr & 0xff);
     extid = (pgn & 0x1ffff) << 8 | (prio & 0x07) << 26 | (saddr & 0xff);
 
-    printf("%lx,%lu,p:%x,s:%x,d:%x\n", extid, pgn, prio, saddr, daddr);
+    printf("%x,%u,p:%x,s:%x,d:%x\n", extid, pgn, prio, saddr, daddr);
 
     return 0;
 }
@@ -148,7 +146,7 @@ int main(int argc, char * argv[]) {
           break;
 
       case 'c': 
-              strncpy(cmd, optarg, 255);
+          strncpy((char *)cmd, optarg, 255);
               printf("cmd %s\n", cmd);
               opts++;
           break;
@@ -223,7 +221,7 @@ int main(int argc, char * argv[]) {
   } else {
     len = frm_toHDLC8(frm, 255, 
                       frmType, protocol_version,         // frame type cmd
-                      cmd, strlen(cmd));
+                      cmd, strlen((char *)cmd));
   }
   
   

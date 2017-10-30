@@ -1424,7 +1424,7 @@ void packet_discard(struct gps_packet_t *lexer)
 {
     size_t discard = lexer->inbufptr - lexer->inbuffer;
     size_t remaining = lexer->inbuflen - discard;
-    lexer->inbufptr = memmove(lexer->inbuffer, lexer->inbufptr, remaining);
+    lexer->inbufptr = (unsigned char *)memmove(lexer->inbuffer, lexer->inbufptr, remaining);
     lexer->inbuflen = remaining;
     if (lexer->debug >= LOG_RAW+1) {
 	char scratchbuf[MAX_PACKET_LENGTH*2+1];
@@ -1477,7 +1477,7 @@ void packet_parse(struct gps_packet_t *lexer)
 	/*@ -modobserver @*/
 	unsigned char c = *lexer->inbufptr++;
 	/*@ +modobserver @*/
-	char *state_table[] = {
+	const char *state_table[] = {
 #include "packet_names.h"
 	};
 	nextstate(lexer, c);

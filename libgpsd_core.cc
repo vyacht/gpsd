@@ -40,6 +40,7 @@
 #if defined(SEATALK_ENABLE)
 #include "driver_seatalk.h"
 #endif /* defined(SEATALK_ENABLE) */
+
 #include "navigation.h"
 
 void gpsd_init_ports(struct gps_device_t *session);
@@ -94,7 +95,7 @@ void gpsd_labeled_report(const int debuglevel, const int sublevel, const int err
 #ifndef SQUELCH_ENABLE
   if ((errlevel <= debuglevel) || (errlevel <= sublevel)) {
 	char buf[BUFSIZ], buf2[BUFSIZ];
-	char *err_str;
+	const char *err_str;
 
 #if defined(PPS_ENABLE)
 	gpsd_acquire_reporting_lock();
@@ -156,7 +157,7 @@ void gpsd_labeled_report(const int debuglevel, const int sublevel, const int err
 }
 
 static void gpsd_run_device_hook(const int debuglevel,
-				 char *device_name, char *hook)
+				 char *device_name, const char *hook)
 {
     struct stat statbuf;
     if (stat(DEVICEHOOKPATH, &statbuf) == -1)
@@ -170,7 +171,7 @@ static void gpsd_run_device_hook(const int debuglevel,
 	 * and can thus never cause a leak or stale-pointer problem.
 	 */
 	size_t bufsize = strlen(DEVICEHOOKPATH) + 1 + strlen(device_name) + 1 + strlen(hook) + 1;
-	char *buf = malloc(bufsize);
+	char *buf = (char *)malloc(bufsize);
 	if (buf == NULL)
 	    gpsd_report(debuglevel, LOG_ERROR,
 			"error allocating run-hook buffer\n");
@@ -193,7 +194,7 @@ static void gpsd_run_device_hook(const int debuglevel,
 }
 
 /*@-kepttrans@*/
-int gpsd_switch_driver(struct gps_device_t *session, char *type_name)
+int gpsd_switch_driver(struct gps_device_t *session, const char *type_name)
 {
     /*@-mustfreeonly@*/
     const struct gps_type_t **dp;
@@ -328,7 +329,7 @@ void gpsd_init_ports(struct gps_device_t *session) {
 
         p->input = device_policy_accept;
         p->output = device_policy_reject;
-        p->speed = 4800;
+        p->speed = PORT_SPEED_4800;
         p->type = PORT_TYPE_NMEA0183;
 
         for(n = 0; n < MAXDEVICES; n++) {
@@ -549,14 +550,18 @@ int gpsd_open(struct gps_device_t *session)
 #ifdef PASSTHROUGH_ENABLE
     if (strncmp(session->gpsdata.dev.path, "gpsd://", 7) == 0) {
 	/*@-branchstate -nullpass@*/
-	char server[strlen(session->gpsdata.dev.path)+1], *port;
+	char server[strlen(session->gpsdata.dev.path)+1], *pport;
+    char port[strlen(session->gpsdata.dev.path)+1];
 	socket_t dsock;
 	(void)strlcpy(server, session->gpsdata.dev.path + 7, sizeof(server));
 	INVALIDATE_SOCKET(session->gpsdata.gps_fd);
-	if ((port = strchr(server, ':')) == NULL) {
-	    port = DEFAULT_GPSD_PORT;
-	} else
-	    *port++ = '\0';
+
+    if ((pport = strchr(server, ':')) == NULL) {
+        strcpy(port, DEFAULT_GPSD_PORT);
+    } else {
+        *pport++ = '\0';
+        strcpy(port, pport);
+    }
 	gpsd_report(session->context->debug, LOG_INF,
 		    "opening remote gpsd feed at %s, port %s.\n",
 		    server, port);
@@ -1256,7 +1261,6 @@ gps_mask_t gpsd_poll(struct gps_device_t *session)
 {
     ssize_t newlen;
     bool driver_change = false;
-    struct gps_type_t *prev_driver = NULL;
 
     gps_clear_fix(&session->newdata);
     gpsd_environment_clear(&session->gpsdata.environment);
@@ -1419,8 +1423,6 @@ gps_mask_t gpsd_poll(struct gps_device_t *session)
             /*@-nullderef@*/
             if (driver_change) {
                 const struct gps_type_t **dp;
-                prev_driver = session->device_type;
-
                 for (dp = gpsd_drivers; *dp; dp++)
                     if (session->packet.type == (*dp)->packet_type) {
                         gpsd_report(session->context->debug, LOG_PROG,

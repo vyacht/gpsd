@@ -12,8 +12,6 @@
 
 #include "pseudon2k.h"
 
-int n2k_dump(struct gps_device_t *session, uint32_t pgn, uint8_t *bu, size_t len,
-                    void (*write_handler)(struct gps_device_t *, enum frm_type_t, const char *, size_t));
 /**
  *  \file pseudon2k.c contains all functions around creating N2K sentences
  *
@@ -789,21 +787,21 @@ int n2k_environment_dump(struct gps_device_t *session,
 */
 
 int n2k_dump(struct gps_device_t *session, uint32_t pgn, uint8_t *bu, size_t len,
-                    void (*write_handler)(struct gps_device_t *, enum frm_type_t, const char *, size_t)) {
+                    void (*write_handler)(struct gps_device_t *, enum frm_type_t, const uint8_t *, size_t)) {
     if(pgn) {
         set8leu32(bu, pgn, 0);
         bu[4] = 0x03; // prio
         bu[5] = session->driver.nmea2000.own_src_id;
         bu[6] = 0xff; // usually broadcast
 
-        write_handler(session, FRM_TYPE_NMEA2000, (const char *)bu, len + 7);
+        write_handler(session, FRM_TYPE_NMEA2000, bu, len + 7);
     }
 
     return 0;
 }
 int n2k_binary_dump(gps_mask_t changed,
                     struct gps_device_t *session,
-                    void (*write_handler)(struct gps_device_t *, enum frm_type_t, const char *buf, size_t len))
+                    void (*write_handler)(struct gps_device_t *, enum frm_type_t, const uint8_t *buf, size_t len))
 {
     uint16_t written;
     uint16_t len = 280;
@@ -906,10 +904,18 @@ int n2k_binary_dump(gps_mask_t changed,
             ENV_WIND_TRUE_TO_WATER_SPEED_PSET
         };
 
+        static enum wind_reference_t wrs[] = {
+            wind_true_north,
+            wind_magnetic_north,
+            wind_apparent,
+            wind_true_to_boat,
+            wind_true_to_water
+        };
+
         for(i = 0; i < 5; i++) {
             if((session->gpsdata.environment.set & angles[i])
                || (session->gpsdata.environment.set & speeds[i]) ) {
-                    n2k_binary_130306_dump(session, i, &pgn, bu+7, len-7, &written);
+                    n2k_binary_130306_dump(session, wrs[i], &pgn, bu+7, len-7, &written);
                     n2k_dump(session, pgn, bu, written, write_handler);
                 }
             }

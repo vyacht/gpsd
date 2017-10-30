@@ -14,6 +14,8 @@
 
 #include "gpsd.h"
 #include "bits.h"		/* for getbeu16(), to extract big-endian words */
+#include "driver_seatalk.h"
+#include "driver_vyspi.h"
 
 ssize_t generic_get(struct gps_device_t *session)
 {
@@ -45,7 +47,7 @@ gps_mask_t generic_parse_input(struct gps_device_t *session)
 			"unknown sentence: \"%s\"\n",	sentence);
 	}
 	for (dp = gpsd_drivers; *dp; dp++) {
-	    char *trigger = (*dp)->trigger;
+	    const char *trigger = (*dp)->trigger;
 
 	    if (trigger!=NULL && strncmp(sentence,trigger,strlen(trigger))==0) {
 		gpsd_report(session->context->debug, LOG_PROG,
@@ -242,7 +244,7 @@ static void nmea_event_hook(struct gps_device_t *session, event_t event)
 }
 
 /* *INDENT-OFF* */
-const struct gps_type_t driver_nmea0183 = {
+extern const struct gps_type_t driver_nmea0183 = {
     .type_name      = "NMEA0183",	/* full name of type */
     .packet_type    = NMEA_PACKET,	/* associated lexer packet type */
     .flags	    = DRIVER_NOFLAGS,	/* remember this */
@@ -514,7 +516,7 @@ static void gpsclock_event_hook(struct gps_device_t *session, event_t event)
 }
 
 /* *INDENT-OFF* */
-const struct gps_type_t driver_gpsclock = {
+extern const struct gps_type_t driver_gpsclock = {
     .type_name      = "Furuno Electric GH-79L4",	/* full name of type */
     .packet_type    = NMEA_PACKET,	/* associated lexer packet type */
     .flags	    = DRIVER_STICKY,	/* remember this */
@@ -983,7 +985,7 @@ static gps_mask_t rtcm104v3_analyze(struct gps_device_t *session)
 
     gpsd_report(session->context->debug, LOG_RAW, "RTCM 3.x packet %d\n", type);
     rtcm3_unpack(session->context->debug,
-		 &session->gpsdata.rtcm3, 
+		 &session->gpsdata.rtcm3,
 		 (char *)session->packet.outbuffer);
     session->cycle_end_reliable = true;
     return RTCM3_SET;
@@ -1362,7 +1364,7 @@ static gps_mask_t aivdm_analyze(struct gps_device_t *session)
 }
 
 /* *INDENT-OFF* */
-const struct gps_type_t driver_aivdm = {
+extern const struct gps_type_t driver_aivdm = {
     /* Full name of type */
     .type_name        = "AIVDM",    	/* associated lexer packet type */
     .packet_type      = AIVDM_PACKET,	/* numeric packet type */
@@ -1397,7 +1399,7 @@ const struct gps_type_t driver_aivdm = {
  *
  **************************************************************************/
 
-static void path_rewrite(struct gps_device_t *session, char *prefix)
+static void path_rewrite(struct gps_device_t *session, const char *prefix)
 /* prepend the session path to the value of a specified attribute */
 {
     /*
@@ -1466,7 +1468,7 @@ static gps_mask_t json_pass_packet(struct gps_device_t *session)
 }
 
 /* *INDENT-OFF* */
-const struct gps_type_t driver_json_passthrough = {
+extern const struct gps_type_t driver_json_passthrough = {
     .type_name      = "JSON slave driver",	/* full name of type */
     .packet_type    = JSON_PACKET,	/* associated lexer packet type */
     .flags	    = DRIVER_NOFLAGS,	/* don't remember this */
@@ -1494,6 +1496,10 @@ const struct gps_type_t driver_json_passthrough = {
 
 #endif /* PASSTHROUGH_ENABLE */
 
+
+
+
+
 extern const struct gps_type_t driver_evermore;
 extern const struct gps_type_t driver_garmin_ser_binary;
 extern const struct gps_type_t driver_garmin_usb_binary;
@@ -1501,14 +1507,15 @@ extern const struct gps_type_t driver_geostar;
 extern const struct gps_type_t driver_italk;
 extern const struct gps_type_t driver_navcom;
 extern const struct gps_type_t driver_nmea2000;
-extern const struct gps_type_t driver_vyspi;
 extern const struct gps_type_t driver_oncore;
-extern const struct gps_type_t driver_seatalk;
 extern const struct gps_type_t driver_sirf;
 extern const struct gps_type_t driver_superstar2;
 extern const struct gps_type_t driver_tsip;
 extern const struct gps_type_t driver_ubx;
 extern const struct gps_type_t driver_zodiac;
+
+extern const struct gps_type_t driver_seatalk;
+extern const struct gps_type_t driver_vyspi;
 
 /*@ -nullassign @*/
 /* the point of this rigamarole is to not have to export a table size */
@@ -1571,9 +1578,6 @@ static const struct gps_type_t *gpsd_driver_array[] = {
 #ifdef NAVCOM_ENABLE
     &driver_navcom,
 #endif /* NAVCOM_ENABLE */
-#ifdef SEATALK_ENABLE
-    &driver_seatalk,
-#endif /* SEATALK_ENABLE */
 #ifdef SIRF_ENABLE
     &driver_sirf,
 #endif /* SIRF_ENABLE */
@@ -1596,7 +1600,9 @@ static const struct gps_type_t *gpsd_driver_array[] = {
 #ifdef VYSPI_ENABLE
     &driver_vyspi,
 #endif /* VYSPI_ENABLE */
-
+#ifdef SEATALK_ENABLE
+    &driver_seatalk,
+#endif /* SEATALK_ENABLE */
 #ifdef RTCM104V2_ENABLE
     &driver_rtcm104v2,
 #endif /* RTCM104V2_ENABLE */

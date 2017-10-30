@@ -32,7 +32,7 @@
 # define _sha1_restrict __restrict__
 #endif
 
-#define SHA1_SIZE 20
+const int SHA1_SIZE=20;
 
 #ifdef __cplusplus
 extern "C" {
@@ -89,7 +89,7 @@ static inline void sha1mix(unsigned *_sha1_restrict r, unsigned *_sha1_restrict 
 	r[4] += e;
 }
 
-static void sha1(unsigned char h[static SHA1_SIZE], const void *_sha1_restrict p, size_t n) {
+static void sha1(unsigned char h[SHA1_SIZE], const void *_sha1_restrict p, size_t n) {
 	size_t i = 0;
 	unsigned w[16], r[5] = {0x67452301, 0xefcdab89, 0x98badcfe, 0x10325476, 0xc3d2e1f0};
 
@@ -130,4 +130,3 @@ static void sha1(unsigned char h[static SHA1_SIZE], const void *_sha1_restrict p
 #endif
 
 #endif /* AW_SHA1_H */
-

@@ -15,6 +15,9 @@
 int vyspi_open(struct gps_device_t *session);
 int vyspi_init(struct gps_device_t *session);
 
+gps_mask_t vyspi_parse_input(struct gps_device_t *session);
+ssize_t vyspi_get(struct gps_device_t *session);
+
 extern void vyspi_handle_time_trigger(struct gps_device_t *session);
 
 const char *gpsd_vyspidump(struct gps_device_t *);

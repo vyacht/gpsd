@@ -31,7 +31,7 @@ static struct gps_context_t context;
 static bool hunting = true;
 
 ssize_t gpsd_write(struct gps_device_t *session,
-		   const char *buf,
+		   const uint8_t *buf,
 		   const size_t len)
 /* pass low-level data to devices straight through */
 {
@@ -44,7 +44,7 @@ ssize_t gpsd_write(struct gps_device_t *session,
  */
 #define REDIRECT_SNIFF	15
 
-void gpsd_throttled_report(const int errlevel, const char * buf) {}
+void gpsd_throttled_report(const int errlevel UNUSED, const char * buf UNUSED) {}
 void gpsd_report(const int debuglevel, const int errlevel,
 		 const char *fmt, ...)
 {
@@ -54,8 +54,8 @@ void gpsd_report(const int debuglevel, const int errlevel,
     gpsd_labeled_report(debuglevel, 0, errlevel, "gpsctl:", fmt, ap);
     va_end(ap);
 }
-void gpsd_external_report(const int debuglevel, const int errlevel,
-			  const char *fmt, ...) {
+void gpsd_external_report(const int debuglevel UNUSED, const int errlevel UNUSED,
+			  const char *fmt UNUSED, ...) {
 }
 
 static void settle(struct gps_device_t *session)
@@ -170,7 +170,7 @@ static void onsig(int sig)
     }
 }
 
-static char /*@observer@*/ *gpsd_id( /*@in@ */ struct gps_device_t *session)
+static const char /*@observer@*/ *gpsd_id( /*@in@ */ struct gps_device_t *session)
 /* full ID of the device for reports, including subtype */
 {
     static char buf[128];

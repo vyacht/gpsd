@@ -3068,7 +3068,7 @@ static gps_mask_t hnd_130306(unsigned char *bu, int len, struct PGN *pgn, struct
 
   */
 
-    static char * wind_ref[] = {
+    static const char * wind_ref[] = {
       "True North",
       "Magnetic North",
       "Apparent",
@@ -3283,7 +3283,7 @@ static gps_mask_t hnd_130312(unsigned char *bu, int len, struct PGN *pgn, struct
     int16_t temp_set;
     uint8_t reserve;
 
-    static char * temp_src_list[] = {
+    static const char * temp_src_list[] = {
       "Water",
       "Air"};
 
@@ -3543,7 +3543,7 @@ enum
 
 static int vyspi_packet_parse(struct gps_packet_t *lexer, unsigned char c) {
 
-    char *state_table[] = {
+    const char *state_table[] = {
 #include "packet_names.h"
     };
 
@@ -3626,7 +3626,7 @@ static int vyspi_packet_parse(struct gps_packet_t *lexer, unsigned char c) {
 
 static void vyspi_preparse_serial(struct gps_device_t *session) {
 
-    static char * type_names [] = {
+    static const char * type_names [] = {
         "COMMAND", "NMEA0183", "NMEA2000", "SEATALK", "AIS"
     };
 
@@ -3661,6 +3661,7 @@ static void vyspi_preparse_serial(struct gps_device_t *session) {
             lexer->frm_read    = 0;
             lexer->frm_version = 0;
             lexer->frm_7dflag  = 0;
+            lexer->frm_port    = 0;
 
             lexer->frm_act_checksum    = 0;
             lexer->frm_shall_checksum  = 0;
@@ -3840,7 +3841,7 @@ static void vyspi_preparse_serial(struct gps_device_t *session) {
 
 static void vyspi_preparse_spi(struct gps_device_t *session) {
 
-  static char * typeNames [] = {
+  static const char * typeNames [] = {
     "UNKOWN", "NMEA0183", "NMEA2000"
   };
 
@@ -3953,7 +3954,7 @@ static void vyspi_preparse_spi(struct gps_device_t *session) {
 
 }
 
-static ssize_t vyspi_get(struct gps_device_t *session)
+ssize_t vyspi_get(struct gps_device_t *session)
 {
   int fd = session->gpsdata.gps_fd;
   struct gps_packet_t * pkg = &session->packet;
@@ -4104,7 +4105,7 @@ static gps_mask_t vyspi_parse_serial_input(struct gps_device_t *session)
 
   struct PGN *work = NULL;
 
-  static char * typeNames [] = {
+  static const char * typeNames [] = {
       "COMMAND", "NMEA0183", "NMEA2000", "SEATALK", "AIS", "UNKOWN"
   };
 
@@ -4307,7 +4308,7 @@ static gps_mask_t vyspi_parse_spi_input(struct gps_device_t *session)
 
   struct PGN *work = NULL;
 
-  static char * typeNames [] = {
+  static const char * typeNames [] = {
     "UNKOWN", "NMEA0183", "NMEA2000"
   };
 
@@ -4409,7 +4410,7 @@ static gps_mask_t vyspi_parse_spi_input(struct gps_device_t *session)
 }
 /*@+mustfreeonly@*/
 
-static gps_mask_t vyspi_parse_input(struct gps_device_t *session) {
+gps_mask_t vyspi_parse_input(struct gps_device_t *session) {
   if(session->gpsdata.dev.isSerial) {
     return vyspi_parse_serial_input(session);
   } else {
@@ -4605,7 +4606,7 @@ ssize_t vyspi_write_with_protocol(struct gps_device_t *session,
         return 0;
 
     size_t frmlen = frm_toHDLC8(frm, 255, frm_type, protocol_version, buf, len);
-    gpsd_serial_write(session, (const char *)frm, frmlen);
+    gpsd_serial_write(session, frm, frmlen);
 
     session->driver.vyspi.bytes_written_frm[frm_type] += frmlen;
     session->driver.vyspi.bytes_written_raw[frm_type] += len;
@@ -4691,7 +4692,6 @@ int vyspi_init(struct gps_device_t *session) {
     session->driver.vyspi.bytes_written_last_sec = 0;
 
     uint8_t cmd[255];
-    size_t len = 0;
 
     for (i = 0; i < session->gpsdata.dev.port_count; i++) {
 
@@ -4762,7 +4762,8 @@ int vyspi_init(struct gps_device_t *session) {
  */
 int vyspi_open(struct gps_device_t *session) {
 
-  char path[strlen(session->gpsdata.dev.path) + 1], *port;
+  char path[strlen(session->gpsdata.dev.path) + 1];
+  char *port;
 
   socket_t dsock;
 
@@ -4951,8 +4952,9 @@ const char /*@ observer @*/ *gpsd_vyspidump(struct gps_device_t *device) {
 }
 /*@+mustdefine@*/
 
+
 /* *INDENT-OFF* */
-const struct gps_type_t driver_vyspi = {
+extern const struct gps_type_t driver_vyspi = {
     .type_name      = "VYSPI",       /* full name of type */
     .packet_type    = VYSPI_PACKET,	/* associated lexer packet type */
     .flags	    = DRIVER_STICKY,	/* remember this */

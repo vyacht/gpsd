@@ -71,9 +71,9 @@ const char /*@ observer @*/ *gpsd_hexdump(char *scbuf, size_t scbuflen,
 /*@+mustdefine@*/
 
 /*@ +charint -shiftimplementation @*/
-static int hex2bin(const char *s)
+static uint8_t hex2bin(const char *s)
 {
-    int a, b;
+    uint8_t a, b;
 
     a = s[0] & 0xff;
     b = s[1] & 0xff;
@@ -99,7 +99,7 @@ static int hex2bin(const char *s)
     return ((a << 4) + b);
 }
 
-int gpsd_hexpack( /*@in@*/ const char *src, /*@out@ */ char *dst, size_t len)
+int gpsd_hexpack( /*@in@*/ const char *src, /*@out@ */ uint8_t *dst, size_t len)
 /* hex2bin source string to destination - destination can be same as source */
 {
     int i, j;
@@ -112,7 +112,7 @@ int gpsd_hexpack( /*@in@*/ const char *src, /*@out@ */ char *dst, size_t len)
     for (i = 0; i < j; i++) {
 	int k;
 	if ((k = hex2bin(src + i * 2)) != -1)
-	    dst[i] = (char)(k & 0xff);
+	    dst[i] = (uint8_t)(k & 0xff);
 	else
 	    return -1;
     }

@@ -195,9 +195,43 @@ int test_safeatof() {
     return 0;
 }
 
+#define DEFAULT_GPSD_PORT "2947"
+
+int test_testport() {
+
+    const char * teststr[] = {
+        "gpsd://server:port",
+        "gpsd://server:1212",
+        "gpsd://server",
+    };
+    int i= 0;
+
+    for(i = 0; i < 3; i++) {
+    
+        if (strncmp(teststr[i], "gpsd://", 7) == 0) {
+            
+            char server[strlen(teststr[i])+1], *pport;
+            char port[strlen(teststr[i]+1)];
+        
+            (void)strlcpy(server, teststr[i] + 7, sizeof(server));
+
+            port[0] = '\0';
+            if ((pport = strchr(server, ':')) == NULL) {
+                strcpy(port, DEFAULT_GPSD_PORT);
+            } else {
+                *pport++ = '\0';
+                strcpy(port, pport);
+            }
+
+            printf("%s : %s\n", server, port);
+        }
+    }
+}
+
 int main(int argc, char * argv[]) {
 //    test_read0183end();
-    test_safeatof();
+//    test_safeatof();
+    test_testport();
 }
 
 //18eaff01,59904,p:06,s:01,d:ff,x:00 ee 00 00 00 00 00 00

@@ -9,7 +9,7 @@
 #include "bits.h"
 
 ssize_t gpsd_write(struct gps_device_t *session,
-		   const char *buf,
+		   const uint8_t *buf,
 		   const size_t len)
 /* pass low-level data to devices straight through */
 {
@@ -34,7 +34,7 @@ int main(int argc, char**argv) {
 
   char c;
   char hexn2k[255];
-  char msg[4096];
+  uint8_t msg[4096];
 
   static struct gps_context_t context;
   gps_context_init(&context);

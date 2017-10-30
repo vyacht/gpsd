@@ -1,6 +1,10 @@
 #ifndef _RING_BUFFER_H_
 #define _RING_BUFFER_H_
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 #include <stdint.h>
 
 #define RB_MAX_SIZE 4096
@@ -35,31 +39,31 @@ void rb_reset(rb_t * rb);
  * rb_size - returns the size of the rb in elements
  * @rb: address of the rb to be used
  */
-unsigned int rb_size(rb_t * rb);
+unsigned int rb_size(const rb_t * rb);
 
 /**
  * rb_capacity - returns the number free space for new elements
  * @rb: address of the rb to be used
  */
-unsigned int rb_free(rb_t * rb);
+unsigned int rb_free(const rb_t * rb);
 
 /**
  * rb_len - returns the number of used elements in the rb
  * @rb: address of the rb to be used
  */
-unsigned int rb_len(rb_t * rb);
+unsigned int rb_len(const rb_t * rb);
 
 /**
  * krb_is_empty - returns true if the rb is empty
  * @rb: address of the rb to be used
  */
-int rb_is_empty(rb_t * rb);
+int rb_is_empty(const rb_t * rb);
 
 /**
  * krb_is_full - returns true if the rb is full
  * @rb: address of the rb to be used
  */
-int rb_is_full(rb_t * rb);
+int rb_is_full(const rb_t * rb);
 
 /**
  * rb_put - put data into the rb
@@ -89,7 +93,7 @@ int rb_put(rb_t * rb, double value, uint32_t msec);
  * Note that with only one concurrent reader and one concurrent
  * writer, you don't need extra locking to use these macro.
  */
-int rb_peek_n(rb_t * rb, uint32_t n, double * val, uint32_t * msec);
+int rb_peek_n(const rb_t * rb, uint32_t n, double * val, uint32_t * msec);
 
 /**
  * rb_get - get data from the rb
@@ -104,5 +108,9 @@ int rb_peek_n(rb_t * rb, uint32_t n, double * val, uint32_t * msec);
  * writer, you don't need extra locking to use these macro.
  */
 int rb_get(rb_t * rb, double * value, uint32_t * msec);
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif // _RING_BUFFER_H_

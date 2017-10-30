@@ -78,6 +78,6 @@ void n2k_binary_130312_dump(struct gps_device_t *session, uint32_t *pgn,
 
 int n2k_binary_dump(gps_mask_t changed,
                     struct gps_device_t *session,
-                    void (*write_handler)(struct gps_device_t *, enum frm_type_t, const char *buf, size_t len));
+                    void (*write_handler)(struct gps_device_t *, enum frm_type_t, const uint8_t *buf, size_t len));
 
 #endif

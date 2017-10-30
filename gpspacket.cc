@@ -44,24 +44,14 @@ void gpsd_external_report(int unused UNUSED, int errlevel, const char *fmt, ... 
 {
 }
 
-static PyTypeObject Lexer_Type;
-
 typedef struct {
 	PyObject_HEAD
 	struct gps_packet_t lexer;
 } LexerObject;
 
-static LexerObject *
-newLexerObject(PyObject *arg UNUSED)
-{
-    LexerObject *self;
-    self = PyObject_New(LexerObject, &Lexer_Type);
-    if (self == NULL)
-	return NULL;
-    memset(&self->lexer, 0, sizeof(struct gps_packet_t));
-    packet_reset(&self->lexer);
-    return self;
-}
+//PyTypeObject Lexer_Type;
+
+
 
 /* Lexer methods */
 
@@ -174,6 +164,20 @@ static PyTypeObject Lexer_Type = {
         0,                      /*tp_is_gc*/
 };
 
+// # Lexer_Type was here
+
+static LexerObject *
+newLexerObject(PyObject *arg UNUSED)
+{
+    LexerObject *self;
+    self = PyObject_New(LexerObject, &Lexer_Type);
+    if (self == NULL)
+	return NULL;
+    memset(&self->lexer, 0, sizeof(struct gps_packet_t));
+    packet_reset(&self->lexer);
+    return self;
+}
+
 /* Function of no arguments returning new Lexer object */
 
 static PyObject *
@@ -244,7 +248,7 @@ level of the message and the message itself.\n\
 ");
 
 /* banishes a pointless compiler warning */
-extern PyMODINIT_FUNC initpacket(void);
+PyMODINIT_FUNC initpacket(void);
 
 PyMODINIT_FUNC
 // cppcheck-suppress unusedFunction 

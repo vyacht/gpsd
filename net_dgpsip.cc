@@ -18,10 +18,11 @@
 #include "gpsd.h"
 
 /*@ -branchstate */
-int dgpsip_open(struct gps_device_t *device, const char *dgpsserver)
+int dgpsip_open(struct gps_device_t *device, char *dgpsserver)
 /* open a connection to a DGPSIP server */
 {
-    char *colon, *dgpsport = "rtcm-sc104";
+    char *colon;
+    char *dgpsport = "rtcm-sc104";
     int opts;
 
     device->dgpsip.reported = false;

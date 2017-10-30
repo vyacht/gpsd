@@ -9,7 +9,6 @@
 #include <time.h>
 
 #include "gpsd.h"
-#include "json.h"
 #include "timeutil.h"
 #include "ring_buffer.h"
 #include "signalk.h"
@@ -23,11 +22,6 @@ void signalk_add_unixtimestamp(timestamp_t ts,
 void signalk_add_fixtimestamp(const struct gps_device_t *device,
                               /*@out@*/ char *reply, size_t replylen);
 
-void signalk_value_full_dump(const struct gps_device_t *device,
-                             int * pt, // first value on this level?
-                             double value,
-                             char * name,
-                             /*@out@*/ char *reply, size_t replylen);
 /*
 {
   "updates":[{
@@ -67,11 +61,11 @@ void signalk_value_full_dump(const struct gps_device_t *device,
 /* *INDENT-ON* */
 
 struct signalk_path_t {
-    const char         path[256];
+    const char *       path;
     gps_mask_t         mask;     // environment, navigation
     gps_mask_t         submask;
     double             factor;   // some values require a multipler to correct units
-    const struct json_attr_t jattr;
+    double *           real;
 };
 
 void signalk_add_unixtimestamp(timestamp_t ts,
@@ -99,7 +93,7 @@ void signalk_add_fixtimestamp(const struct gps_device_t *device,
 void signalk_value_full_dump(const struct gps_device_t *device UNUSED,
                              int * pt, // first value on this level?
                              double value,
-                             char * name,
+                             const char * name,
                              /*@out@*/ char *reply, size_t replylen)
 {
     if (!isnan(value)) {
@@ -112,7 +106,7 @@ void signalk_value_full_dump(const struct gps_device_t *device UNUSED,
     }
 }
 
-gps_mask_t signalk_track_dump(const struct gps_device_t *device, uint32_t startAfter, char field[],
+gps_mask_t signalk_track_dump(const struct gps_device_t *device, uint32_t startAfter, const char field[],
                              /*@out@*/ char reply[], size_t replylen)
 {
     uint32_t i = 0;
@@ -127,7 +121,7 @@ gps_mask_t signalk_track_dump(const struct gps_device_t *device, uint32_t startA
     buf[0] = '\0';
     (void)strcpy(reply, "{\"data\":[");
 
-    rb_t * rb = NULL;
+    const rb_t * rb = NULL;
     if(!strcmp(field, "speedOverGround"))
         rb = &device->gpsdata.navigation.speed_over_grounds;
     else if(!strcmp(field, "speedThroughWater"))
@@ -311,59 +305,33 @@ void signalk_update_engine_struct(struct gps_device_t *device,
 
     const struct signalk_path_t pus[] = {
         {"engineLoad", ENGINE_SET, ENG_LOAD_PSET, 1.0,
-         {"status",        t_real,
-          .addr.real = &device->gpsdata.engine.instance[einstance].load,
-          .dflt.real = 0.0}},
+         &device->gpsdata.engine.instance[einstance].load},
         {"revolutions", ENGINE_SET, ENG_SPEED_PSET, 60.0,
-         {"status",        t_real,
-          .addr.real = &device->gpsdata.engine.instance[einstance].speed,
-          .dflt.real = 0.0}},
+         &device->gpsdata.engine.instance[einstance].speed},
         {"temperatur", ENGINE_SET, ENG_TEMPERATURE_PSET, 1.0,
-         {"status",        t_real,
-          .addr.real = &device->gpsdata.engine.instance[einstance].temperature,
-          .dflt.real = 0.0}},
+         &device->gpsdata.engine.instance[einstance].temperature},
         {"oilTemperatur", ENGINE_SET, ENG_OIL_TEMPERATURE_PSET, 1.0,
-         {"status",        t_real,
-          .addr.real = &device->gpsdata.engine.instance[einstance].oil_temperature,
-          .dflt.real = 0.0}},
+         &device->gpsdata.engine.instance[einstance].oil_temperature},
         {"oilPressure", ENGINE_SET, ENG_OIL_PRESSURE_PSET, 1.0,
-         {"status",        t_real,
-          .addr.real = &device->gpsdata.engine.instance[einstance].oil_pressure,
-          .dflt.real = 0.0}},
+         &device->gpsdata.engine.instance[einstance].oil_pressure},
         {"alternatorVoltage", ENGINE_SET, ENG_ALTERNATOR_VOLTAGE_PSET, 1.0,
-         {"status",        t_real,
-          .addr.real = &device->gpsdata.engine.instance[einstance].alternator_voltage,
-          .dflt.real = 0.0}},
+         &device->gpsdata.engine.instance[einstance].alternator_voltage},
         {"runTime", ENGINE_SET, ENG_TOTAL_HOURS_PSET, 1.0,
-         {"status",        t_real,
-          .addr.real = &device->gpsdata.engine.instance[einstance].total_hours,
-          .dflt.real = 0.0}},
+         &device->gpsdata.engine.instance[einstance].total_hours},
         {"coolantTemperature", ENGINE_SET, ENG_COOLANT_TEMPERATURE_PSET, 1.0,
-         {"status",        t_real,
-          .addr.real = &device->gpsdata.engine.instance[einstance].coolant_temperature,
-          .dflt.real = 0.0}},
+         &device->gpsdata.engine.instance[einstance].coolant_temperature},
         {"coolantPressure", ENGINE_SET, ENG_COOLANT_PRESSURE_PSET, 1.0,
-         {"status",        t_real,
-          .addr.real = &device->gpsdata.engine.instance[einstance].coolant_pressure,
-          .dflt.real = 0.0}},
+         &device->gpsdata.engine.instance[einstance].coolant_pressure},
         {"engineTorque", ENGINE_SET, ENG_TORQUE_PSET, 1.0,
-         {"status",        t_real,
-          .addr.real = &device->gpsdata.engine.instance[einstance].torque,
-          .dflt.real = 0.0}},
+         &device->gpsdata.engine.instance[einstance].torque},
         {"fuel.rate", ENGINE_SET, ENG_FUEL_RATE_PSET, 1.0,
-         {"status",        t_real,
-          .addr.real = &device->gpsdata.engine.instance[einstance].fuel_rate,
-          .dflt.real = 0.0}},
+         &device->gpsdata.engine.instance[einstance].fuel_rate},
         {"fuel.pressure", ENGINE_SET, ENG_FUEL_PRESSURE_PSET, 1.0,
-         {"status",        t_real,
-          .addr.real = &device->gpsdata.engine.instance[einstance].fuel_pressure,
-          .dflt.real = 0.0}},
+         &device->gpsdata.engine.instance[einstance].fuel_pressure},
         {"drive.trimState", ENGINE_SET, ENG_TILT_PSET, 1.0,
-         {"status",        t_real,
-          .addr.real = &device->gpsdata.engine.instance[einstance].tilt,
-          .dflt.real = 0.0}},
+         &device->gpsdata.engine.instance[einstance].tilt},
     };
-
+    
     memcpy(path_updates, pus, sizeof(pus));
 }
 
@@ -395,106 +363,70 @@ gps_mask_t signalk_update_dump(struct gps_device_t *device,
 
     const struct signalk_path_t path_updates[] = {
         {"navigation.rateOfTurn", NAVIGATION_SET, NAV_ROT_PSET, 1.0,
-         {"status",        t_real,  .addr.real = &device->gpsdata.navigation.rate_of_turn,
-          .dflt.real = 0.0}},
-        /* we do this manually for now
-        {"navigation.position", LATLON_SET | ALTITUDE_SET, 0xffffffff,
-        {"status",        t_structobject}}, */
+         &device->gpsdata.navigation.rate_of_turn},
         {"navigation.courseOverGroundMagnetic", NAVIGATION_SET, NAV_COG_MAGN_PSET, 1.0*DEG_2_RAD,
-         {"status",        t_real,
-          .addr.real = &device->gpsdata.navigation.course_over_ground[compass_magnetic],
-          .dflt.real = 0.0}},
+         &device->gpsdata.navigation.course_over_ground[compass_magnetic]},
         {"navigation.courseOverGroundTrue", NAVIGATION_SET, NAV_COG_TRUE_PSET, 1.0*DEG_2_RAD,
-         {"status",        t_real,
-          .addr.real = &device->gpsdata.navigation.course_over_ground[compass_true],
-          .dflt.real = 0.0}},
+         &device->gpsdata.navigation.course_over_ground[compass_true]},
         {"navigation.magneticVariation", ENVIRONMENT_SET, ENV_VARIATION_PSET, 1.0*DEG_2_RAD,
-         {"status",        t_real,  .addr.real = &device->gpsdata.environment.variation,
-          .dflt.real = 0.0}},
+         &device->gpsdata.environment.variation},
         {"navigation.headingMagnetic", NAVIGATION_SET, NAV_HDG_MAGN_PSET, 1.0*DEG_2_RAD,
-         {"status",        t_real,
-          .addr.real = &device->gpsdata.navigation.heading[compass_magnetic],
-          .dflt.real = 0.0}},
+         &device->gpsdata.navigation.heading[compass_magnetic]},
         {"navigation.headingTrue", NAVIGATION_SET, NAV_HDG_TRUE_PSET, 1.0*DEG_2_RAD,
-         {"status",        t_real,
-          .addr.real = &device->gpsdata.navigation.heading[compass_true],
-          .dflt.real = 0.0}},
+         &device->gpsdata.navigation.heading[compass_true]},
         {"navigation.speedOverGround", NAVIGATION_SET, NAV_SOG_PSET, 1.0*KNOTS_TO_MPS,
-         {"status",        t_real,
-          .addr.real = &device->gpsdata.navigation.speed_over_ground,
-          .dflt.real = 0.0}},
+         &device->gpsdata.navigation.speed_over_ground},
         {"navigation.speedThroughWater", NAVIGATION_SET, NAV_STW_PSET, 1.0*KNOTS_TO_MPS,
-         {"status",        t_real,
-          .addr.real = &device->gpsdata.navigation.speed_thru_water,
-          .dflt.real = 0.0}},
+         &device->gpsdata.navigation.speed_thru_water},
         {"navigation.log", NAVIGATION_SET, NAV_DIST_TOT_PSET, 1.0,
-         {"status",        t_real,
-          .addr.real = &device->gpsdata.navigation.distance_total,
-          .dflt.real = 0.0}},
+         &device->gpsdata.navigation.distance_total},
         {"navigation.logTrip", NAVIGATION_SET, NAV_DIST_TRIP_PSET, 1.0,
-         {"status",        t_real,
-          .addr.real = &device->gpsdata.navigation.distance_trip,
-          .dflt.real = 0.0}},
+         &device->gpsdata.navigation.distance_trip},
         {"environment.depth.belowTransducer", NAVIGATION_SET, NAV_DPT_PSET, 1.0,
-          {"status",        t_real,  .addr.real = &device->gpsdata.navigation.depth,
-          .dflt.real = 0.0}},
+         &device->gpsdata.navigation.depth},
         {"environment.depth.surfaceToTransducer", NAVIGATION_SET, NAV_DPT_PSET, 1.0,
-          {"status",        t_real,  .addr.real = &device->gpsdata.navigation.depth_offset,
-          .dflt.real = 0.0}},
+         &device->gpsdata.navigation.depth_offset},
         {"environment.wind.angleApparent",
          ENVIRONMENT_SET, ENV_WIND_APPARENT_ANGLE_PSET, 1.0*DEG_2_RAD,
-         {"status",        t_real,
-          .addr.real = &device->gpsdata.environment.wind[wind_apparent].angle,
-          .dflt.real = 0.0}},
+         &device->gpsdata.environment.wind[wind_apparent].angle},
         {"environment.wind.speedApparent",
            ENVIRONMENT_SET, ENV_WIND_APPARENT_SPEED_PSET, 1.0,
-           {"status",        t_real,
-            .addr.real = &device->gpsdata.environment.wind[wind_apparent].speed,
-            .dflt.real = 0.0}},
+         &device->gpsdata.environment.wind[wind_apparent].speed},
         /* 'True' wind angle, -180 to +180 degrees from the bow. Negative numbers to port */
         {"environment.wind.speedTrue",
-            ENVIRONMENT_SET, ENV_WIND_TRUE_TO_BOAT_SPEED_PSET, 1.0,
-            {"status",        t_real,
-            .addr.real = &device->gpsdata.environment.wind[wind_true_to_boat].speed,
-            .dflt.real = 0.0} },
+         ENVIRONMENT_SET, ENV_WIND_TRUE_TO_BOAT_SPEED_PSET, 1.0,
+         &device->gpsdata.environment.wind[wind_true_to_boat].speed},
         {"environment.wind.angleTrueWater",
-             ENVIRONMENT_SET, ENV_WIND_TRUE_TO_BOAT_ANGLE_PSET, 1.0*DEG_2_RAD,
-             {"status",        t_real,
-              .addr.real = &device->gpsdata.environment.wind[wind_true_to_boat].angle,
-              .dflt.real = 0.0} },
+         ENVIRONMENT_SET, ENV_WIND_TRUE_TO_BOAT_ANGLE_PSET, 1.0*DEG_2_RAD,
+         &device->gpsdata.environment.wind[wind_true_to_boat].angle},
         {"environment.wind.speedOverGround",
-           ENVIRONMENT_SET,  ENV_WIND_TRUE_NORTH_SPEED_PSET, 1.0,
-           {"status",        t_real,
-            .addr.real = &device->gpsdata.environment.wind[wind_true_north].speed,
-            .dflt.real = 0.0}},
+         ENVIRONMENT_SET,  ENV_WIND_TRUE_NORTH_SPEED_PSET, 1.0,
+         &device->gpsdata.environment.wind[wind_true_north].speed},
         /* The wind direction relative to true north, in compass degrees, 0 = North */
         {"environment.wind.directionTrue",
          ENVIRONMENT_SET, ENV_WIND_TRUE_NORTH_ANGLE_PSET, 1.0*DEG_2_RAD,
-         {"status",        t_real,
-          .addr.real = &device->gpsdata.environment.wind[wind_true_north].angle,
-          .dflt.real = 0.0} },
+         &device->gpsdata.environment.wind[wind_true_north].angle},
         {"environment.wind.directionMagnetic",
          ENVIRONMENT_SET, ENV_WIND_MAGN_ANGLE_PSET, 1.0*DEG_2_RAD,
-         {"status",        t_real,
-          .addr.real = &device->gpsdata.environment.wind[wind_magnetic_north].angle,
-          .dflt.real = 0.0}},
+         &device->gpsdata.environment.wind[wind_magnetic_north].angle},
         {"environment.waterTemp", ENVIRONMENT_SET, ENV_TEMP_WATER_PSET, 1.0,
-         {"status",        t_real,
-          .addr.real = &device->gpsdata.environment.temp[temp_water],
-          .dflt.real = 0.0}}
+         &device->gpsdata.environment.temp[temp_water]},
     };
 
 
     struct signalk_path_t path_updates_engine[2][13];
-    signalk_update_engine_struct(device, path_updates_engine[single_or_double_port], single_or_double_port);
+    signalk_update_engine_struct(device, path_updates_engine[single_or_double_port],
+                                 single_or_double_port);
     signalk_update_engine_struct(device, path_updates_engine[starboard], starboard);
 
 
     for(pu = 0; pu < 19; pu++) {
-        if(!isnan(*(double *)path_updates[pu].jattr.addr.real)) {
+        if(!isnan(*(double *)path_updates[pu].real)) {
             if ((device->gpsdata.set & path_updates[pu].mask) != 0) {
-                if( (((device->gpsdata.navigation.set & path_updates[pu].submask) != 0) && (path_updates[pu].mask & NAVIGATION_SET))
-                   || (((device->gpsdata.environment.set & path_updates[pu].submask) != 0) && (path_updates[pu].mask & ENVIRONMENT_SET)) ) {
+                if( (((device->gpsdata.navigation.set & path_updates[pu].submask) != 0)
+                     && (path_updates[pu].mask & NAVIGATION_SET))
+                    || (((device->gpsdata.environment.set & path_updates[pu].submask) != 0)
+                        && (path_updates[pu].mask & ENVIRONMENT_SET)) ) {
 
                     if(pt > 0)
                         (void)strlcat(reply, ",{", replylen);
@@ -502,10 +434,10 @@ gps_mask_t signalk_update_dump(struct gps_device_t *device,
                         (void)strlcat(reply, "{", replylen);
 
                     (void)snprintf(reply + strlen(reply), replylen - strlen(reply),
-                               "\"path\":\"%s\",\"value\":%.2f}",
-                               path_updates[pu].path,
-                               *(double *)path_updates[pu].jattr.addr.real
-                               * path_updates[pu].factor);
+                                   "\"path\":\"%s\",\"value\":%.2f}",
+                                   path_updates[pu].path,
+                                   *(double *)path_updates[pu].real
+                                   * path_updates[pu].factor);
                     reported |= path_updates[pu].mask;
                     pt++;
                 }
@@ -546,7 +478,7 @@ gps_mask_t signalk_update_dump(struct gps_device_t *device,
 
     for(pu = 0; pu < 13; pu++) {
         int inst = single_or_double_port;
-        if(!isnan(*(double *)path_updates_engine[inst][pu].jattr.addr.real)) {
+        if(!isnan(*(double *)path_updates_engine[inst][pu].real)) {
             if ((device->gpsdata.set & ENGINE_SET) != 0) {
                 if((device->gpsdata.engine.set & path_updates_engine[inst][pu].submask) != 0) {
 
@@ -558,7 +490,7 @@ gps_mask_t signalk_update_dump(struct gps_device_t *device,
                     (void)snprintf(reply + strlen(reply), replylen - strlen(reply),
                                "\"path\":\"propulsion.port_engine.%s\",\"value\":%.2f}",
                                path_updates_engine[inst][pu].path,
-                               *(double *)path_updates_engine[inst][pu].jattr.addr.real
+                               *(double *)path_updates_engine[inst][pu].real
                                * path_updates_engine[inst][pu].factor);
                     reported |= ENGINE_SET;
                     pt++;

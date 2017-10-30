@@ -186,12 +186,19 @@ config_parse_interface_option(struct device_port_t * port, const char * name, st
       strcpy(port->type_str, o->v.string);
 
 
-      
-	} else if(strcmp(name, "speed") == 0) {
-		
-	  gpsd_report(uci_debuglevel, LOG_INF, 
-		      "speed: %s\n", o->v.string);
-      port->speed = atoi(o->v.string);
+
+    } else if(strcmp(name, "speed") == 0) {
+        int speed = atoi(o->v.string);
+        gpsd_report(uci_debuglevel, LOG_INF, "speed: %s\n", o->v.string);
+
+        if(speed == 4800)
+            port->speed = PORT_SPEED_4800;
+        else if(speed == 38400)
+            port->speed = PORT_SPEED_38400;
+        else if(speed == 115200)
+            port->speed = PORT_SPEED_115200;
+        else
+            port->speed = PORT_SPEED_4800;
 	}
 
 }

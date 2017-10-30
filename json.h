@@ -15,7 +15,7 @@ typedef enum {t_integer, t_uinteger, t_real,
     json_type;
 
 struct json_enum_t {
-    char	*name;
+    const char	*name;
     int		value;
 };
 
@@ -37,7 +37,7 @@ struct json_array_t {
 };
 
 struct json_attr_t {
-    char *attribute;
+    const char *attribute;
     json_type type;
     union {
 	int *integer;
@@ -50,12 +50,12 @@ struct json_attr_t {
 	size_t offset;
     } addr;
     union {
-	int integer;
-	unsigned int uinteger;
-	double real;
-	bool boolean;
-	char character;
-	char *check;
+        int integer;
+        unsigned int uinteger;
+        double real;
+        bool boolean;
+        char character;
+        const char *check;
     } dflt;
     size_t len;
     const struct json_enum_t *map;

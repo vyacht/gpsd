@@ -163,9 +163,9 @@ static int json_internal_read_object(const char *cp,
     enum
     { init, await_attr, in_attr, await_value, in_val_string,
 	in_escape, in_val_token, post_val, post_array
-    } state = 0;
+    } state = init;
 #ifdef CLIENTDEBUG_ENABLE
-    char *statenames[] = {
+    const char *statenames[] = {
 	"init", "await_attr", "in_attr", "await_value", "in_val_string",
 	"in_escape", "in_val_token", "post_val", "post_array",
     };

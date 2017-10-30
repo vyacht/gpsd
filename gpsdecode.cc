@@ -28,7 +28,7 @@ static unsigned int typelist[32];
  **************************************************************************/
 
 ssize_t gpsd_write(struct gps_device_t *session,
-		   const char *buf,
+		   const uint8_t *buf,
 		   const size_t len)
 /* pass low-level data to devices straight through */
 {

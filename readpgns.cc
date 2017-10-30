@@ -13,7 +13,7 @@
 #include <unistd.h>
 #include <string.h>
 
-void gpsd_throttled_report(const int errlevel, const char * buf) {}
+void gpsd_throttled_report(const int errlevel UNUSED, const char * buf UNUSED) {}
 void gpsd_report(const int debuglevel, const int errlevel, const char *fmt, ...)
 /* our version of the logger */
 {
@@ -26,12 +26,12 @@ void gpsd_report(const int debuglevel, const int errlevel, const char *fmt, ...)
     va_end(ap);
 }
 
-void gpsd_external_report(const int debuglevel, const int errlevel,
-			  const char *fmt, ...) {
+void gpsd_external_report(const int debuglevel UNUSED, const int errlevel UNUSED,
+			  const char *fmt UNUSED, ...) {
 }
 
 ssize_t gpsd_write(struct gps_device_t *session,
-		   const char *buf,
+		   const uint8_t *buf,
 		   const size_t len)
 /* pass low-level data to devices, echoing it to the log window */
 {
@@ -73,7 +73,7 @@ int main(int argc, char * argv[]) {
     
     printf("msg = %s\n", msg);
     uint8_t bin[1024];
-    int msgll = gpsd_hexpack(msg, (char *)bin, 1024);
+    int msgll = gpsd_hexpack(msg, bin, 1024);
 
     pgn = getleu32(bin, 0);
     printf("pgn = %u\n", pgn);

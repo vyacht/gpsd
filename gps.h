@@ -32,6 +32,7 @@ extern "C" {
 #include <netinet/in.h> /* sockaddr_in */
 
 #include "ring_buffer.h"
+#include "frame.h"
 
 /*
  * 4.1 - Base version for initial JSON protocol (Dec 2009, release 2.90)
@@ -171,6 +172,48 @@ typedef /*@unsignedintegraltype@*/ uint32_t isgps30bits_t;
 #define NAVSYSTEM_GALILEO	2
 #define NAVSYSTEM_UNKNOWN	3
 
+struct gps_rangesat_t {	/* data from messages 1 & 9 */
+    unsigned ident;		/* satellite ID */
+    unsigned udre;		/* user diff. range error */
+    unsigned iod;		/* issue of data */
+    double prc;		/* range error */
+    double rrc;		/* range error rate */
+};
+
+struct consat_t {
+    unsigned ident;		/* satellite ID */
+    bool iodl;		/* issue of data */
+    unsigned int health;	/* is satellite healthy? */
+    #define HEALTH_NORMAL		(0)	/* Radiobeacon operation normal */
+    #define HEALTH_UNMONITORED	(1)	/* No integrity monitor operating */
+    #define HEALTH_NOINFO		(2)	/* No information available */
+    #define HEALTH_DONOTUSE		(3)	/* Do not use this radiobeacon */
+    int snr;			/* signal-to-noise ratio, dB */
+    #define SNR_BAD	-1			/* not reported */
+    bool health_en; 	/* health enabled */
+    bool new_data;		/* new data? */
+    bool los_warning;	/* line-of-sight warning */
+    unsigned int tou;	/* time to unhealth, seconds */
+};
+
+struct glonass_rangesat_t {		/* data from message type 31 */
+    unsigned ident;		/* satellite ID */
+    unsigned udre;		/* user diff. range error */
+    unsigned tod;		/* issue of data */
+    bool change;		/* ephemeris change bit */
+    double prc;		/* range error */
+    double rrc;		/* range error rate */
+};
+
+struct station_t {
+    double latitude, longitude;	/* location */
+    unsigned int range;		/* range in km */
+    double frequency;		/* broadcast freq */
+    unsigned int health;		/* station health */
+    unsigned int station_id;	/* of the transmitter */
+    unsigned int bitrate;		/* of station transmissions */
+};
+
 struct rtcm2_t {
     /* header contents */
     unsigned type;	/* RTCM message type */
@@ -184,13 +227,7 @@ struct rtcm2_t {
     union {
 	struct {
 	    unsigned int nentries;
-	    struct gps_rangesat_t {	/* data from messages 1 & 9 */
-		unsigned ident;		/* satellite ID */
-		unsigned udre;		/* user diff. range error */
-		unsigned iod;		/* issue of data */
-		double prc;		/* range error */
-		double rrc;		/* range error rate */
-	    } sat[MAXCORRECTIONS];
+	    struct gps_rangesat_t sat[MAXCORRECTIONS];
 	} gps_ranges;
 	struct {		/* data for type 3 messages */
 	    bool valid;		/* is message well-formed? */
@@ -208,32 +245,11 @@ struct rtcm2_t {
 	} reference;
 	struct {		/* data from type 5 messages */
 	    unsigned int nentries;
-	    struct consat_t {
-		unsigned ident;		/* satellite ID */
-		bool iodl;		/* issue of data */
-		unsigned int health;	/* is satellite healthy? */
-#define HEALTH_NORMAL		(0)	/* Radiobeacon operation normal */
-#define HEALTH_UNMONITORED	(1)	/* No integrity monitor operating */
-#define HEALTH_NOINFO		(2)	/* No information available */
-#define HEALTH_DONOTUSE		(3)	/* Do not use this radiobeacon */
-	       int snr;			/* signal-to-noise ratio, dB */
-#define SNR_BAD	-1			/* not reported */
-		bool health_en; 	/* health enabled */
-		bool new_data;		/* new data? */
-		bool los_warning;	/* line-of-sight warning */
-		unsigned int tou;	/* time to unhealth, seconds */
-	    } sat[MAXHEALTH];
+	    struct consat_t sat[MAXHEALTH];
 	} conhealth;
 	struct {		/* data from type 7 messages */
 	    unsigned int nentries;
-	    struct station_t {
-		double latitude, longitude;	/* location */
-		unsigned int range;		/* range in km */
-		double frequency;		/* broadcast freq */
-		unsigned int health;		/* station health */
-		unsigned int station_id;	/* of the transmitter */
-		unsigned int bitrate;		/* of station transmissions */
-	    } station[MAXSTATIONS];
+	    struct station_t station[MAXSTATIONS];
 	} almanac;
 	struct {		/* data for type 13 messages */
 	    bool status;		/* expect a text message */
@@ -248,14 +264,7 @@ struct rtcm2_t {
 	} gpstime;
 	struct {
 	    unsigned int nentries;
-	    struct glonass_rangesat_t {		/* data from message type 31 */
-		unsigned ident;		/* satellite ID */
-		unsigned udre;		/* user diff. range error */
-		unsigned tod;		/* issue of data */
-		bool change;		/* ephemeris change bit */
-		double prc;		/* range error */
-		double rrc;		/* range error rate */
-	    } sat[MAXCORRECTIONS];
+	    struct glonass_rangesat_t sat[MAXCORRECTIONS];
 	} glonass_ranges;
 	/* data from type 16 messages */
 	char message[(RTCM2_WORDS_MAX-2) * sizeof(isgps30bits_t)];
@@ -323,6 +332,25 @@ struct rtcm3_correction_diff {
 				   Correction Difference (1015, 1017) */
 };
 
+struct rtcm3_1001_t {
+    unsigned ident;			/* Satellite ID */
+    struct rtcm3_basic_rtk L1;
+};
+
+struct rtcm3_1002_t {
+unsigned ident;			/* Satellite ID */
+struct rtcm3_extended_rtk L1;
+};
+struct rtcm3_1009_t {
+unsigned ident;		/* Satellite ID */
+struct rtcm3_basic_rtk L1;
+};
+
+struct rtcm3_1010_t {
+unsigned ident;		/* Satellite ID */
+struct rtcm3_extended_rtk L1;
+};
+
 struct rtcm3_t {
     /* header contents */
     unsigned type;	/* RTCM 3.x message type */
@@ -331,18 +359,12 @@ struct rtcm3_t {
     union {
 	/* 1001-1013 were present in the 3.0 version */
 	struct {
-	    struct rtcm3_rtk_hdr	header;
-	    struct rtcm3_1001_t {
-		unsigned ident;			/* Satellite ID */
-		struct rtcm3_basic_rtk L1;
-	    } rtk_data[RTCM3_MAX_SATELLITES];
+	    struct rtcm3_rtk_hdr   header;
+	    struct rtcm3_1001_t    rtk_data[RTCM3_MAX_SATELLITES];
 	} rtcm3_1001;
 	struct {
-	    struct rtcm3_rtk_hdr	header;
-	    struct rtcm3_1002_t {
-		unsigned ident;			/* Satellite ID */
-		struct rtcm3_extended_rtk L1;
-	    } rtk_data[RTCM3_MAX_SATELLITES];
+	    struct rtcm3_rtk_hdr   header;
+        struct rtcm3_1002_t    rtk_data[RTCM3_MAX_SATELLITES];
 	} rtcm3_1002;
 	struct rtcm3_1003_t {
 	    struct rtcm3_rtk_hdr	header;
@@ -388,17 +410,11 @@ struct rtcm3_t {
 	} rtcm3_1008;
 	struct {
 	    struct rtcm3_rtk_hdr	header;
-	    struct rtcm3_1009_t {
-		unsigned ident;		/* Satellite ID */
-		struct rtcm3_basic_rtk L1;
-	    } rtk_data[RTCM3_MAX_SATELLITES];
+	    struct rtcm3_1009_t     rtk_data[RTCM3_MAX_SATELLITES];
 	} rtcm3_1009;
 	struct {
 	    struct rtcm3_rtk_hdr	header;
-	    struct rtcm3_1010_t {
-		unsigned ident;		/* Satellite ID */
-		struct rtcm3_extended_rtk L1;
-	    } rtk_data[RTCM3_MAX_SATELLITES];
+	    struct rtcm3_1010_t rtk_data[RTCM3_MAX_SATELLITES];
 	} rtcm3_1010;
 	struct {
 	    struct rtcm3_rtk_hdr	header;
@@ -870,6 +886,11 @@ typedef /*@unsignedintegraltype@*/ unsigned long long gps_mask_t;
 #define AIS_LAT4_NOT_AVAILABLE	910000
 #define AIS_LATLON4_DIV	600000.0
 
+struct waypoint_t {
+    signed int lon;		/* Longitude */
+    signed int lat;		/* Latitude */
+};
+
 struct route_info {
     unsigned int linkage;	/* Message Linkage ID */
     unsigned int sender;	/* Sender Class */
@@ -880,10 +901,60 @@ struct route_info {
     unsigned int minute;	/* Start minute */
     unsigned int duration;	/* Duration */
     int waycount;		/* Waypoint count */
-    struct waypoint_t {
-	signed int lon;		/* Longitude */
-	signed int lat;		/* Latitude */
-    } waypoints[16];
+    struct waypoint_t waypoints[16];
+};
+
+struct target_t {
+#define DAC1FID17_IDTYPE_MMSI		0
+#define DAC1FID17_IDTYPE_IMO		1
+#define DAC1FID17_IDTYPE_CALLSIGN	2
+#define DAC1FID17_IDTYPE_OTHER		3
+    unsigned int idtype;	/* Identifier type */
+    union target_id {	/* Target identifier */
+        unsigned int mmsi;
+        unsigned int imo;
+#define DAC1FID17_ID_LENGTH		7
+        char callsign[DAC1FID17_ID_LENGTH+1];
+        char other[DAC1FID17_ID_LENGTH+1];
+    } id;
+    signed int lat;		/* Latitude */
+    signed int lon;		/* Longitude */
+#define DAC1FID17_COURSE_NOT_AVAILABLE		360
+    unsigned int course;	/* Course Over Ground */
+    unsigned int second;	/* Time Stamp */
+#define DAC1FID17_SPEED_NOT_AVAILABLE		255
+    unsigned int speed;	/* Speed Over Ground */
+};
+
+struct cargo_t {
+    unsigned int code;	/* Cargo code */
+    unsigned int subtype;	/* Cargo subtype */
+};
+
+struct gauge_t {
+    unsigned int id;	/* Gauge ID */
+#define DAC200FID24_GAUGE_ID_UNKNOWN		0
+    signed int level;	/* Water Level */
+#define DAC200FID24_GAUGE_LEVEL_UNKNOWN		0
+};
+
+struct tidal_t {
+    signed int lon;	/* Longitude */
+    signed int lat;	/* Latitude */
+    unsigned int from_hour;	/* From UTC Hour */
+    unsigned int from_min;	/* From UTC Minute */
+    unsigned int to_hour;	/* To UTC Hour */
+    unsigned int to_min;	/* To UTC Minute */
+#define DAC1FID32_CDIR_NOT_AVAILABLE		360
+    unsigned int cdir;	/* Current Dir. Predicted */
+#define DAC1FID32_CSPEED_NOT_AVAILABLE		127
+    unsigned int cspeed;	/* Current Speed Predicted */
+};
+
+enum ais_part_t {
+    both,
+    part_a,
+    part_b,
 };
 
 struct ais_t
@@ -1199,10 +1270,7 @@ struct ais_t
 		    unsigned int unit;	/* Unit of Quantity */
 		    unsigned int amount;	/* Amount of Cargo */
 		    int ncargos;
-		    struct cargo_t {
-			unsigned int code;	/* Cargo code */
-			unsigned int subtype;	/* Cargo subtype */
-		    } cargos[28];
+		    struct cargo_t cargos[28];
 		} dac1fid25;
 		/* IMO289 - Route info (addressed) */
 		struct route_info dac1fid28;
@@ -1217,18 +1285,7 @@ struct ais_t
 		    unsigned int month;	/* Month */
 		    unsigned int day;	/* Day */
 		    signed int ntidals;
-		    struct tidal_t {
-			signed int lon;	/* Longitude */
-			signed int lat;	/* Latitude */
-			unsigned int from_hour;	/* From UTC Hour */
-			unsigned int from_min;	/* From UTC Minute */
-			unsigned int to_hour;	/* To UTC Hour */
-			unsigned int to_min;	/* To UTC Minute */
-#define DAC1FID32_CDIR_NOT_AVAILABLE		360
-			unsigned int cdir;	/* Current Dir. Predicted */
-#define DAC1FID32_CSPEED_NOT_AVAILABLE		127
-			unsigned int cspeed;	/* Current Speed Predicted */
-		    } tidals[3];
+            struct tidal_t tidals[3];
 		} dac1fid32;
 	    };
 	} type6;
@@ -1291,12 +1348,7 @@ struct ais_t
 		struct {
 		    char country[2+1];	/* UN Country Code */
 		    signed int ngauges;
-		    struct gauge_t {
-			unsigned int id;	/* Gauge ID */
-#define DAC200FID24_GAUGE_ID_UNKNOWN		0
-			signed int level;	/* Water Level */
-#define DAC200FID24_GAUGE_LEVEL_UNKNOWN		0
-		    } gauges[4];
+            struct gauge_t gauges[4];
 		} dac200fid24;
 		struct {
 		    signed int lon;	/* Signal Longitude */
@@ -1418,27 +1470,7 @@ struct ais_t
 		/* IMO289 - VTS-generated/Synthetic Targets */
 		struct {
 		    signed int ntargets;
-		    struct target_t {
-#define DAC1FID17_IDTYPE_MMSI		0
-#define DAC1FID17_IDTYPE_IMO		1
-#define DAC1FID17_IDTYPE_CALLSIGN	2
-#define DAC1FID17_IDTYPE_OTHER		3
-			unsigned int idtype;	/* Identifier type */
-			union target_id {	/* Target identifier */
-			    unsigned int mmsi;
-			    unsigned int imo;
-#define DAC1FID17_ID_LENGTH		7
-			    char callsign[DAC1FID17_ID_LENGTH+1];
-			    char other[DAC1FID17_ID_LENGTH+1];
-			} id;
-			signed int lat;		/* Latitude */
-			signed int lon;		/* Longitude */
-#define DAC1FID17_COURSE_NOT_AVAILABLE		360
-			unsigned int course;	/* Course Over Ground */
-			unsigned int second;	/* Time Stamp */
-#define DAC1FID17_SPEED_NOT_AVAILABLE		255
-			unsigned int speed;	/* Speed Over Ground */
-		    } targets[4];
+            struct target_t targets[4];
 		} dac1fid17;
 		/* IMO 289 - Marine Traffic Signal */
 		struct {
@@ -1743,11 +1775,7 @@ struct ais_t
 	/* Type 24 - Class B CS Static Data Report */
 	struct {
 	    char shipname[AIS_SHIPNAME_MAXLEN+1];	/* vessel name */
-	    enum {
-		both,
-		part_a,
-		part_b,
-	    } part;
+        enum ais_part_t part;
 	    unsigned int shiptype;	/* ship type code */
 	    char vendorid[8];		/* vendor ID */
 	    unsigned int model;		/* unit model code */

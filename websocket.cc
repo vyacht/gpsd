@@ -21,6 +21,8 @@
  *
  */
 
+#include <stdio.h>
+
 #include "websocket.h"
 #include "bsd_base64.h"
 #include "aw-sha1.h"
@@ -66,7 +68,7 @@ ws_parse_resource_uri(struct handshake *hs)
 {
     uint32_t pcnt = 0;
     char * p= hs->resource;
-    if(p[0] != '\/')
+    if(p[0] != '/')
         return;
 
     // search for parameters
@@ -112,8 +114,7 @@ ws_parse_resource_uri(struct handshake *hs)
  *   Access-Control-Request-Headers: content-type\x0d\x0a
  *   Connection: keep-alive\x0d\x0a\x0d\x0a
  */
-enum wsFrameType wsParseHandshake(const uint8_t *inputFrame, size_t inputLength,
-                                  struct handshake *hs)
+enum wsFrameType wsParseHandshake(const uint8_t *inputFrame, struct handshake *hs)
 {
     enum wsFrameType tmpFT = WS_ERROR_FRAME;
 
@@ -134,7 +135,7 @@ enum wsFrameType wsParseHandshake(const uint8_t *inputFrame, size_t inputLength,
         return WS_ERROR_FRAME;
 
     // measure resource size
-    char *first = strchr((const char *)inputFrame, ' ');
+    char *first = strchr((char *)inputFrame, ' ');
     if (!first)
         return WS_ERROR_FRAME;
     first++;
@@ -239,7 +240,7 @@ enum wsFrameType wsParseHandshake(const uint8_t *inputFrame, size_t inputLength,
 
     // we have read all data, so check them
     if(tmpFT == WS_OPENING_FRAME) {
-        if(!hs->host || !hs->key || !connectionFlag || !upgradeFlag || versionMismatch)  {
+        if((hs->host[0] == '\0') || (hs->key[0] == '\0') || !connectionFlag || !upgradeFlag || versionMismatch)  {
             hs->frameType = WS_GET_FRAME;
         } else {
             hs->frameType = WS_OPENING_FRAME;
@@ -253,11 +254,9 @@ enum wsFrameType wsParseHandshake(const uint8_t *inputFrame, size_t inputLength,
 
 static const char encode[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
 			     "abcdefghijklmnopqrstuvwxyz0123456789+/";
-static const char decode[] = "|$$$}rstuvwxyz{$$$$$$$>?@ABCDEFGHIJKLMNOPQRSTUVW"
-			     "$$$$$$XYZ[\\]^_`abcdefghijklmnopq";
 
 int
-b64_encode_string(const char *in, int in_len, char *out, int out_size)
+b64_encode_string(unsigned char in[SHA1_SIZE], int in_len, char *out, int out_size)
 {
 	unsigned char triple[3];
 	int i;
@@ -304,16 +303,16 @@ void wsGetHandshakeAnswer(const struct handshake *hs, uint8_t *outFrame,
     assert(outFrame);
     assert(*outLength);
     assert(hs->frameType == WS_OPENING_FRAME);
-    assert(hs && hs->key);
+    assert(hs && (hs->key[0] != '\0'));
 
     printf("handshake answer in key: %s\n", hs->key);
 
     char *responseKey = NULL;
     uint8_t length = strlen(hs->key)+strlen(secret);
-    responseKey = malloc(length);
+    responseKey = (char *)malloc(length);
     memcpy(responseKey, hs->key, strlen(hs->key));
     memcpy(&(responseKey[strlen(hs->key)]), secret, strlen(secret));
-    unsigned char shaHash[20];
+    unsigned char shaHash[SHA1_SIZE];
     memset(shaHash, 0, sizeof(shaHash));
     sha1(shaHash, responseKey, length);
 
@@ -322,41 +321,41 @@ void wsGetHandshakeAnswer(const struct handshake *hs, uint8_t *outFrame,
     // size_t base64Length = base64(responseKey, length, shaHash, 20);
     responseKey[base64Length] = '\0';
 
-    printf("handshake answer out key: %s (target length = %d, len = %d)\n", 
+    printf("handshake answer out key: %s (target length = %d, len = %lu)\n",
 	   responseKey, length, base64Length);
 
-    (void)snprintf((char *)outFrame, outLength,
+    (void)snprintf((char *)outFrame, *outLength,
         "HTTP/1.1 101 Switching Protocols\r\n"
         "Upgrade: websocket\r\n"
         "Connection: Upgrade\r\n");
 
     if(hs->protocol[0] != '\0')
-        (void)snprintf((char *)outFrame + strlen(outFrame), 
-        outLength - strlen(outFrame),
+        (void)snprintf((char *)(outFrame + strlen((char *)outFrame)),
+        *outLength - strlen((char *)outFrame),
         "Sec-WebSocket-Protocol: %s\r\n", hs->protocol);
 
-    (void)snprintf((char *)outFrame + strlen(outFrame), 
-        outLength - strlen(outFrame),
+    (void)snprintf((char *)(outFrame + strlen((char *)outFrame)),
+        *outLength - strlen((char *)outFrame),
         "Sec-WebSocket-Accept: %s\r\n\r\n", responseKey);
 
     free(responseKey);
 
     // if assert fail, that means, that we corrupt memory
-    *outLength = strlen(outFrame);
+    *outLength = strlen((char *)outFrame);
 }
 
-void wsMakeFrame(const char *data, size_t dataLength,
+void wsMakeFrame(const uint8_t *data, size_t dataLength,
                  uint8_t *outFrame, size_t *outLength, enum wsFrameType frameType)
 {
-  if(frameType != WS_CLOSING_FRAME) 
+  if(frameType != WS_CLOSING_FRAME)
     assert(outFrame && *outLength);
   assert(frameType < 0x10);
 
   if (dataLength > 0)
     assert(data);
-	
+
   outFrame[0] = 0x80 | frameType;
-    
+
   if (dataLength <= 125) {
     outFrame[1] = dataLength;
     *outLength = 2;
@@ -367,7 +366,7 @@ void wsMakeFrame(const char *data, size_t dataLength,
     *outLength = 4;
   } else {
     assert(dataLength <= 0xFFFF);
-    
+
         /* implementation for 64bit systems
         outFrame[1] = 127;
         dataLength = htonll(dataLength);
@@ -418,11 +417,14 @@ static size_t getPayloadLength(const uint8_t *inputFrame, size_t inputLength,
 }
 
 enum wsFrameType wsParseInputFrame(const uint8_t *inputFrame, const size_t inputLength,
-                                   uint8_t **dataPtr, size_t *dataLength)
+                                   uint8_t *dataPtr, size_t dataLength)
 {
     uint32_t calc_length = 0;
     assert(inputFrame);
-    uint8_t * end = inputFrame;
+    const uint8_t * end = inputFrame;
+
+    /* TODO - this is only safe here because input comes from one source
+        where we know there is an 0-marker at the end */
     while(*end != '\0') end++;
 
     if(end < inputFrame) {
@@ -448,39 +450,47 @@ enum wsFrameType wsParseInputFrame(const uint8_t *inputFrame, const size_t input
     }
 
     uint8_t opcode = inputFrame[0] & 0x0F;
-    if (opcode == WS_TEXT_FRAME ||
-            opcode == WS_BINARY_FRAME ||
-            opcode == WS_CLOSING_FRAME ||
-            opcode == WS_PING_FRAME ||
-            opcode == WS_PONG_FRAME
-    ){
-        enum wsFrameType frameType = opcode;
 
-        uint8_t payloadFieldExtraBytes = 0;
-        size_t payloadLength = getPayloadLength(inputFrame, calc_length - 1,
-                                                &payloadFieldExtraBytes, &frameType);
-        printf("received payload length of %lu and %u extra bytes and %u length (%d)\n",
-               payloadLength, payloadFieldExtraBytes, calc_length, frameType);
-        if (payloadLength > 0) {
-            if (payloadLength + 6 + payloadFieldExtraBytes > calc_length - 1) {// 4-maskingKey, 2-header 
-                printf("received incomplete frame of %lu > %u\n", 
-                       payloadLength + 6 + payloadFieldExtraBytes, calc_length - 1);
-                return WS_INCOMPLETE_FRAME;
-            }
-            uint8_t *maskingKey = &inputFrame[2 + payloadFieldExtraBytes];
+    // TODO
+    enum wsFrameType frameType;
+    if (opcode == WS_TEXT_FRAME) {
+        frameType = WS_TEXT_FRAME;
+    } else if(opcode == WS_BINARY_FRAME) {
+        frameType = WS_BINARY_FRAME;
+    } else if(opcode == WS_CLOSING_FRAME) {
+        frameType = WS_CLOSING_FRAME;
+    } else if(opcode == WS_PING_FRAME) {
+        frameType = WS_PING_FRAME;
+    } else if(opcode == WS_PONG_FRAME) {
+        frameType = WS_PONG_FRAME;
+    } else
+        return WS_ERROR_FRAME;
 
-            assert(payloadLength == calc_length - 1 - 6 - payloadFieldExtraBytes);
+    uint8_t payloadFieldExtraBytes = 0;
+    size_t payloadLength = getPayloadLength(inputFrame, calc_length - 1,
+                                            &payloadFieldExtraBytes, &frameType);
+    printf("received payload length of %lu and %u extra bytes and %u length (%d)\n",
+           payloadLength, payloadFieldExtraBytes, calc_length, frameType);
 
-            *dataPtr = &inputFrame[2 + payloadFieldExtraBytes + 4];
-            *dataLength = payloadLength;
-		
-            size_t i;
-            for (i = 0; i < *dataLength; i++) {
-                (*dataPtr)[i] = (*dataPtr)[i] ^ maskingKey[i%4];
-            }
+    if(payloadLength > dataLength)
+        return WS_ERROR_FRAME;
+
+    if (payloadLength > 0) {
+        if (payloadLength + 6 + payloadFieldExtraBytes > calc_length - 1) {// 4-maskingKey, 2-header
+            printf("received incomplete frame of %lu > %u\n",
+                   payloadLength + 6 + payloadFieldExtraBytes, calc_length - 1);
+            return WS_INCOMPLETE_FRAME;
         }
-        return frameType;
-    }
+        const uint8_t *maskingKey = &inputFrame[2 + payloadFieldExtraBytes];
 
-    return WS_ERROR_FRAME;
+        assert(payloadLength == calc_length - 1 - 6 - payloadFieldExtraBytes);
+
+        const uint8_t *ptr = &inputFrame[2 + payloadFieldExtraBytes + 4];
+
+        size_t i;
+        for (i = 0; i < payloadLength; i++) {
+            dataPtr[i] = ptr[i] ^ maskingKey[i%4];
+        }
+    }
+    return frameType;
 }

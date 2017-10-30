@@ -34,7 +34,7 @@ static void from_sixbit(unsigned char *bitvec, uint start, int count, char *to)
     /* the real string causes a splint internal error */
     const char sixchr[] = "abcd";
 #else
-    const char sixchr[64] =
+    const char sixchr[66] =
 	"@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_ !\"#$%&'()*+,-./0123456789:;<=>?";
 #endif /* S_SPLINT_S */
     int i;

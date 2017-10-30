@@ -370,15 +370,15 @@ typedef /*@unsignedintegraltype@*/ unsigned int driver_mask_t;
 
 struct gps_type_t {
 /* GPS method table, describes how to talk to a particular GPS type */
-    /*@observer@*/char *type_name;
+    /*@observer@*/const char *type_name;
     int packet_type;
     driver_mask_t flags;	/* reserved for expansion */
-    /*@observer@*//*@null@*/char *trigger;
+    /*@observer@*//*@null@*/const char *trigger;
     int channels;
     /*@null@*/bool (*probe_detect)(struct gps_device_t *session);
     /*@null@*/ssize_t (*get_packet)(struct gps_device_t *session);
     /*@null@*/gps_mask_t (*parse_packet)(struct gps_device_t *session);
-    /*@null@*/ssize_t (*rtcm_writer)(struct gps_device_t *session, const char *rtcmbuf, size_t rtcmbytes);
+    /*@null@*/ssize_t (*rtcm_writer)(struct gps_device_t *session, const uint8_t *rtcmbuf, size_t rtcmbytes);
     /*@null@*/void (*event_hook)(struct gps_device_t *session, event_t event);
 #ifdef RECONFIGURE_ENABLE
     /*@null@*/bool (*speed_switcher)(struct gps_device_t *session,
@@ -441,6 +441,23 @@ typedef enum {service_unknown,
 /*
  * Private state information about an NTRIP stream.
  */
+enum ntrip_stream_format_t
+{
+    fmt_rtcm2,
+    fmt_rtcm2_0,
+    fmt_rtcm2_1,
+    fmt_rtcm2_2,
+    fmt_rtcm2_3,
+    fmt_rtcm3,
+    fmt_unknown
+};
+
+enum ntrip_stream_compr_encryp_t
+{ cmp_enc_none, cmp_enc_unknown };
+
+enum ntrip_stream_authentication_t
+{ auth_none, auth_basic, auth_digest, auth_unknown };
+
 struct ntrip_stream_t
 {
     char mountpoint[101];
@@ -449,24 +466,13 @@ struct ntrip_stream_t
     char url[256];
     char port[32]; /* in my /etc/services 16 was the longest */
     bool set; /* found and set */
-    enum
-    {
-	fmt_rtcm2,
-	fmt_rtcm2_0,
-	fmt_rtcm2_1,
-	fmt_rtcm2_2,
-	fmt_rtcm2_3,
-	fmt_rtcm3,
-	fmt_unknown
-    } format;
+    enum ntrip_stream_format_t format;
     int carrier;
     double latitude;
     double longitude;
     int nmea;
-    enum
-    { cmp_enc_none, cmp_enc_unknown } compr_encryp;
-    enum
-    { auth_none, auth_basic, auth_digest, auth_unknown } authentication;
+    enum ntrip_stream_compr_encryp_t compr_encryp;
+    enum ntrip_stream_authentication_t authentication;
     int fee;
     int bitrate;
 };
@@ -490,6 +496,14 @@ struct ntrip_stream_t
 #define free_device(devp)	 (devp)->gpsdata.dev.path[0] = '\0'
 #define initialized_device(devp) ((devp)->context != NULL)
 
+/* state information about our response parsing */
+enum ntrip_conn_state_t {
+    ntrip_conn_init,
+    ntrip_conn_sent_probe,
+    ntrip_conn_sent_get,
+    ntrip_conn_established,
+    ntrip_conn_err
+}; 	/* connection state for multi stage connect */
 
 struct gps_device_t {
 /* session object, encapsulates all global state */
@@ -543,8 +557,8 @@ struct gps_device_t {
     /*@null@*/ char *(*thread_report_hook)(struct gps_device_t *,
 					   struct timedrift_t *);
     /*@null@*/ void (*thread_wrap_hook)(struct gps_device_t *);
-    volatile struct timedrift_t ppslast;
-    volatile int ppscount;
+    struct timedrift_t ppslast;
+    int ppscount;
 #endif /* PPS_ENABLE */
     double mag_var;			/* magnetic variation in degrees */
     bool back_to_nmea;			/* back to NMEA on revert? */
@@ -789,15 +803,8 @@ struct gps_device_t {
     struct {
 	/* state information about the stream */
 	struct ntrip_stream_t stream;
+    enum ntrip_conn_state_t conn_state;
 
-	/* state information about our response parsing */
-	enum {
-	    ntrip_conn_init,
-	    ntrip_conn_sent_probe,
-	    ntrip_conn_sent_get,
-	    ntrip_conn_established,
-	    ntrip_conn_err
-	} conn_state; 	/* connection state for multi stage connect */
 	bool works;		/* marks a working connection, so we try to reconnect once */
 	bool sourcetable_parse;	/* have we read the sourcetable header? */
     } ntrip;
@@ -874,13 +881,13 @@ extern void netgnss_report(struct gps_context_t *,
 			 struct gps_device_t *);
 extern void netgnss_autoconnect(struct gps_context_t *, double, double);
 
-extern int dgpsip_open(struct gps_device_t *, const char *);
+extern int dgpsip_open(struct gps_device_t *, char *);
 extern void dgpsip_report(struct gps_context_t *,
 			 struct gps_device_t *,
 			 struct gps_device_t *);
 extern void dgpsip_autoconnect(struct gps_context_t *,
 			       double, double, const char *);
-extern int ntrip_open(struct gps_device_t *, char *);
+extern int ntrip_open(struct gps_device_t *, const char *);
 extern void ntrip_report(struct gps_context_t *,
 			 struct gps_device_t *,
 			 struct gps_device_t *);
@@ -889,9 +896,9 @@ extern void gpsd_tty_init(struct gps_device_t *);
 extern int gpsd_serial_open(struct gps_device_t *);
 extern bool gpsd_set_raw(struct gps_device_t *);
 extern ssize_t gpsd_serial_write(struct gps_device_t *,
-				 const char *, const size_t);
+				 const uint8_t *, const size_t);
 extern bool gpsd_next_hunt_setting(struct gps_device_t *);
-extern int gpsd_switch_driver(struct gps_device_t *, char *);
+extern int gpsd_switch_driver(struct gps_device_t *, const char *);
 extern void gpsd_set_speed(struct gps_device_t *, speed_t, char, unsigned int);
 extern speed_t gpsd_get_speed(const struct gps_device_t *);
 extern speed_t gpsd_get_speed_old(const struct gps_device_t *);
@@ -900,7 +907,7 @@ extern char gpsd_get_parity(const struct gps_device_t *);
 extern void gpsd_assert_sync(struct gps_device_t *);
 extern void gpsd_close(struct gps_device_t *);
 
-extern ssize_t gpsd_write(struct gps_device_t *, const char *, const size_t);
+extern ssize_t gpsd_write(struct gps_device_t *, const uint8_t *, const size_t);
 extern void gpsd_throttled_report(const int errlevel, const char * buf);
 
 extern void gpsd_time_init(struct gps_context_t *, time_t);
@@ -925,7 +932,7 @@ extern /*@ observer @*/ const char *gpsd_prettydump(struct gps_device_t *);
 # ifdef __cplusplus
 extern "C" {
 # endif
-extern int gpsd_hexpack(/*@in@*/const char *, /*@out@*/char *, size_t);
+extern int gpsd_hexpack(/*@in@*/const char *, /*@out@*/uint8_t *, size_t);
 # ifdef __cplusplus
 }
 # endif

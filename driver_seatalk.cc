@@ -23,6 +23,7 @@
 #endif /* S_SPLINT_S */
 
 #include "gpsd.h"
+#include "navigation.h"
 
 #if defined(SEATALK_ENABLE)
 #include "driver_seatalk.h"
@@ -41,8 +42,6 @@ typedef struct st_phrase {
 
 /* fixed length array - position is number of seatalk sentence */
 uint8_t st_fixed_lengths[255];
-
-gps_mask_t seatalk_parse_input(struct gps_device_t *session);
 
 void character_skip(struct gps_packet_t *lexer);
 
@@ -1311,7 +1310,7 @@ gps_mask_t process_seatalk(uint8_t * cmdBuffer, uint8_t size,
 #define SEATALK_PAY          3 << 4
 #define SEATALK_RECOGNIZED   4 << 4
 
-static char * seatalk_state_table[] = {
+static const char * seatalk_state_table[] = {
   "GROUND_STATE",
   "SEATALK_COMMAND",
   "SEATALK_LENGTH",
@@ -1744,12 +1743,8 @@ int seatalk_open(struct gps_device_t *session) {
 }
 
 // we are relying on gpsd_close to restore all tty parameters
-
-#endif /* of ifndef S_SPLINT_S */
-
-
 /* *INDENT-OFF* */
-const struct gps_type_t driver_seatalk = {
+extern const struct gps_type_t driver_seatalk = {
     .type_name      = "SEATALK",       /* full name of type */
     .packet_type    = SEATALK_PACKET,	/* associated lexer packet type */
     .flags	    = DRIVER_STICKY,	/* remember this */
@@ -1771,6 +1766,9 @@ const struct gps_type_t driver_seatalk = {
 #endif /* CONTROLSEND_ENABLE */
 };
 /* *INDENT-ON* */
+
+#endif /* of ifndef S_SPLINT_S */
+
 
 /* end */
 
