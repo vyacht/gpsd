@@ -73,7 +73,7 @@ srec.html
 *.egg-info
 # Built sources
 gps_maskdump.cc
-gpsd_maskdump.c
+gps_maskdump.c
 gpsd_config.h.in
 gpsd_config.h
 packet_names.h
@@ -84,6 +84,7 @@ MANIFEST
 .kdbgrc.*
 .project
 .cproject
+.vscode
 tags
 # Python files
 build
@@ -142,3 +143,4 @@ devtools/.flocktest.ini
 # QT stuff
 libQgpsmm.prl
 libQgpsmm/binaries/*
+.vscode/settings.json
