@@ -1,6 +1,6 @@
 import csv
 
-tr = 1
+tr = 2
 
 f = open('www/pgns.csv', 'r')
 pgns = csv.DictReader(f, delimiter=',')
@@ -34,3 +34,45 @@ if tr == 1:
                   ', ' + row['transmit'] + \
                   ', hnd_' + pgn0 + \
                   ', "' + row['msg'] + '"},')
+
+
+'''        <tr class="setting">
+          <td>
+            <p class="name"><strong>PGN</strong></p>
+            <p class="description">Choose any random number.</p>
+          </td>
+          <td class="align-left">
+              read
+          </td>
+          <td class="align-left">
+              write
+          </td>
+        </tr>
+
+        <p> / <span class="flag">&#x25CF;</span></p>
+'''
+
+if tr == 2:
+    for row in pgns:
+        if(str.isdigit(row['pgn'])):
+            if((int(row['receive']) == 1) or (int(row['transmit']) == 1)):
+                print('<tr class="setting">')
+                print('    <td>')
+                print('        <p class="name"><strong>' + row['pgn'] + '</strong></p>')
+                print('        <p class="description">' + row['msg'] + '</p>')
+                print('    </td>')
+                print('    <td class="align-center">')
+                print('    <p>')
+
+                if(int(row['receive']) == 1):
+                    print('    <span class="option">&#x25CF;</span>')
+                else:
+                    print('    -')
+                print('/')
+                if(int(row['transmit']) == 1):
+                    print('    <span class="flag">&#x25CF;</span>')
+                else:
+                    print('    -')
+                print('    </p>')
+                print('    </td>')
+                print('</tr>')
