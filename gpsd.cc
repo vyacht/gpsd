@@ -3371,6 +3371,7 @@ int main(int argc, char *argv[])
                 break;
             }
 
+            // TODO - find a better place for this - many fragments scanned can have this being called rarely
             if(device->device_type && (device->device_type->packet_type == VYSPI_PACKET)) {
                 gpsd_report(device->context->debug, LOG_RAW,
                             "VYSPI should access time trigger.\n");

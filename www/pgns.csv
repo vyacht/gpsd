@@ -5,13 +5,13 @@ ISO,,,,,
 60928,0,0,1,1,ISO  Address Claim
 126208,0,0,0,0,NMEA Command/Request/Acknowledge
 126464,1,0,0,1,ISO  Transmit/Receive PGN List
-126996,1,0,0,0,ISO  Product Information
+126996,1,0,0,1,ISO  Product Information
 ,,,,,
 GPS,,,,,
 129025,0,1,1,1,GNSS Position Rapid Update
 129026,0,1,1,1,GNSS COG and SOG Rapid Update
 129029,1,1,1,0,GNSS Positition Data
-126992,0,0,0,1,GNSS System Time
+126992,0,0,1,1,GNSS System Time
 129539,0,1,1,0,GNSS DOPs
 129540,1,1,1,0,GNSS Satellites in View
 129541,1,1,0,0,GNSS Almanac Data
@@ -37,7 +37,7 @@ ENG,,,,,
 127488,0,0,1,0,"Engine Parameters, Rapid"
 127489,1,3,1,0,"Engine Parameters, Dynamic"
 127493,1,3,0,0,"Transmissions Parameters, Dynamic"
-127505,1,3,0,0,Fluid 
+127505,1,3,0,0,Fluid
 ,,,,,
 NAV,,,,,
 127237,0,0,0,0,Heading/Track Control
