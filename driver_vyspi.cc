@@ -3642,8 +3642,9 @@ static void vyspi_preparse_serial(struct gps_device_t *session) {
 
     while(packet_buffered_input(lexer)) {
 
+        uint8_t * bp = lexer->inbufptr; // need this for storing back
         uint8_t b = *lexer->inbufptr++;
-
+        
         gpsd_report(session->context->debug, LOG_RAW + 1,
                     "VYSPI: preparse serial [%c] %02x @ %p state= %u\n",
                     (isprint(b) ? b : '.'), b, lexer->inbufptr, lexer->frm_state);
@@ -3676,6 +3677,7 @@ static void vyspi_preparse_serial(struct gps_device_t *session) {
         if(lexer->frm_7dflag) {
             lexer->frm_7dflag = 0;
             b ^= (1 << 5);
+            *bp = b;
         }
 
         switch(lexer->frm_state) {
