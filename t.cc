@@ -237,10 +237,25 @@ void test_seatalk_lat_lon() {
     printf("lat: %f, lon = %010.4f\n", degtodm(fabs(lat)), degtodm(fabs(lon)));
 }
 
+void test_numbers() {
+    //double lat = 13.0343;
+    //double lon = 13.030;
+    double lat = 1677.875;
+    // double lat = 5926.7254;
+    double d = 0;
+    double m = 100.0 * modf(lat / 100.0, &d);
+    lat = d + m / 60.0;
+
+    double lon = 13.030;
+
+    printf("d: %f, m: %f, lat: %f, lon = %010.4f\n", d, m, degtodm(fabs(lat)), degtodm(fabs(lon)));
+}
+
 int main(int argc, char * argv[]) {
 //    test_read0183end();
 //    test_safeatof();
-  test_seatalk_lat_lon();
+//    test_seatalk_lat_lon();
+    test_numbers();
 }
 
 //18eaff01,59904,p:06,s:01,d:ff,x:00 ee 00 00 00 00 00 00
