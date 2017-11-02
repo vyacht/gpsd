@@ -21,10 +21,12 @@ ssize_t vyspi_get(struct gps_device_t *session);
 extern void vyspi_handle_time_trigger(struct gps_device_t *session);
 
 const char *gpsd_vyspidump(struct gps_device_t *);
-ssize_t vyspi_write(struct gps_device_t *, 
+ssize_t vyspi_write(struct gps_device_t *,
                     enum frm_type_t,
                     const uint8_t *,
                     const size_t);
+
+extern void vyspi_packet_accept(struct gps_packet_t *lexer, int packet_type);                    
 
 struct PGN {
     uint32_t  pgn;

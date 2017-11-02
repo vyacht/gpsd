@@ -15,6 +15,7 @@ gpxlogger
 cgpxlogger
 gpspipe
 gps2udp
+testdriver
 # These are built from .in files
 gpscat
 gpsfake

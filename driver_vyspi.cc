@@ -3460,7 +3460,7 @@ static void vyspi_packet_discard(struct gps_packet_t *lexer)
     vyspi_n_discard(lexer, lexer->inbufptr - lexer->inbuffer);
 }
 
-static void vyspi_packet_accept(struct gps_packet_t *lexer, int packet_type)
+void vyspi_packet_accept(struct gps_packet_t *lexer, int packet_type)
 /* packet grab succeeded, move to output buffer */
 {
 
@@ -4614,20 +4614,20 @@ ssize_t vyspi_write_with_protocol(struct gps_device_t *session,
     if(session->context->debug >= LOG_IO) {
 
         int i = 0;
-        
+
         struct timespec now;
         tu_gettime(&now);
 
         uint32_t nowms = tu_get_time_in_milli(&now);
         uint32_t diff = nowms - session->driver.vyspi.bytes_written_last_ms;
         double rate = 1000.0*((double)(frmlen))/((double)diff);
-        
+
         gpsd_report(session->context->debug, LOG_IO,
                     "Wrote %f bytes/s (%0.2fkBit/s) as %lu bytes in %u ms\n",
                     rate, rate*8.0/1024.0,
                     frmlen, diff);
         session->driver.vyspi.bytes_written_last_ms = nowms;
-        
+
         if(session->driver.vyspi.bytes_written_last_sec + 1000 < nowms) {
             const char * ftn[5] = { "CMD", "183", "N2K", "ST ", "AIS"};
 
@@ -4643,7 +4643,7 @@ ssize_t vyspi_write_with_protocol(struct gps_device_t *session,
                             session->driver.vyspi.bytes_written_frm[i],
                             session->driver.vyspi.bytes_written_raw[i],
                             (nowms - session->driver.vyspi.bytes_written_last_sec));
-                
+
                 session->driver.vyspi.bytes_written_frm[i] = 0;
                 session->driver.vyspi.bytes_written_raw[i] = 0;
             }
@@ -4653,7 +4653,7 @@ ssize_t vyspi_write_with_protocol(struct gps_device_t *session,
             session->driver.vyspi.bytes_written_last_sec = nowms;
         }
     }
-    
+
     return len;
 }
 
@@ -4685,7 +4685,7 @@ int vyspi_init(struct gps_device_t *session) {
     }
 
     for(i = 0; i < 5; i++) {
-        session->driver.vyspi.bytes_written_frm[i] = 0; /* collecting stats per type */ 
+        session->driver.vyspi.bytes_written_frm[i] = 0; /* collecting stats per type */
         session->driver.vyspi.bytes_written_raw[i] = 0; /* net amount of data w/o frm overhead */
     }
     session->driver.vyspi.bytes_written_last_ms = 0;
@@ -4742,7 +4742,7 @@ int vyspi_init(struct gps_device_t *session) {
 
     /*
       memcpy(cmd, "stty", 4);
-      cmd[4] = 0; 
+      cmd[4] = 0;
       cmd[5] = PORT_TYPE_HOST;
       set8leu32(cmd, 921600, 6);
       vyspi_write(session, FRM_TYPE_CMD, cmd, 10);
