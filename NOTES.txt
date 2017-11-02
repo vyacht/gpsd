@@ -36,12 +36,15 @@ issues identified:
 * STM32
 
 [x] in queue it looks like push can actually push beyond tail (probably corrupting quite a few messages)
+[ ] currently a seatalk sentence will be only sent on next command, more stable but delays can occur 
 
 * general
 
 [ ] vyspi_dump does cut last number in array
 [ ] fragment rounds
-[ ] devices when beeing read require some better round robin
+[ ] devices when being read require some better round robin
 [ ] when many fragments are being parsed then older ones that are obsolete should be skipped
 [ ] fix EC-re-writer
 [ ] fix list with N2K sentences
+[ ] want to make sure that data coming via TCP is parsed for correctness
+[ ] rather copy inbuffer to outbuffer during frame parsing
