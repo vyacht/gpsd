@@ -2039,7 +2039,7 @@ static void raw_report_write(struct subscriber_t *sub, struct gps_device_t *devi
                 (void)throttled_write(sub,
                                       (device->packet.outbuffer + device->packet.out_offset[cnt]),
                                       device->packet.out_len[cnt]);
-                gpsd_report(context.debug, LOG_DATA,
+                gpsd_report(context.debug, LOG_RAW,
                             "<= RAWREPORT write vyspi %s - len=%d\n",
                             device->gpsdata.dev.path,
                             device->packet.out_len[cnt]);
@@ -2095,7 +2095,7 @@ static void raw_report(struct gps_device_t *device)
 {
     struct subscriber_t *sub;
 
-    gpsd_report(context.debug, LOG_DATA,
+    gpsd_report(context.debug, LOG_RAW,
                 "<= RAWREPORT %s\n",
                 device->gpsdata.dev.path);
     /* *INDENT-OFF* */
@@ -2138,7 +2138,7 @@ static void raw_report(struct gps_device_t *device)
             }
         }
     }
-    gpsd_report(context.debug, LOG_DATA,
+    gpsd_report(context.debug, LOG_RAW,
                 "<= RAWREPORT done %s\n",
                 device->gpsdata.dev.path);
 }
@@ -2174,7 +2174,7 @@ static void pseudon2k_report(gps_mask_t changed,
                              struct gps_device_t *device)
 /* report pseudo-N2K in appropriate circumstances */
 {
-    gpsd_report(context.debug, LOG_DATA,
+    gpsd_report(context.debug, LOG_RAW,
                 "<= PSEUDON2K %s\n",
                 device->gpsdata.dev.path);
     int go = 0;
@@ -2192,7 +2192,7 @@ static void pseudon2k_report(gps_mask_t changed,
     if(go)
         n2k_binary_dump(changed, device, gpsd_device_write);
     else
-        gpsd_report(context.debug, LOG_DATA,
+        gpsd_report(context.debug, LOG_RAW,
                     "<= PSEUDON2K: no translatable data found.\n");
 }
 
@@ -2200,7 +2200,7 @@ static void pseudonmea_report(gps_mask_t changed,
                               struct gps_device_t *device)
 /* report pseudo-NMEA in appropriate circumstances */
 {
-    gpsd_report(context.debug, LOG_DATA,
+    gpsd_report(context.debug, LOG_RAW,
                 "<= PSEUDONMEA %s\n",
                 device->gpsdata.dev.path);
 
@@ -2286,7 +2286,7 @@ static void pseudonmea_report(gps_mask_t changed,
             pseudonmea_write(changed, buf, strlen(buf), device);
         }
     }
-    gpsd_report(context.debug, LOG_DATA,
+    gpsd_report(context.debug, LOG_RAW,
                 "<= PSEUDONMEA done %s\n",
                 device->gpsdata.dev.path);
 }
@@ -3421,8 +3421,13 @@ int main(int argc, char *argv[])
                 if (buf[buflen - 1] != '\n')
                     buf[buflen++] = '\n';
                 buf[buflen] = '\0';
-                gpsd_report(context.debug, LOG_CLIENT,
-                            "<= client(%d): %s, len=%d\n", sub_index(sub), buf, buflen);
+                if (context.debug >= LOG_CLIENT) {
+                    char scratchbuf[MAX_PACKET_LENGTH*2+1];
+                    gpsd_report(context.debug, LOG_CLIENT,
+                            "<= client(%d): %s (%d)\n", sub_index(sub),
+                            gpsd_packetdump(scratchbuf, sizeof(scratchbuf), 
+                                (char *)buf, buflen), buflen);
+                }
 
                 /*
                  * When a command comes in, update subscriber.active to
@@ -3451,7 +3456,7 @@ int main(int argc, char *argv[])
                     if(!sub->policy.canboat)
                         sub->policy.nmea = true;
 
-                    gpsd_report(context.debug, LOG_INF,
+                    gpsd_report(context.debug, LOG_DATA,
                                 "client(%d) timed out on HTTP wait. Locking to raw TCP now.\n",
                                 sub_index(sub));
                 }
