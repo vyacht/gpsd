@@ -42,9 +42,11 @@ issues identified:
 
 [ ] vyspi_dump does cut last number in array
 [ ] fragment rounds
-[ ] devices when being read require some better round robin
 [ ] when many fragments are being parsed then older ones that are obsolete should be skipped
 [ ] fix EC-re-writer
 [ ] fix list with N2K sentences
 [ ] want to make sure that data coming via TCP is parsed for correctness
-[ ] rather copy inbuffer to outbuffer during frame parsing
+[ ] rather copy inbuffer to outbuffer during frame parsing (really?)
+[ ] vyspi device timeouts should be bound into gpsd_multipoll() timeout/reawake cycle
+
+[x] devices when being read require some better round robin (this was actually never an issue!)
