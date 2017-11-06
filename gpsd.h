@@ -246,6 +246,7 @@ extern void packet_reset(/*@out@*/struct gps_packet_t *);
 extern void packet_pushback(struct gps_packet_t *);
 extern void packet_parse(struct gps_packet_t *);
 extern ssize_t packet_get(int, struct gps_packet_t *);
+extern ssize_t packet_preparse(struct gps_device_t *);
 extern int packet_sniff(struct gps_packet_t *);
 #define packet_buffered_input(lexer) ((lexer)->inbuffer + (lexer)->inbuflen - (lexer)->inbufptr)
 
@@ -377,6 +378,39 @@ struct gps_type_t {
     int channels;
     /*@null@*/bool (*probe_detect)(struct gps_device_t *session);
     /*@null@*/ssize_t (*get_packet)(struct gps_device_t *session);
+
+    /* 
+        Parses inbuffer, validates it and transfers a full packet 
+        to outbuffer setting outbuflen. outbuflen must be 0 when 
+        no packet is found. 
+        
+        Returns after
+        
+        1. either exactly 1 full packet is found 
+        2. or the inbuffer is empty.
+
+        Must set:
+
+        outbuflen 
+        type of packet
+
+
+        All inbuffer shall be discarded when full packet 
+        is found. inbuffer should always point to the begining 
+        of the packet currently parsed while inbufptr is advanced
+        to byte being treated. In no valid packet found when exit 
+        then inbufptr is at the end of the inbuffer.
+
+
+        Preparse shall parse until inbuffer is empty or packet 
+        is found.
+
+        So number of remaining bytes should be 0 when outbuflen is 0.
+
+        @return number of remaining bytes in inbuffer when 
+            returning a full packet.
+    */
+    /*@null@*/ssize_t (*preparse)(struct gps_device_t *session);
     /*@null@*/gps_mask_t (*parse_packet)(struct gps_device_t *session);
     /*@null@*/ssize_t (*rtcm_writer)(struct gps_device_t *session, const uint8_t *rtcmbuf, size_t rtcmbytes);
     /*@null@*/void (*event_hook)(struct gps_device_t *session, event_t event);

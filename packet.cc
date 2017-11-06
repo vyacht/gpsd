@@ -2135,10 +2135,15 @@ ssize_t packet_get(int fd, struct gps_packet_t *lexer)
      */
     if (recvd <= 0 && packet_buffered_input(lexer) <= 0)
 	return recvd;
+}
+
+ssize_t packet_preparse(struct gps_device_t *session) {
 
     /* Otherwise, consume from the packet input buffer */
     /* coverity[tainted_data] */
-    packet_parse(lexer);
+	struct gps_packet_t *lexer = &session->packet;
+	
+	packet_parse(lexer);
 
     /* if input buffer is full, discard */
     if (sizeof(lexer->inbuffer) == (lexer->inbuflen)) {
@@ -2173,7 +2178,7 @@ ssize_t packet_get(int fd, struct gps_packet_t *lexer)
 	 * It can still be 0 or -1 at this point even if buffer data
 	 * was consumed.
 	 */
-	return recvd;
+	return packet_buffered_input(lexer);
 }
 
 void packet_reset( /*@out@*/ struct gps_packet_t *lexer)

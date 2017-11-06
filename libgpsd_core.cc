@@ -1272,7 +1272,6 @@ gps_mask_t gpsd_poll(struct gps_device_t *session)
 /* update the stuff in the scoreboard structure */
 {
     ssize_t newlen;
-    bool driver_change = false;
 
     gps_clear_fix(&session->newdata);
     gpsd_environment_clear(&session->gpsdata.environment);
@@ -1342,12 +1341,6 @@ gps_mask_t gpsd_poll(struct gps_device_t *session)
     }
 #endif /* TIMING_ENABLE */
 
-    if (session->packet.type >= COMMENT_PACKET) {
-        /*@-shiftnegative@*/
-        session->observed |= PACKET_TYPEMASK(session->packet.type);
-        /*@+shiftnegative@*/
-    }
-
     /* can we get a full packet from the device? */
     if (session->device_type != NULL) {
 
@@ -1385,79 +1378,98 @@ gps_mask_t gpsd_poll(struct gps_device_t *session)
             session->gpsdata.online = (timestamp_t)0;
         }
         return NODATA_IS;
-    } else /* (newlen > 0) */ {
-
-        gpsd_report(session->context->debug, LOG_RAW,
-                    "packet sniff on %s finds type %d\n",
-                    session->gpsdata.dev.path, session->packet.type);
-        if (session->packet.type == COMMENT_PACKET) {
-            if (strcmp((const char *)session->packet.outbuffer, "# EOF\n") == 0) {
-                gpsd_report(session->context->debug, LOG_PROG,
-                            "synthetic EOF\n");
-                return EOF_SET;
-            }
-            else
-                gpsd_report(session->context->debug, LOG_PROG,
-                            "comment, sync lock deferred\n");
-            /* FALL THROUGH */
-        } else if (session->packet.type > COMMENT_PACKET) {
-            if (session->device_type == NULL)
-                driver_change = true;
-            else {
-                int newtype = session->packet.type;
-                /*
-                 * Are we seeing a new packet type? Then we probably
-                 * want to change drivers.
-                 */
-                bool new_packet_type =
-                    (newtype != session->device_type->packet_type);
-                /*
-                 * Possibly the old driver has a mode-switcher method, in
-                 * which case we know it can handle NMEA itself and may
-                 * want to do special things (like tracking whether a
-                 * previous mode switch to binary succeeded in suppressing
-                 * NMEA).
-                 */
-#ifdef RECONFIGURE_ENABLE
-                bool dependent_nmea = (newtype == NMEA_PACKET
-                                       && session->device_type->mode_switcher!=NULL);
-#else
-                bool dependent_nmea = false;
-#endif /* RECONFIGURE_ENABLE */
-
-                /*
-                 * Compute whether to switch drivers.
-                 * If the previous driver type was sticky and this one
-                 * isn't, we'll revert after processing the packet.
-                 */
-                driver_change = new_packet_type && !dependent_nmea;
-            }
-            /*@-nullderef@*/
-            if (driver_change) {
-                const struct gps_type_t **dp;
-                for (dp = gpsd_drivers; *dp; dp++)
-                    if (session->packet.type == (*dp)->packet_type) {
-                        gpsd_report(session->context->debug, LOG_PROG,
-                                    "switching to match packet type %d: %s\n",
-                                    session->packet.type, gpsd_prettydump(session));
-                        (void)gpsd_switch_driver(session, (*dp)->type_name);
-                        break;
-                    }
-            }
-            /*@+nullderef@*/
-            session->badcount = 0;
-            session->gpsdata.dev.driver_mode = (session->packet.type > NMEA_PACKET) ? MODE_BINARY : MODE_NMEA;
-            /* FALL THROUGH */
-        } else if (hunt_failure(session) && !gpsd_next_hunt_setting(session)) {
-            gpsd_report(session->context->debug, LOG_INF,
-                        "hunt on %s failed (%lf sec since data)\n",
-                        session->gpsdata.dev.path,
-                        timestamp() - session->gpsdata.online);
-            return ERROR_SET;
-        }
     }
 
-    if (session->packet.outbuflen == 0) {	/* got new data, but no packet */
+    return 0;
+}
+    
+gps_mask_t gpsd_preparse(struct gps_device_t *session) {
+
+    bool driver_change = false;
+    ssize_t remaining = 0;
+
+    if (session->packet.type >= COMMENT_PACKET) {
+        session->observed |= PACKET_TYPEMASK(session->packet.type);
+    }
+
+    if (session->device_type != NULL) {
+        remaining = session->device_type->preparse(session);
+    }
+            
+    gpsd_report(session->context->debug, LOG_RAW,
+                "packet sniff on %s finds type %d\n",
+                session->gpsdata.dev.path, session->packet.type);
+
+    if (session->packet.type == COMMENT_PACKET) {
+        if (strcmp((const char *)session->packet.outbuffer, "# EOF\n") == 0) {
+            gpsd_report(session->context->debug, LOG_PROG,
+                        "synthetic EOF\n");
+            return EOF_SET;
+        }
+        else
+            gpsd_report(session->context->debug, LOG_PROG,
+                        "comment, sync lock deferred\n");
+        /* FALL THROUGH */
+    } else if (session->packet.type > COMMENT_PACKET) {
+        if (session->device_type == NULL)
+            driver_change = true;
+        else {
+            int newtype = session->packet.type;
+            /*
+                * Are we seeing a new packet type? Then we probably
+                * want to change drivers.
+                */
+            bool new_packet_type =
+                (newtype != session->device_type->packet_type);
+            /*
+                * Possibly the old driver has a mode-switcher method, in
+                * which case we know it can handle NMEA itself and may
+                * want to do special things (like tracking whether a
+                * previous mode switch to binary succeeded in suppressing
+                * NMEA).
+                */
+#ifdef RECONFIGURE_ENABLE
+            bool dependent_nmea = (newtype == NMEA_PACKET
+                                    && session->device_type->mode_switcher!=NULL);
+#else
+            bool dependent_nmea = false;
+#endif /* RECONFIGURE_ENABLE */
+
+            /*
+                * Compute whether to switch drivers.
+                * If the previous driver type was sticky and this one
+                * isn't, we'll revert after processing the packet.
+                */
+            driver_change = new_packet_type && !dependent_nmea;
+        }
+        /*@-nullderef@*/
+        if (driver_change) {
+            const struct gps_type_t **dp;
+            for (dp = gpsd_drivers; *dp; dp++)
+                if (session->packet.type == (*dp)->packet_type) {
+                    gpsd_report(session->context->debug, LOG_PROG,
+                                "switching to match packet type %d: %s\n",
+                                session->packet.type, gpsd_prettydump(session));
+                    (void)gpsd_switch_driver(session, (*dp)->type_name);
+                    break;
+                }
+        }
+        /*@+nullderef@*/
+        session->badcount = 0;
+        session->gpsdata.dev.driver_mode = (session->packet.type > NMEA_PACKET) ? MODE_BINARY : MODE_NMEA;
+        /* FALL THROUGH */
+    } else if (hunt_failure(session) && !gpsd_next_hunt_setting(session)) {
+        gpsd_report(session->context->debug, LOG_INF,
+                    "hunt on %s failed (%lf sec since data)\n",
+                    session->gpsdata.dev.path,
+                    timestamp() - session->gpsdata.online);
+        return ERROR_SET;
+    }
+
+    /* if outbuflen == 0 then there is no packet but also 
+        no of remaining bytes inbuffer == 0 as we pre-parse 
+        until packet found or inbuffer empty */
+    if (session->packet.outbuflen == 0) {	
         gpsd_report(session->context->debug, LOG_RAW,
                     "New data on %s, not yet a packet\n",
                     session->gpsdata.dev.path);
@@ -1658,13 +1670,60 @@ int gpsd_multipoll(const bool data_ready,
         }
 #endif /* NETFEED_ENABLE */
 
+        gpsd_report(device->context->debug, LOG_DATA,
+            "polling data now\n");
+
+        gps_mask_t changed = gpsd_poll(device);
+
+        if (changed == ERROR_SET) {
+
+            gpsd_report(device->context->debug, LOG_WARN,
+                        "device read of %s returned error or packet sniffer failed sync (flags %s)\n",
+                        device->gpsdata.dev.path,
+                        gps_maskdump(changed));
+            return DEVICE_ERROR;
+
+        } else if (changed == NODATA_IS) {
+
+            gpsd_report(device->context->debug, LOG_DATA,
+                        "%s returned zero bytes\n",
+                        device->gpsdata.dev.path);
+            if (device->zerokill) {
+                /* failed timeout-and-reawake, kill it */
+                gpsd_deactivate(device);
+                if (device->ntrip.works) {
+                    device->ntrip.works = false; // reset so we try this once only
+                    if (gpsd_activate(device, O_CONTINUE) < 0) {
+                        gpsd_report(device->context->debug, LOG_WARN,
+                                    "reconnect to ntrip server failed\n");
+                        return DEVICE_ERROR;
+                    } else {
+                        gpsd_report(device->context->debug, LOG_INFO,
+                                    "reconnecting to ntrip server\n");
+                        return DEVICE_READY;
+                    }
+                }
+            } else if (reawake_time == 0) {
+                return DEVICE_ERROR;
+            } else {
+                /*
+                    * Disable listening to this fd for long enough
+                    * that the buffer can fill up again.
+                    */
+                gpsd_report(device->context->debug, LOG_DATA,
+                            "%s will be repolled in %f seconds\n",
+                            device->gpsdata.dev.path, reawake_time);
+                device->reawake = timestamp() + reawake_time;
+                return DEVICE_UNREADY;
+            }
+        }
+
         for (fragments = 0; ; fragments++) {
 
             gpsd_report(device->context->debug, LOG_DATA,
-                        "polling now fragment %d\n",
-                        fragments);
+                "parsing fragment no %d\n", fragments);
 
-            gps_mask_t changed = gpsd_poll(device);
+            changed = gpsd_preparse(device);
 
             if (changed == EOF_SET) {
                 gpsd_report(device->context->debug, LOG_WARN,
@@ -1677,54 +1736,6 @@ int gpsd_multipoll(const bool data_ready,
                             device->gpsdata.dev.path,
                             gps_maskdump(changed));
                 return DEVICE_ERROR;
-            } else if (changed == NODATA_IS) {
-                /*
-                 * No data on the first fragment read means the device
-                 * fd may have been in an end-of-file condition on select.
-                 */
-                if (fragments == 0) {
-                    gpsd_report(device->context->debug, LOG_DATA,
-                                "%s returned zero bytes\n",
-                                device->gpsdata.dev.path);
-                    if (device->zerokill) {
-                        /* failed timeout-and-reawake, kill it */
-                        gpsd_deactivate(device);
-                        if (device->ntrip.works) {
-                            device->ntrip.works = false; // reset so we try this once only
-                            if (gpsd_activate(device, O_CONTINUE) < 0) {
-                                gpsd_report(device->context->debug, LOG_WARN,
-                                            "reconnect to ntrip server failed\n");
-                                return DEVICE_ERROR;
-                            } else {
-                                gpsd_report(device->context->debug, LOG_INFO,
-                                            "reconnecting to ntrip server\n");
-                                return DEVICE_READY;
-                            }
-                        }
-                    } else if (reawake_time == 0) {
-                        return DEVICE_ERROR;
-                    } else {
-                        /*
-                         * Disable listening to this fd for long enough
-                         * that the buffer can fill up again.
-                         */
-                        gpsd_report(device->context->debug, LOG_DATA,
-                                    "%s will be repolled in %f seconds\n",
-                                    device->gpsdata.dev.path, reawake_time);
-                        device->reawake = timestamp() + reawake_time;
-                        return DEVICE_UNREADY;
-                    }
-                }
-                /*
-                 * No data on later fragment reads just means the
-                 * input buffer is empty.  In this case break out
-                 * of the fragment-processing loop but consider
-                 * the device still good.
-                 */
-                gpsd_report(device->context->debug, LOG_DATA,
-                            "exit poll loop at fragment %d with no data read\n",
-                            fragments);
-                break;
             }
 
             /* we got actual data, head off the reawake special case */
@@ -1759,18 +1770,6 @@ int gpsd_multipoll(const bool data_ready,
                             "calling handler\n");
                 /*@i1@*/handler(device, changed);
             }
-
-            /*
-             * Bernd Ocklin suggests:
-             * Exit when a full packet was received and parsed.
-             * This allows other devices to be serviced even if
-             * this device delivers a full packet at every single
-             * read.
-             * Otherwise we can sit here for a long time without
-             * any for-loop exit condition being met.
-             */
-            //if ((changed & PACKET_SET) != 0)
-            //    break;
         }
     }
     else if (device->reawake>0 && timestamp()>device->reawake) {

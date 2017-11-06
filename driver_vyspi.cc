@@ -3638,8 +3638,6 @@ static void vyspi_preparse_serial(struct gps_device_t *session) {
                 lexer->inbuflen, lexer->inbufptr - lexer->inbuffer);
     // one extra for reading both, len and type/origin
 
-    vyspi_reset_outbuffer(lexer);
-
     while(packet_buffered_input(lexer)) {
 
         uint8_t * bp = lexer->inbufptr; // need this for storing back
@@ -3986,8 +3984,6 @@ ssize_t vyspi_get(struct gps_device_t *session)
   this will in this situation wrongly read more data
   */
 
-  if(!packet_buffered_input(pkg)) {
-
       status = read(fd, pkg->inbuffer + pkg->inbuflen,
                     sizeof(pkg->inbuffer) - (pkg->inbuflen));
 
@@ -4030,72 +4026,24 @@ ssize_t vyspi_get(struct gps_device_t *session)
           pkg->inbuflen = status;
           pkg->inbufptr = pkg->inbuffer;
       }
-  } else {
-      gpsd_report(session->context->debug, LOG_DATA,
-                  "not reading new data - processing queue with %lu bytes remaining\n",
-                  packet_buffered_input(pkg));
 
-      if (session->context->debug >= LOG_DATA) {
-          char scratchbuf[MAX_PACKET_LENGTH*2+1];
-          gpsd_report(session->context->debug, LOG_DATA, // LOG_RAW+1,
-                      "bytes remaining: %s\n",
-                      gpsd_packetdump(scratchbuf,  sizeof(scratchbuf),
-                                      (char *)pkg->inbuffer, packet_buffered_input(pkg)));
-      }
-  } // if(!packet_buffered_input(pkg))
-
-  if(session->gpsdata.dev.isSerial) {
-      vyspi_preparse_serial(session);
-  } else {
-      vyspi_preparse_spi(session);
-  }
-
-  if (pkg->outbuflen > 0) {
-      if ((session->driver.nmea2000.workpgn == NULL)
-          && (session->packet.type == NMEA2000_PACKET)) {
-          gpsd_report(session->context->debug, LOG_DATA,
-                      "VYSPI: exit with 0 with with no known PGN in N2k\n");
-          return 0;
-      }
-
-      gpsd_report(session->context->debug, LOG_RAW,
-        "VYSPI: exit with outbuf len = %lu and %lu bytes remaining\n",
-        pkg->outbuflen,
-        packet_buffered_input(pkg));
-      return (ssize_t)pkg->outbuflen;
-  } else {
-      /*
-       * Otherwise recvd is the size of whatever packet fragment we got.
-       * It can still be 0 or -1 at this point even if buffer data
-       * was consumed.
-       */
-      gpsd_report(session->context->debug, LOG_RAW,
-        "VYSPI: exit with outbuf len = 0 and %lu bytes read and %lu bytes remaining\n",
-                  status, packet_buffered_input(pkg));
       return status;
-  }
+}
 
-    //  vyspi_report_packet(pkg);
-
-    /* Consume packet from the input buffer
-       - no lex parsing here to detect packet borders.
-       The SPI driver only sends one whole
-       packet at a time anyways. */
-
-  /*
-    memcpy(session->packet.outbuffer, pkg->inbuffer, len);
-    packet_reset(pkg);
-
-    session->packet.outbuflen = len;
-    session->packet.type = VYSPI_PACKET;
-
+ssize_t vyspi_preparse(struct gps_device_t *session) {
+    struct gps_packet_t * lexer = &session->packet;
+    vyspi_reset_outbuffer(lexer);
+    if(packet_buffered_input(lexer)) {
+        if(session->gpsdata.dev.isSerial) {
+            vyspi_preparse_serial(session);
+        } else {
+            vyspi_preparse_spi(session);
+        }
+    }
     gpsd_report(session->context->debug, LOG_DATA,
-		"VYSPI: len = %d, bytes= %d, errno= %d\n",
-		len, status, errno);
-  }
-
-  return len;
-  */
+        "preparsing - inputbuffer with %lu bytes remaining\n",
+        packet_buffered_input(lexer));
+    return packet_buffered_input(lexer);
 }
 
 /*@-mustfreeonly@*/
@@ -4964,6 +4912,7 @@ extern const struct gps_type_t driver_vyspi = {
     .channels       = 12,		/* not an actual GPS at all */
     .probe_detect   = NULL,
     .get_packet     = vyspi_get,	/* how to get a packet */
+    .preparse       = vyspi_preparse,	/* how to get a packet */
     .parse_packet   = vyspi_parse_input,	/* how to interpret a packet */
     .rtcm_writer    = NULL,		/* Don't send RTCM to this */
     .event_hook     = NULL,
