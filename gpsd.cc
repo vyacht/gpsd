@@ -2621,7 +2621,7 @@ static int handle_gpsd_request(struct subscriber_t *sub, const char *buf)
             strncpy(reply, buf, strlen(buf));
             if(strlen(buf) > 5) {
                 // reply[1] = 'G'; reply[2] = 'P';
-                gpsd_device_write(NULL, FRM_TYPE_NMEA0183, reply, strlen(reply));
+                gpsd_device_write(NULL, FRM_TYPE_NMEA0183, (uint8_t *)reply, strlen(reply));
             }
 
             handle_gpsd_cleanstring(buf, reply);
