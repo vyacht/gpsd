@@ -334,6 +334,9 @@ if not 'CCFLAGS' in os.environ:
         env.Append(CCFLAGS=['-O0'])
     else:
         env.Append(CCFLAGS=['-O2'])
+    
+if not 'CXXFLAGS' in os.environ:
+    env.Append(CXXFLAGS=['-std=c++11'])
 
 # Get a slight speedup by not doing automatic RCS and SCCS fetches.
 env.SourceCode('.', None)
