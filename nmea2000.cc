@@ -10,13 +10,7 @@
 // #include "printf.h"
 #include "gpsd.h"
 
-uint8_t vy_printf(const char *format, ...) {
-    va_list ap;
-    va_start(ap, format);
-    gpsd_report(0, 10, format, ap);
-    va_end(ap);
-    return 0;
-}
+#define vy_printf printf
 
 
 uint32_t nmea2000_packet_count;            // count number of all packets completed (fast and single)
@@ -76,6 +70,8 @@ uint32_t n2k_fixed_fast_list[] = {
     129802,
     129809,
     129810,
+    130824,
+    130845,
     130935, // observed in AIS
     130842, // observed in AIS
     262161,
@@ -213,8 +209,8 @@ int nmea2000_parsemsg(struct nmea2000_raw_frame * frame) {
 
           if(frame->data[1] > NMEA2000_MAX_PACKET_LENGTH) {
               
-              vy_printf("I: <= N2K %lu,fi:%02x,l:%u,s:%02x,d:%02x - ERROR\n", 
-                        pgn, (uint16_t)frame->data[0], (uint16_t)frame->data[1], saddr, daddr);
+              vy_printf("I: <= N2K %u,fi:%02x,l:%u,s:%02x,d:%02x - ERROR\n", 
+                        pgn, (uint8_t)frame->data[0], (uint8_t)frame->data[1], saddr, daddr);
               nmea2000_packet_error_count++;
               return -1;
           }
@@ -229,8 +225,8 @@ int nmea2000_parsemsg(struct nmea2000_raw_frame * frame) {
           if(packet->state == incomplete)
               nmea2000_packet_cancel_count++;
 
-          vy_printf("I: <= N2K %lu,s:%02x,mb:%u,fi:%02x,pl:%u\n", 
-                    pgn, saddr, (uint16_t)mb, (uint16_t)frame->data[0], (uint16_t)frame->data[1]);
+          vy_printf("I: <= N2K %u,s:%02x,mb:%u,fi:%02x,pl:%u\n", 
+                    pgn, saddr, (uint16_t)mb, (uint8_t)frame->data[0], (uint8_t)frame->data[1]);
           
           packet->state = incomplete;
           
@@ -254,8 +250,8 @@ int nmea2000_parsemsg(struct nmea2000_raw_frame * frame) {
           // continue pending fast transmission
 
           if(saddr_packet[saddr] > 0x1F) {
-              vy_printf("I: <= N2K N2K %lu,s:%02x,os:%02x - ERROR MB\n", 
-                        pgn, saddr, (uint16_t)saddr_packet[saddr]);
+              vy_printf("I: <= N2K N2K %u,s:%02x,os:%02x - ERROR MB\n", 
+                        pgn, saddr, (uint8_t)saddr_packet[saddr]);
               nmea2000_packet_error_count++;
               return -1;
           }
@@ -267,8 +263,8 @@ int nmea2000_parsemsg(struct nmea2000_raw_frame * frame) {
 
           if(packet->saddr != saddr) {
               // could be a stale canceled packet that was taken by a new saddr
-              vy_printf("I: <= N2K N2K %lu,s:%02x,mb:%u,os:%02x - STALE\n", 
-                        pgn, saddr, (uint16_t)mb, (uint16_t)packet->saddr);
+              vy_printf("I: <= N2K %u,s:%02x,mb:%u,os:%02x - STALE\n", 
+                        pgn, saddr, (uint8_t)mb, (uint16_t)packet->saddr);
               return -1;
           }
           
@@ -295,12 +291,12 @@ int nmea2000_parsemsg(struct nmea2000_raw_frame * frame) {
                   packet->ptr = 0;
                   nmea2000_packet_count++;
               
-                  vy_printf("I: <= N2K %lu,s:%02x,mb:%u,fi:%02x,fl:%u\n", 
-                            pgn, saddr, (uint16_t)mb, (uint16_t)frame->data[0],(uint16_t)frame->len);
+                  vy_printf("I: <= N2K %u,s:%02x,mb:%u,fi:%02x,fl:%u\n", 
+                            pgn, saddr, (uint8_t)mb, (uint8_t)frame->data[0],(uint8_t)frame->len);
               } else {
               
-                  vy_printf("I: <= N2K %lu,s:%02x,mb:%u,fi:%02x\n", 
-                            pgn, saddr, (uint16_t)mb, (uint16_t)frame->data[0]);
+                  vy_printf("I: <= N2K %u,s:%02x,mb:%u,fi:%02x\n", 
+                            pgn, saddr, (uint8_t)mb, (uint8_t)frame->data[0]);
                   packet->idx += 1;
 
               }
@@ -310,8 +306,8 @@ int nmea2000_parsemsg(struct nmea2000_raw_frame * frame) {
           } else {
               
               // error - missing or wrong index
-              vy_printf("I: <= N2K %lu,s:%02x,mb:%u,pi:%02x,fi:%02x - ERROR\n", 
-                        pgn, saddr, (uint16_t)mb, packet->idx, (uint16_t)frame->data[0]);
+              vy_printf("I: <= N2K %u,s:%02x,mb:%u,pi:%02x,fi:%02x - ERROR\n", 
+                        pgn, saddr, (uint8_t)mb, packet->idx, (uint8_t)frame->data[0]);
 
               packet->idx = 0;
               packet->fast_packet_len = 0;
@@ -331,7 +327,7 @@ int nmea2000_parsemsg(struct nmea2000_raw_frame * frame) {
             return -1;
         }
 
-        vy_printf("I: <= N2K %lu,s:%02x\n", pgn, saddr);
+        vy_printf("I: <= N2K %u,s:%02x\n", pgn, saddr);
         packet = &nmea2000_packets[32];
         
         packet->ptr = 0;

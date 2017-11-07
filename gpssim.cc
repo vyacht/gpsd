@@ -678,7 +678,9 @@ void decode_file(struct gps_device_t * session, char * filename) {
             strncpy(buffer, line, end - line); buffer[end - line] = 0;
             gpsd_report(session->context->debug, LOG_SPIN,
                         "Retrieved line %s of length %ld\n", buffer, end - line);
-            decode_line(session, buffer);
+
+            if((end -line) > 0)
+                decode_line(session, buffer);
 
         } else {
 

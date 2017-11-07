@@ -114,6 +114,8 @@ static gps_mask_t hnd_130306(unsigned char *bu, int len, struct PGN *pgn, struct
 static gps_mask_t hnd_130310(unsigned char *bu, int len, struct PGN *pgn, struct gps_device_t *session);
 static gps_mask_t hnd_130311(unsigned char *bu, int len, struct PGN *pgn, struct gps_device_t *session);
 static gps_mask_t hnd_130312(unsigned char *bu, int len, struct PGN *pgn, struct gps_device_t *session);
+static gps_mask_t hnd_130824(unsigned char *bu, int len, struct PGN *pgn, struct gps_device_t *session);
+static gps_mask_t hnd_130845(unsigned char *bu, int len, struct PGN *pgn, struct gps_device_t *session);
 static gps_mask_t hnd_130850(unsigned char *bu, int len, struct PGN *pgn, struct gps_device_t *session);
 
 static gps_mask_t hnd_unknown(unsigned char *bu, int len, struct PGN *pgn, struct gps_device_t *session);
@@ -167,8 +169,10 @@ static struct PGN pgnlist[] = {
     {130310, 0, 4, 1, 0, hnd_130310, "NAV Water Temp., Outside Air Temp., Atmospheric Pressure"},
     {130311, 0, 4, 1, 0, hnd_130311, "NAV Temperature"},
     {130312, 0, 4, 1, 0, hnd_130312, "NAV Temperature"},
+    {130824, 0, 0, 0, 0, hnd_130824, "Maretron: Annunciator"},
+    {130845, 0, 0, 0, 0, hnd_130845, "Simnet: Compass stuff"},
     {130850, 0, 0, 0, 0, hnd_130850, "Simnet Autopilot Commands"},
-
+    
     {     0, 0, 0, 0, 0, hnd_unknown, "Unkown sentence"},
 
 };
@@ -3318,6 +3322,81 @@ static gps_mask_t hnd_130312(unsigned char *bu, int len, struct PGN *pgn, struct
 }
 
 /**
+ * \todo  PGN 130850: Maretron Annuntiator
+ */
+static gps_mask_t hnd_130824(unsigned char *bu, int len UNUSED, struct PGN *pgn UNUSED, struct gps_device_t *session) {
+    /*
+    { "Maretron: Annunciator", 130824, false, 9, 0,
+    { { "Manufacturer Code", 11, RES_MANUFACTURER, false, "=137", "Maretron" }
+    , { "Reserved", 2, RES_NOTUSED, false, 0, "" }
+    , { "Industry Code", 3, RES_LOOKUP, false, "=4", "Marine Industry" }
+    , { "Field 4", BYTES(1), 1, false, 0, "" }
+    , { "Field 5", BYTES(1), 1, false, 0, "" }
+    , { "Field 6", BYTES(2), 1, false, 0, "" }
+    , { "Field 7", BYTES(1), 1, false, 0, "" }
+    , { "Field 8", BYTES(2), 1, false, 0, "" }
+    , { 0 }
+    }
+    }
+    */
+    uint16_t code   = getleu16(bu, 0);
+    
+    uint16_t man = (code >> 5);         // 11 bit manu
+    uint16_t ind = (code >> 0) & 0x07;  //  3 bit industry
+    
+    print_data(session->context, bu, len, pgn);
+    gpsd_report(session->context->debug, LOG_DATA,
+		"pgn %6d(%3d): unkown\n", pgn->pgn, session->driver.nmea2000.unit);
+    gpsd_report(session->context->debug, LOG_IO,
+        "                   manu = %u, ind= %u\n",
+        man, ind);
+    
+    return 0;
+}
+
+/**
+ * \todo  PGN 130850: Simnet Compass stuff
+ */
+static gps_mask_t hnd_130845(unsigned char *bu, int len UNUSED, struct PGN *pgn UNUSED, struct gps_device_t *session)
+{
+    /*
+    { "Simnet: Compass Heading Offset", 130845, false, 0x0e, 0,
+    { { "Manufacturer Code", 11, RES_MANUFACTURER, false, "=1857", "Simrad" }
+    , { "Reserved", 2, RES_NOTUSED, false, 0, "" }
+    , { "Industry Code", 3, RES_LOOKUP, false, "=4", "Marine Industry" }
+    , { "Message ID", 6, 1, false, 0, "" }
+    , { "Repeat indicator", 2, RES_LOOKUP, false, LOOKUP_REPEAT_INDICATOR, "" }
+    , { "Unused", BYTES(3), 1, false, 0, "" }
+    , { "Type", BYTES(2), 1, false, "=0", "Heading Offset" }
+    , { "A", BYTES(2), RES_NOTUSED, false, 0, "" }
+    , { "Angle", BYTES(2), RES_RADIANS, true, "rad", "" }
+    , { "Unused", BYTES(2), RES_NOTUSED, false, 0, "" }
+    , { 0 }
+    }
+    }    
+    */
+    uint16_t code   = getleu16(bu, 0);
+
+    uint16_t man = (code >> 5);         // 11 bit manu
+                                        //  2 bit - ignored
+    uint16_t ind = (code >> 0) & 0x07;  //  3 bit industry
+
+    uint8_t msg_id = (bu[2] >> 2);
+    uint8_t repeat_id = (bu[2] & 0xfc);
+
+    uint16_t type_id = getleu16(bu, 6);
+
+    print_data(session->context, bu, len, pgn);
+    gpsd_report(session->context->debug, LOG_DATA,
+		"pgn %6d(%3d): unkown\n", pgn->pgn, session->driver.nmea2000.unit);
+    gpsd_report(session->context->debug, LOG_IO,
+        "                   manu = %u, ind= %u, msg= %u, rpt= %u, type= %u\n",
+        man, ind, msg_id, repeat_id, type_id);
+
+    return 0;
+}
+
+/**
  * \todo  PGN 130850: Simnet AP command
  */
 static gps_mask_t hnd_130850(unsigned char *bu, int len UNUSED, struct PGN *pgn UNUSED, struct gps_device_t *session)
@@ -3350,6 +3429,9 @@ static gps_mask_t hnd_130850(unsigned char *bu, int len UNUSED, struct PGN *pgn 
     }
     */
 
+    print_data(session->context, bu, len, pgn);
+    gpsd_report(session->context->debug, LOG_DATA,
+		"pgn %6d(%3d): unkown\n", pgn->pgn, session->driver.nmea2000.unit);
     gpsd_report(session->context->debug, LOG_IO,
                 "                   manu = %u, ind= %u, prop= %u, dev= %u, ev= %u, dir= %u, deg= %.02f\n",
                 man, ind, prop_id, dev_id, event, dir_id, rad*RAD_2_DEG * 0.0001);
