@@ -4,7 +4,7 @@
 #include <string.h>
 #include <math.h>
 
-#include "gps.h"
+#include "gpsd.h"
 #include "bits.h"
 #include "utils.h"
 
@@ -251,11 +251,26 @@ void test_numbers() {
     printf("d: %f, m: %f, lat: %f, lon = %010.4f\n", d, m, degtodm(fabs(lat)), degtodm(fabs(lon)));
 }
 
+void test_sizes() {
+    printf("vy        = %7lu\n", sizeof(vy_data_t));
+    printf("dc        = %7lu\n", sizeof(data_central_t));
+    printf("dev       = %7lu\n", sizeof(gps_device_t));
+    printf("  gps     = %7lu\n", sizeof(gps_data_t));
+    printf("    ais   = %7lu\n", sizeof(ais_t));
+    printf("    dc    = %7lu\n", sizeof(waypoint_navigation_t));
+    printf("    env   = %7lu\n", sizeof(environment_t));
+    printf("    eng   = %7lu\n", sizeof(engine_t));
+    printf("    nav   = %7lu\n", sizeof(navigation_t));
+    printf("      his = %7lu\n", sizeof(rb_t));
+    printf("      h 2 = %7lu\n", sizeof(rb_t));
+}
+
 int main(int argc, char * argv[]) {
 //    test_read0183end();
 //    test_safeatof();
 //    test_seatalk_lat_lon();
-    test_numbers();
+//    test_numbers();
+      test_sizes();
 }
 
 //18eaff01,59904,p:06,s:01,d:ff,x:00 ee 00 00 00 00 00 00
