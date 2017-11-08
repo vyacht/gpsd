@@ -18,6 +18,7 @@ gps2udp
 testdriver
 checksum
 state
+t
 # These are built from .in files
 gpscat
 gpsfake
@@ -147,3 +148,4 @@ libQgpsmm.prl
 libQgpsmm/binaries/*
 .vscode/settings.json
 testdriver
+t
